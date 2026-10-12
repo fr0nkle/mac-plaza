@@ -1,0 +1,120 @@
+#ifndef FFLI_CHAR_MODEL_H_
+#define FFLI_CHAR_MODEL_H_
+
+#include <nn/ffl/FFLBoundingBox.h>
+#include <nn/ffl/FFLCharModelDesc.h>
+#include <nn/ffl/FFLDrawParam.h>
+#include <nn/ffl/FFLExpression.h>
+#include <nn/ffl/FFLModelType.h>
+#include <nn/ffl/FFLPartsTransform.h>
+#include <nn/ffl/FFLCoordinateType.h>
+#include <nn/ffl/FFLResult.h>
+
+#include <nn/ffl/FFLiRenderTexture.h>
+#include <nn/ffl/FFLiMaskTextures.h>
+#include <nn/ffl/FFLiShapeType.h>
+
+#include <nn/ffl/FFLiTextureTempObject.h>
+#include <nn/ffl/detail/FFLiCharInfo.h>
+
+#ifndef __cplusplus
+typedef struct FFLCharModelSource FFLCharModelSource;
+typedef struct FFLShaderCallback FFLShaderCallback;
+#ifdef FFL_USE_TEXTURE_CALLBACK
+typedef struct FFLTextureCallback FFLTextureCallback;
+#endif // FFL_USE_TEXTURE_CALLBACK
+#endif // __cplusplus
+
+
+typedef struct FFLiCharModel
+{
+    FFLiCharInfo            charInfo;
+    FFLCharModelDesc        charModelDesc;
+    FFLExpression           expression;
+    FFLiTextureTempObject*  pTextureTempObject;
+    FFLDrawParam            drawParam[FFLI_SHAPE_TYPE_MAX];
+    void*                   pShapeData[FFLI_SHAPE_TYPE_MAX];
+    FFLiRenderTexture       facelineRenderTexture;
+    FFLTexture*             pCapTexture;
+    FFLTexture*             pGlassTexture;
+    FFLTexture*             pNoselineTexture;
+    FFLiMaskTextures        maskTextures;
+    FFLVec3                 beardPos;
+    FFLVec3                 hairPos;
+    FFLVec3                 faceCenterPos;  // Used to calculate nose(line) and glass position
+    FFLPartsTransform       partsTransform;
+    FFLModelType            modelType;
+    FFLBoundingBox          boundingBox[FFL_MODEL_TYPE_MAX];
+}
+FFLiCharModel;
+#ifndef __EMSCRIPTEN__
+NN_STATIC_ASSERT32(sizeof(FFLiCharModel) == 0x848);
+#endif
+
+struct FFLCharModelSource;
+struct FFLShaderCallback;
+
+#ifdef FFL_USE_TEXTURE_CALLBACK
+struct FFLTextureCallback;
+#endif
+
+FFLResult FFLiInitCharModelCPUStep(FFLiCharModel* pModel, const FFLCharModelSource* pSource, const FFLCharModelDesc* pDesc
+#ifdef FFL_USE_TEXTURE_CALLBACK
+    // add additional shader callback argument
+    , const FFLTextureCallback* pCallback);
+#else
+    );
+#endif
+
+void FFLiInitCharModelGPUStep(FFLiCharModel* pModel, const FFLShaderCallback* pCallback);
+
+void FFLiDeleteCharModel(FFLiCharModel* pModel);
+
+#ifdef __cplusplus
+
+// names collide (even though this isnt extern C???)
+void FFLiGetCharInfoFromCharModel(FFLiCharInfo* pCharInfo, const FFLiCharModel* pModel);
+bool FFLiIsAvailableExpression(const FFLiCharModel* pModel, FFLExpression expression);
+// FFLiGetDrawParamFromCharModel(const FFLiCharModel* pModel, FFLDrawType type);
+    // Meant to be exported as FFLGetDrawParamFromCharModel
+    // ... but it needs FFLDrawType enum which is used in shader stuff
+// void AFLiGetModelInfo(undefined4 param_1,undefined4 param_2) -> __aeabi_memcpy(param_1, param_2, 220);
+// FFLiSetModelInfo // Calls FFLInitCharModel
+// FFLiInitCharModel(FFLiCharModel *, FFLDataSource, void const *, unsigned short, FFLResolution, unsigned int, unsigned int, void *)
+// FFLiCopyCharModel(FFLiCharModel *, void *, unsigned int, FFLiCharModel const *)
+
+#endif // __cplusplus
+
+void FFLiSetExpression(FFLiCharModel* pModel, FFLExpression expression);
+FFLExpression FFLiGetExpression(const FFLiCharModel* pModel);
+
+void FFLiGetPartsTransform(FFLPartsTransform* pTransform, const FFLiCharModel* pModel);
+
+void FFLiSetViewModelType(FFLiCharModel* pModel, FFLModelType type);
+// FFLModelType FFLiGetViewModelType(const FFLiCharModel* pModel); FFLGetViewModelType
+
+void FFLiGetBoundingBoxCharModel(FFLBoundingBox* pBoundingBox, const FFLiCharModel* pModel); // original arg names: box, model
+
+const FFLDrawParam* FFLiGetDrawParamOpaFacelineFromCharModel(const FFLiCharModel* pModel);
+const FFLDrawParam* FFLiGetDrawParamOpaBeardFromCharModel(const FFLiCharModel* pModel);
+const FFLDrawParam* FFLiGetDrawParamOpaNoseFromCharModel(const FFLiCharModel* pModel);
+const FFLDrawParam* FFLiGetDrawParamOpaForeheadFromCharModel(const FFLiCharModel* pModel);
+const FFLDrawParam* FFLiGetDrawParamOpaHairFromCharModel(const FFLiCharModel* pModel);
+const FFLDrawParam* FFLiGetDrawParamOpaCapFromCharModel(const FFLiCharModel* pModel);
+
+const FFLDrawParam* FFLiGetDrawParamXluMaskFromCharModel(const FFLiCharModel* pModel);
+const FFLDrawParam* FFLiGetDrawParamXluNoseLineFromCharModel(const FFLiCharModel* pModel);
+const FFLDrawParam* FFLiGetDrawParamXluGlassFromCharModel(const FFLiCharModel* pModel);
+
+#ifdef __cplusplus
+
+// Deleted in NSMBU:
+const FFLiRenderTexture* FFLiGetFaceTextureFromCharModel(const FFLiCharModel* pModel);
+const FFLiRenderTexture* FFLiGetMaskTextureFromCharModel(const FFLiCharModel* pModel, FFLExpression expression);
+
+#endif // __cplusplus
+
+void FFLiSetCoordinat(FFLCoordinateType upType, FFLCoordinateType frontType); // Deleted in NSMBU
+void FFLiSetScale(f32 scale); // Deleted in NSMBU
+
+#endif // FFLI_CHAR_MODEL_H_

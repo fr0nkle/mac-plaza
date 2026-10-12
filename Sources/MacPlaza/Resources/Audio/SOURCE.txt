@@ -1,0 +1,33 @@
+Wii U Menu music - Home (WaraWara Plaza)
+Source requested by the user: https://www.youtube.com/watch?v=chgpqelL6ZQ
+Retrieved 12 October 2026 for this local Mac Plaza build.
+Music belongs to its original rights holders. This is not an original Mac Plaza composition.
+
+Mii Editor - Mii Maker (Wii U) Music
+Source requested by the user: https://www.youtube.com/watch?v=oTu4WcpB9Iw
+Retrieved 12 October 2026 for the local Mii Maker menu/editor.
+Music belongs to its original rights holders.
+
+arrival-drop.wav and arrival-wave.wav
+Original Wii U recordings requested by the user, replacing the synthesized cues.
+Playlist: https://www.youtube.com/playlist?list=PLAVayYtrkJqo9wFQZY5VPsPLPX27-Ausb
+Uploader: LuisFerLCC2; retrieved 12 October 2026.
+
+arrival-drop.wav: 1. Startup | Wii U System Soundtrack
+https://www.youtube.com/watch?v=yzJQZKWNsKU
+Excerpt: 00:00.000–00:00.950 (120 ms fade out).
+Source AAC SHA-256: b3ad4d4e53711835ee343b441a535d088341a4835f4f357725edc5b184494e7b
+
+arrival-wave.wav: 8. Mii Maker - Loading | Wii U System Soundtrack
+https://www.youtube.com/watch?v=-QgI4w8FdjU
+Excerpt: 00:00.000–00:02.800 (250 ms fade out).
+Source AAC SHA-256: e2c1a0670622533ccea68870cc69f38370c51397439f77b674f7599d42b755cc
+
+Prepared by scripts/prepare-arrival-sounds.py from decoded stereo PCM16 WAVs.
+5 ms fade in, peak normalization to 0.72; original pitch, speed and stereo retained.
+These are short soundtrack excerpts used as arrival cues, not isolated recordings
+of the original plaza landing/waving sound effects. Music/audio belongs to Nintendo
+and its original rights holders; no ownership or redistribution license is claimed.
+The playlist credits the following soundtrack sources:
+https://downloads.khinsider.com/game-soundtracks/album/wii-u-system-audio-background-music
+https://downloads.khinsider.com/game-soundtracks/album/nintendo-wii-u-system-menu-soundtrack-wii-u-gamerip-2012

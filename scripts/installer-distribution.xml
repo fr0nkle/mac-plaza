@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<installer-gui-script minSpecVersion="2">
+  <title>Mac Plaza</title>
+  <options customize="never" require-scripts="false" hostArchitectures="arm64"/>
+  <volume-check><allowed-os-versions><os-version min="15.0"/></allowed-os-versions></volume-check>
+  <domains enable_localSystem="true" enable_currentUserHome="false" enable_anywhere="false"/>
+  <choices-outline><line choice="default"/></choices-outline>
+  <choice id="default" visible="false"><pkg-ref id="org.squidproductions.macplaza.installer"/></choice>
+  <pkg-ref id="org.squidproductions.macplaza.installer">component.pkg</pkg-ref>
+</installer-gui-script>

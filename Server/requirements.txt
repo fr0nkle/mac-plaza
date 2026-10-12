@@ -1,0 +1,2 @@
+# Only needed for Discord online status. OAuth, sharing, and notes use Python's standard library.
+discord.py>=2.5,<3

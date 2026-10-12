@@ -1,0 +1,17 @@
+FFL.js
+  https://github.com/ariankordi/FFL.js
+  4b62d7e6bb7b5ba3932b5236a2c05a2ef1b02fec
+ffl-native
+  https://github.com/ariankordi/ffl
+  a784e6c7553b67ce7a4619ad3349676103983534
+rio
+  https://github.com/ariankordi/rio
+  6605d3ef3025dd555a531ed672b02d995cf69966
+ninTexUtils
+  https://github.com/ariankordi/ninTexUtils
+  e9f352f784c6a55c07a5dc0a068306a8ff874133
+three
+  https://registry.npmjs.org/three/-/three-0.144.0.tgz
+  0.144.0
+Emscripten
+  4.0.10

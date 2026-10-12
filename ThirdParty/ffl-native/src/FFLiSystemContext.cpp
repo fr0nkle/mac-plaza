@@ -1,0 +1,94 @@
+#include <nn/ffl/FFLiDateTime.h>
+#include <nn/ffl/FFLiPath.h>
+#include <nn/ffl/FFLiSystemContext.h>
+
+#if RIO_IS_CAFE
+#include <nn/act.h>
+#endif // RIO_IS_CAFE
+
+#ifdef __EMSCRIPTEN__
+    #include <emscripten.h>
+#endif
+
+FFLiSystemContext::FFLiSystemContext()
+{
+#ifndef FFL_NO_DATABASE_RANDOM
+    #ifdef __EMSCRIPTEN__
+        // Use emscripten_random so this can be like 6ms faster
+        const u32 seed = emscripten_random() * static_cast<f32>(UINT32_MAX);
+    #else
+        const u32 seed = FFLiGetSecondsFrom_2000_01_01();
+    #endif
+#else
+    static const u32 seed = 0;
+#endif
+    Init(seed);
+}
+
+FFLiSystemContext::~FFLiSystemContext()
+{
+}
+
+void FFLiSystemContext::Init(u32 seed)
+{
+    rio::MemUtil::set(&m_AuthorID, 0, sizeof(FFLiAuthorID));
+
+#ifndef FFL_NO_DATABASE_RANDOM
+    m_RandomContext.Init(seed);
+#endif
+
+    // NOTE: there should be a (private?) function that
+    // will actually change this and is used in the mii maker app
+    static const FFLiCreateIDBase DEFAULT_CREATE_ID_BASE = {
+        0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF
+    };
+    rio::MemUtil::copy(&m_CreateIDBase, &DEFAULT_CREATE_ID_BASE, sizeof(FFLiCreateIDBase));
+
+    m_TitleID = 0;
+}
+
+const FFLiAuthorID* FFLiSystemContext::UserID() const
+{
+    return &m_AuthorID;
+}
+
+u64 FFLiSystemContext::TitleID() const
+{
+    return m_TitleID;
+}
+
+const FFLiCreateIDBase* FFLiSystemContext::GetCreateIDBase() const
+{
+    return &m_CreateIDBase;
+}
+
+void FFLiSystemContext::SetCreateIDBase(const FFLiCreateIDBase* pCreateIDBase)
+{
+    m_CreateIDBase.value16[0] = pCreateIDBase->value16[0];
+    m_CreateIDBase.value16[1] = pCreateIDBase->value16[1];
+    // TODO: TOUCH UP ???????
+    *(u32 *)&(m_CreateIDBase).value16[2] = *(u32 *)&pCreateIDBase->value16[2] & 0xffff0000;
+}
+
+bool FFLiSystemContext::AfterConstruct()
+{
+#if RIO_IS_CAFE
+    if (nn::act::Initialize().IsFailure())
+        return false;
+
+    u64 id = 0;
+    nn::Result result = nn::act::GetTransferableIdEx(&id, 0x004A0, 0xFF);
+
+    if (nn::act::Finalize().IsFailure())
+        return false;
+
+    if (result.IsFailure())
+        return false;
+
+    rio::MemUtil::copy(&m_AuthorID, &id, sizeof(FFLiAuthorID));
+#else
+    rio::MemUtil::set(&m_AuthorID, 0, sizeof(FFLiAuthorID));
+#endif // RIO_IS_CAFE
+    m_TitleID = FFLiGetMiiStudioTitleID();
+    return true;
+}

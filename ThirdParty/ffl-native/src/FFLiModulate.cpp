@@ -1,0 +1,231 @@
+#include <nn/ffl/FFLModulateParam.h>
+#include <nn/ffl/FFLColor.h>
+
+#include <nn/ffl/FFLiColor.h>
+#include <nn/ffl/FFLiModulate.h>
+
+void FFLiInitModulateMustache(FFLModulateParam* pParam, s32 color, const FFLTexture* texture2D)
+{
+    pParam->mode = FFL_MODULATE_MODE_ALPHA;
+    pParam->type = FFL_MODULATE_TYPE_MUSTACHE;
+    pParam->pColorR = &FFLiGetSrgbFetchMustacheColor(color);
+    pParam->pColorG = NULL;
+    pParam->pColorB = NULL;
+    pParam->pTexture2D = texture2D;
+}
+
+void FFLiInitModulateMouth(FFLModulateParam* pParam, s32 color, const FFLTexture* texture2D)
+{
+    pParam->mode = FFL_MODULATE_MODE_RGB_LAYERED;
+    pParam->type = FFL_MODULATE_TYPE_MOUTH;
+    pParam->pColorR = &FFLiGetSrgbFetchMouthColorR(color);
+    pParam->pColorG = &FFLiGetSrgbFetchMouthColorG(color);
+    pParam->pColorB = &FFLiGetSrgbFetchMouthColorB(color);
+    pParam->pTexture2D = texture2D;
+}
+
+void FFLiInitModulateMouthEx(FFLModulateParam* pParam, s32 color, const FFLTexture* texture2D)
+{
+    pParam->mode = FFL_MODULATE_MODE_TEXTURE_DIRECT;
+    pParam->type = FFL_MODULATE_TYPE_MOUTH;
+    pParam->pColorR = NULL;
+    pParam->pColorG = NULL;
+    pParam->pColorB = NULL;
+    pParam->pTexture2D = texture2D;
+}
+
+void FFLiInitModulateEyebrow(FFLModulateParam* pParam, s32 color, const FFLTexture* texture2D)
+{
+    pParam->mode = FFL_MODULATE_MODE_ALPHA;
+    pParam->type = FFL_MODULATE_TYPE_EYEBROW;
+    pParam->pColorR = &FFLiGetSrgbFetchEyebrowColor(color);
+    pParam->pColorG = NULL;
+    pParam->pColorB = NULL;
+    pParam->pTexture2D = texture2D;
+}
+
+void FFLiInitModulateEyebrowEx(FFLModulateParam* pParam, s32 color, const FFLTexture* texture2D)
+{
+    // this is what AFL is setting but... doesn't really
+    // work when this is R8, you would need to set comp sel
+    pParam->mode = FFL_MODULATE_MODE_TEXTURE_DIRECT;
+    pParam->type = FFL_MODULATE_TYPE_EYEBROW;
+    pParam->pColorR = NULL;
+    pParam->pColorG = NULL;
+    pParam->pColorB = NULL;
+    pParam->pTexture2D = texture2D;
+}
+
+void FFLiInitModulateEye(FFLModulateParam* pParam, s32 colorGB, s32 colorR, const FFLTexture* texture2D)
+{
+    pParam->mode = FFL_MODULATE_MODE_RGB_LAYERED;
+    pParam->type = FFL_MODULATE_TYPE_EYE;
+    pParam->pColorR = &FFLiGetSrgbFetchEyeColorR(colorR);
+    pParam->pColorG = &FFLiGetSrgbFetchEyeColorG(colorGB);
+    pParam->pColorB = &FFLiGetSrgbFetchEyeColorB(colorGB);
+    pParam->pTexture2D = texture2D;
+}
+
+void FFLiInitModulateEyeEx(FFLModulateParam* pParam, s32 colorGB, s32 colorR, const FFLTexture* texture2D)
+{
+    pParam->mode = FFL_MODULATE_MODE_TEXTURE_DIRECT;
+    pParam->type = FFL_MODULATE_TYPE_EYE;
+    pParam->pColorR = NULL;
+    pParam->pColorG = NULL;
+    pParam->pColorB = NULL;
+    pParam->pTexture2D = texture2D;
+}
+
+void FFLiInitModulateMole(FFLModulateParam* pParam, const FFLTexture* texture2D)
+{
+    pParam->mode = FFL_MODULATE_MODE_ALPHA;
+    pParam->type = FFL_MODULATE_TYPE_MOLE;
+    pParam->pColorR = &FFLiGetSrgbFetchMoleColor();
+    pParam->pColorG = NULL;
+    pParam->pColorB = NULL;
+    pParam->pTexture2D = texture2D;
+}
+
+void FFLiInitModulateFaceMake(FFLModulateParam* pParam, const FFLTexture* texture2D)
+{
+    pParam->mode = FFL_MODULATE_MODE_TEXTURE_DIRECT;
+    pParam->type = FFL_MODULATE_TYPE_FACE_MAKE;
+    pParam->pColorR = NULL;
+    pParam->pColorG = NULL;
+    pParam->pColorB = NULL;
+    pParam->pTexture2D = texture2D;
+}
+
+void FFLiInitModulateFaceLine(FFLModulateParam* pParam, const FFLTexture* texture2D)
+{
+    pParam->mode = FFL_MODULATE_MODE_ALPHA;
+    pParam->type = FFL_MODULATE_TYPE_FACE_LINE;
+    pParam->pColorR = &FFLiGetFaceLine();
+    pParam->pColorG = NULL;
+    pParam->pColorB = NULL;
+    pParam->pTexture2D = texture2D;
+}
+
+void FFLiInitModulateFaceBeard(FFLModulateParam* pParam, s32 color, const FFLTexture* texture2D)
+{
+    pParam->mode = FFL_MODULATE_MODE_ALPHA;
+    pParam->type = FFL_MODULATE_TYPE_FACE_BEARD;
+    pParam->pColorR = &FFLiGetSrgbFetchBeardColor(color);
+    pParam->pColorG = NULL;
+    pParam->pColorB = NULL;
+    pParam->pTexture2D = texture2D;
+}
+
+void FFLiInitModulateShapeFaceline(FFLModulateParam* pParam, s32 color, const FFLTexture* texture2D)
+{
+    pParam->type = FFL_MODULATE_TYPE_SHAPE_FACELINE;
+    pParam->pColorG = NULL;
+    pParam->pColorB = NULL;
+    if (texture2D == NULL)
+    {
+        // bind it as a constant color rather than a texture
+        pParam->mode = FFL_MODULATE_MODE_CONSTANT;
+        pParam->pColorR = &FFLiGetFacelineColor(color);
+        pParam->pTexture2D = NULL;
+    }
+    else
+    {
+        pParam->mode = FFL_MODULATE_MODE_TEXTURE_DIRECT;
+        pParam->pColorR = NULL;
+        pParam->pTexture2D = texture2D;
+    }
+}
+
+void FFLiInitModulateShapeBeard(FFLModulateParam* pParam, s32 color)
+{
+    pParam->mode = FFL_MODULATE_MODE_CONSTANT;
+    pParam->type = FFL_MODULATE_TYPE_SHAPE_BEARD;
+    pParam->pColorR = &FFLiGetHairColor(color);
+    pParam->pColorG = NULL;
+    pParam->pColorB = NULL;
+    pParam->pTexture2D = nullptr;
+}
+
+void FFLiInitModulateShapeNose(FFLModulateParam* pParam, s32 color)
+{
+    pParam->mode = FFL_MODULATE_MODE_CONSTANT;
+    pParam->type = FFL_MODULATE_TYPE_SHAPE_NOSE;
+    pParam->pColorR = &FFLiGetFacelineColor(color);
+    pParam->pColorG = NULL;
+    pParam->pColorB = NULL;
+    pParam->pTexture2D = nullptr;
+}
+
+void FFLiInitModulateShapeForehead(FFLModulateParam* pParam, s32 color)
+{
+    pParam->mode = FFL_MODULATE_MODE_CONSTANT;
+    pParam->type = FFL_MODULATE_TYPE_SHAPE_FOREHEAD;
+    pParam->pColorR = &FFLiGetFacelineColor(color);
+    pParam->pColorG = NULL;
+    pParam->pColorB = NULL;
+    pParam->pTexture2D = nullptr;
+}
+
+void FFLiInitModulateShapeHair(FFLModulateParam* pParam, s32 color)
+{
+    pParam->mode = FFL_MODULATE_MODE_CONSTANT;
+    pParam->type = FFL_MODULATE_TYPE_SHAPE_HAIR;
+    pParam->pColorR = &FFLiGetHairColor(color);
+    pParam->pColorG = NULL;
+    pParam->pColorB = NULL;
+    pParam->pTexture2D = nullptr;
+}
+
+void FFLiInitModulateShapeCap(FFLModulateParam* pParam, s32 color, const FFLTexture* texture2D)
+{
+    pParam->mode = FFL_MODULATE_MODE_ALPHA_OPA;
+    pParam->type = FFL_MODULATE_TYPE_SHAPE_CAP;
+    pParam->pColorR = &FFLiGetCapColor(color);
+    pParam->pColorG = NULL;
+    pParam->pColorB = NULL;
+    pParam->pTexture2D = texture2D;
+}
+
+void FFLiInitModulateShapeMask(FFLModulateParam* pParam, const FFLTexture* texture2D)
+{
+    pParam->mode = FFL_MODULATE_MODE_TEXTURE_DIRECT;
+    pParam->type = FFL_MODULATE_TYPE_SHAPE_MASK;
+    pParam->pColorR = NULL;
+    pParam->pColorG = NULL;
+    pParam->pColorB = NULL;
+    pParam->pTexture2D = texture2D;
+}
+
+void FFLiInitModulateShapeNoseline(FFLModulateParam* pParam, const FFLTexture* texture2D)
+{
+    pParam->mode = FFL_MODULATE_MODE_ALPHA;
+    pParam->type = FFL_MODULATE_TYPE_SHAPE_NOSELINE;
+    pParam->pColorR = &FFLiGetNoselineColor();
+    pParam->pColorG = NULL;
+    pParam->pColorB = NULL;
+    pParam->pTexture2D = texture2D;
+}
+
+void FFLiInitModulateShapeGlass(FFLModulateParam* pParam, s32 color, const FFLTexture* texture2D)
+{
+    pParam->mode = FFL_MODULATE_MODE_LUMINANCE_ALPHA;
+    pParam->type = FFL_MODULATE_TYPE_SHAPE_GLASS;
+    pParam->pColorR = &FFLiGetGlassColor(color);
+    pParam->pColorG = NULL;
+    pParam->pColorB = NULL;
+    pParam->pTexture2D = texture2D;
+}
+
+static const FFLColor FILL_COLOR = {
+    0.0f, 0.0f, 0.0f, 0.0f
+};
+
+void FFLiInitModulateFill(FFLModulateParam* pParam)
+{
+    pParam->mode = FFL_MODULATE_MODE_CONSTANT;
+    pParam->type = FFL_MODULATE_TYPE_FILL;
+    pParam->pColorR = &FILL_COLOR;
+    pParam->pColorG = NULL;
+    pParam->pColorB = NULL;
+    pParam->pTexture2D = nullptr;
+}

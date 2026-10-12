@@ -1,0 +1,58 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>CFBundleName</key>
+	<string>Mac Plaza</string>
+	<key>CFBundleDisplayName</key>
+	<string>Mac Plaza</string>
+	<key>CFBundleIdentifier</key>
+	<string>local.macplaza.app</string>
+	<key>CFBundleExecutable</key>
+	<string>MacPlaza</string>
+	<key>CFBundlePackageType</key>
+	<string>APPL</string>
+	<key>CFBundleShortVersionString</key>
+	<string>0.13.0</string>
+	<key>CFBundleVersion</key>
+	<string>15</string>
+	<key>CFBundleURLTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleURLName</key>
+			<string>local.macplaza.discord</string>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>macplaza</string>
+			</array>
+		</dict>
+	</array>
+	<key>NSAppTransportSecurity</key>
+	<dict>
+		<key>NSAllowsLocalNetworking</key>
+		<true/>
+	</dict>
+	<key>CFBundleIconFile</key>
+	<string>PlazaIcon</string>
+	<key>LSMinimumSystemVersion</key>
+	<string>15.0</string>
+	<key>NSHighResolutionCapable</key>
+	<true/>
+	<key>NSSupportsAutomaticGraphicsSwitching</key>
+	<true/>
+	<key>PlazaServiceURL</key>
+	<string>https://adipex-experiments-ministries-containing.trycloudflare.com</string>
+	<key>SUFeedURL</key>
+	<string>https://adipex-experiments-ministries-containing.trycloudflare.com/updates/appcast.xml</string>
+	<key>SUPublicEDKey</key>
+	<string>nb75UIGtfJC3VgrIPHOZWMKdZoo9l8ZpQUqenSJgGXE=</string>
+	<key>SUEnableAutomaticChecks</key>
+	<true/>
+	<key>SUAutomaticallyUpdate</key>
+	<true/>
+	<key>SUScheduledCheckInterval</key>
+	<integer>3600</integer>
+	<key>SUEnableSystemProfiling</key>
+	<false/>
+</dict>
+</plist>

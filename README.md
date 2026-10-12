@@ -1,0 +1,195 @@
+# Mac Plaza 0.13
+
+A working native macOS plaza inspired by WaraWara Plaza, built from the supplied design document. It launches installed Mac apps and keeps local characters, notes, replies and drawings on your Mac. Optional Discord linking imports your Discord friends and availability through the official Social SDK. Chosen Miis and authored Plaza notes can also be shared through a separately configured service. The local plaza still works offline; there is no Pretendo integration.
+
+## Private friend-testing release
+
+Use **Artifacts/Mac-Plaza-0.13.0.dmg** to install on Apple silicon/macOS 15+. Discord setup opens on first launch with the test service preconfigured. Choose a Mii, enable **Share my chosen Mii and note with my Discord friends**, then save. Both people can share their own Miis without Plaza invitation codes. Sharing is opt-in and older explicit Plaza friendships remain supported.
+
+Sparkle provides signed private updates after Discord sign-in, with **Check for Updates…** in the app menu and automatic download/install options in Preferences. The private GitHub repository is **fr0nkle/mac-plaza**; GitHub credentials stay on the hosting Mac. This preview is not Apple notarized, and the Mac-hosted service/tunnel must remain running. A restarted temporary tunnel changes its address. [Installer, release publishing, hosting, and signing instructions](DISTRIBUTION.md).
+
+## Discord & Plaza friends pilot
+
+Click **Discord & Friends → Connect Discord** (or **Load My Discord Friends** for an existing linked account). Authorize identity and Discord friends’ availability. Your actual Discord friends appear automatically, without Plaza invitations or bot installation. Friends without a shared Mii receive a random temporary Mii on this Mac. Random appearances stay stable through refreshes and hiding/showing, and reset on sign-in or app launch. Click a friend’s Mii or their entry in the friends list, then choose **Mii on this Mac** to assign one of your custom Miis instead. This choice persists on this Mac for your signed-in Discord account; choose **Random Mii (automatic)** to clear it. A friend’s own shared linked Mii takes precedence. Custom status text, games, and shared notes can appear periodically overhead; generic availability bubbles are hidden. Availability remains visible in the accessible native friend list.
+
+The Social SDK exposes online/idle/do-not-disturb/offline availability. **Show custom statuses & games from shared Discord servers** adds current custom status text and Playing activity through the optional bot for friends in a server shared by you, your friend, and the bot. No Plaza invitations or friend-side app installation are required. Matching homescreen games attract their Miis. Custom status text takes priority overhead; Playing notes appear when no custom status is available. Coverage, custom status, and active-game counts appear in Discord & Friends. Discord may omit custom statuses according to each friend’s profile privacy settings; unavailable statuses produce no availability bubble. Optional Plaza invitations remain under **Optional shared Mii profiles & Plaza invitations** for exchanging chosen appearances, authored notes, and opted-in app activity. Friends using or recently using matching homescreen apps walk into their app circles; shared activity expires after 30 minutes. **Preview Sample Friends** demonstrates the presentation without an account or uploads.
+
+Use **Search Discord friends** in the accessible friends list or the **Discord & Friends → Discord friends** section to filter by name. Matching ignores capitalization and accents. Select a result to open its profile; the settings list also has an **Assign Mii…** button for friends without a linked Mii. Clear the search to show everyone again.
+
+Friends using your custom Mii assignments appear first in both Discord friends lists and their search results, and get the first available friend slots in the plaza, ahead of friends using random Miis. Order stays stable within each group. Your local characters keep their slots, and the crowd still respects your population setting and Low Power Mode. Resetting an assignment to random removes that priority.
+
+[Discord application, SDK, service, and two-account setup instructions](Server/README.md). Live sign-in requires your own application credentials and service deployment. Discord credentials stay in macOS Keychain; friend lists are read directly on each Mac. Credentials and social data are excluded from portable plaza exports.
+
+## Run
+
+Open **Artifacts/Mac Plaza.app**. The optimized build requires Apple silicon and macOS 15 or later. **Artifacts/Mac-Plaza-Wallpaper.zip** contains the wallpaper build. It is ad-hoc signed for local development; Developer ID signing and notarization remain distribution work.
+
+Closing the window leaves the menu bar item running. Choose Quit Mac Plaza to exit completely. Keep the app in a stable location before enabling Open at Login.
+
+## Interactive desktop wallpaper
+
+Choose **Use as Wallpaper** from the Mac Plaza menu bar item. The animated plaza fills the built-in display (or the main display when no built-in screen is available), below ordinary app windows. Wallpaper mode is clickable immediately and plays your selected plaza soundtrack at its saved volume, including while you use other apps in ordinary windows. Music automatically mutes while another app plays audio, uses audio input for a call, goes full screen, or covers most of the plaza. It fades back in once other audio has stopped and the plaza is available; this leaves your saved music preference unchanged. **Mute Music** in the menu bar or the music controls in Preferences silence it. Enable **Start Mac Plaza as wallpaper at login** in Preferences to register the app with macOS Login Items. While enabled, app launches restore interactive wallpaper even if the previous session used the ordinary window, without activating the desktop window. Keep the app in a stable location. Safe-mode/recovery launches keep the ordinary window visible instead.
+
+Click buttons, app islands and characters directly, including the first click after switching apps. The interactive wallpaper covers Finder’s desktop icons while staying below ordinary app windows. Show the desktop first if other app windows cover the plaza. **Escape** or **Return to Desktop** restores Finder interaction while leaving the animated wallpaper running; choose **Interact with Plaza** to resume. Switching apps and sleep keep the selected input mode. App previews, app launching, notes and character selection work on the desktop. **Mii Maker** opens in a centered panel over the visible plaza, including its feature editor and file tools; Back to plaza or the panel’s close button returns directly to the same wallpaper. The Miis continue walking behind the windowed maker; entering full screen pauses the background until you return. Its soundtrack and volume work while the regular window stays hidden. Opening and closing Mii Maker crossfades the two soundtracks over 1.2 seconds, including your custom imports; quick reversals preserve the playing track. Saving a new Mii returns to the plaza for a drop into the center, a waving close-up, and a camera pullback before it joins the roaming crowd. Short excerpts of the original Wii U Startup and Mii Maker Loading recordings from the requested playlist accompany the landing and wave, following the plaza volume and mute setting. The camera uses gentle easing and returns to your prior zoom and pan. Pause Motion and Reduce Motion skip this choreography. Preferences and the other native sheets use the ordinary companion window. Dismissal restores the previous desktop input mode.
+
+Choose **Open Plaza in Window** or turn off **Use as Wallpaper** to return to the original window. Quitting reveals the existing macOS wallpaper. This release uses one desktop display and one animated surface; it does not alter the system wallpaper image or lock screen. Rendering pauses when the desktop surface is fully occluded, the screen sleeps, or motion is paused. Multi-display behavior, Stage Manager, Spaces and battery performance still need broader hardware validation.
+
+The native desktop regression tests cover window layering, mouse transparency, Escape routing, sleep suspension, companion panels and restoration of the ordinary window. Mii Maker and zoom controls have compact native hosting surfaces that accept the first mouse click across their full button bounds; camera dragging ignores those surfaces. Tests check corner and center hits, control clicks while zoomed in, floor dragging and Mii Maker dismissal. Run them with `swift test --filter DesktopPlazaTests` in a session that can access WindowServer.
+
+## Characters and 3D plaza
+
+- Actual local FFL heads and original WaraWara Plaza body models/animation curves after importing the two resources. Preferences → Original plaza bodies & animations imports `Men2.pack` directly on this Mac. The resource-free fallback retains locally authored geometry and motion.
+- A bounded crowd of 20–200 characters, 160 by default. Preferences → Fill the plaza applies the fuller crowd to an existing plaza. Visitors form loose, uneven gatherings beneath the icons; about a third wander along the open walkways, pausing between trips. Explicit friend activity still takes precedence. On launch, a staggered stream of Miis runs down from above while icons pop outward into the oval; the entrance plays once per app session, waits for the renderer, and respects Reduce Motion and Pause Motion. With menu assets installed, both original male/female meshes retain their rigid bone palettes, original UVs, body atlas and vertex lighting attributes. The player directly evaluates original cubic/linear animation coefficients for running, walking, idle variants, talking, greetings and reactions; it does not generate replacement limb motion. With compatible menu assets, recovered native controllers choose original idle actions, entrance/exit stages, linear blend durations and paired interaction sequences. FFL heads follow the animated original head bone. The native port uses recovered routines for ordinary controllers and social partners, including paired phase adjustment and orbit dance positioning. Mac Plaza supplies entrance choreography, the mix of gatherings and walkway destinations, viewport geometry, obstacle routes and app reactions. Saved local characters start in the center.
+- Click a character for its profile. Saved characters have a readable list of their own local notes and an entry point to customization. Generated visitors are explicitly labelled decorative.
+- A Wii U-style editor with eight large feature pictograms, a large rotatable Mii on the left, three-column feature grids, square color palettes and a yellow adjustment rail. Eye, eyebrow, nose and mouth tiles show the isolated feature, using the actual installed FFL artwork or the built-in fallback. Face makeup/wrinkles and accessories have subtabs; body sliders and a final Mii information/Save Mii step complete the flow. Presets, shuffle, Undo, file tools and portrait export remain available.
+- Up to twelve saved characters. Choose a primary character, import/export character JSON, and export front, side or back PNG portraits with the selected pose.
+- Import/export checksum-validated **96-byte Wii U/3DS Mii files** (`.mii` / `.ffsd`). Feature IDs and quantized settings round-trip. Binary files limit nickname and creator to ten UTF-16 code units; longer local names can use JSON.
+
+### Actual local Wii U Mii renderer
+
+Preferences → **Import FFLResHigh.dat…** enables the Wii U FFL decompilation, its original head/face composition pipeline and the Wii U shader through bundled FFL.js/WebAssembly. Faces, ears, noses, glasses and hairstyles use the imported resource meshes/textures; the active FFL mode does not use the hand-authored face/hair approximations. Plaza heads, maker previews, feature thumbnails and PNG portraits all use FFL. Original body models and motion are enabled by the separate Men2.pack import described below.
+
+The original Wii U resource is `sys/title/0005001b/10056000/content/FFLResHigh.dat`. No Nintendo resource archive is bundled. Without an imported resource the built-in procedural characters remain active, explicitly labelled in Preferences. Compatible Miitomo `AFLResHigh_2_3.dat` also works, but is labelled as Miitomo. Version 0.4 used that compatible resource; version 0.6 has been validated with the original Wii U resource retrieved from Nintendo’s public system update. Both originals/provenance are retained under ignored `Local Resources/`, excluded from app/source packaging.
+
+The resource is validated by actually initializing FFL and drawing a test Mii before replacing the installed copy. A damaged replacement preserves the previous resource. Imported bytes are stored separately under Application Support/MacPlaza/Renderer; resource files are excluded from portable plaza exports. The renderer does not download resources, upload characters, open a network listener or contact a rendering service. Optional Discord sharing uses native networking separately. All JavaScript/WASM/Three.js files are bundled. WebKit's nonpersistent local document blocks external connections through CSP and denies external navigation.
+
+The source-built WASM includes ninTexUtils for Wii U GX2 tiled textures. Startup verifies this capability and round-trips generated R8, RG8 and RGBA8 pixels through the real tile converter. The old public prebuilt WASM is not used. New characters have console-compatible facial positions. For older local characters whose features overlap, maker **Files → Use Console Face Layout** restores conventional positions without changing selected styles. Imported Mii file positions are preserved.
+
+QR scanning, photo creation, encrypted Switch data and 88-byte Wii files remain unimplemented. Exported files have not been tested on physical Nintendo hardware.
+
+### Original WaraWara Plaza body assets
+
+Preferences → **Import Men2.pack…** reads `content/Common/Package/Men2.pack` from a local Wii U menu dump. The bundled reader selects `Common/Model/MiiBodyMiddle.szs` and `Common/Model/MiiAnim.szs`, validates their SARC/Yaz0/BFRES structures and bone palettes, then renders male/female test characters before atomically installing the converted resource. It supports the original BFRES 3.0.0.1 menu resources. There is no Python, Node, Windows tool or network requirement for app import/playback. Bad replacements leave the previous installed resource intact.
+
+The local resource contains two original meshes (940 male / 955 female vertices, 1,124 / 1,112 triangles), the original 8 × 16 BC3 color-mask atlas and all 172 source skeletal clips. The runtime uses a matching subset for the plaza/maker states. Source float values and compressed curve coefficients are preserved; the player evaluates them directly rather than resampling to recreated keyframes. The material uses the original atlas and FFL lighting with alpha selecting favorite-color cloth vs pants. The entire Wii U shader pipeline and menu executable are not emulated. Version 0.9 ports selected behavior routines to Swift as described below.
+
+Original Wii U `FFLResHigh.dat` and `Men2.pack` are now installed locally from Nintendo’s public system update resources: FFL title `0005001b10056000` version 1 and menu title `0005001010040100` version 277. H0/H1/H2/H3 content integrity and metadata digests were checked during retrieval. The app itself never downloads these files. Local originals/provenance are under ignored `Local Resources/`; installed resources live in Application Support. They are excluded from app/source ZIPs and plaza exports.
+
+`node scripts/test-menu-assets.cjs` tests archive bounds and curve evaluation. Set `PLAZA_MENU_QA_RESOURCE=/absolute/path/to/Men2.pack` plus `PLAZA_FFL_QA_RESOURCE=/absolute/path/to/FFLResHigh.dat` for original-asset tests, native import/render checks, exact source-key comparisons and the generated original walk preview. Tests never fetch resources.
+
+## Native crowd controller port in 0.12
+
+This extends the working native port of recovered US Wii U Menu v277 behavior routines, with the installed original body/head resources. It is **not yet a complete port of the original crowd AI**. No Wii U executable is loaded or interpreted by the app.
+
+The active port includes the original random generator, 128 animation descriptors, transition/interrupt decisions, eligibility bits, entrance/main/exit stages, frame advancement and linear blend weights. Ordinary idle selection retains the original draw order, repeated-choice rejection, one-off activities, sleep follow-ups and long seated holding rules. Paired interactions use the recovered bow/talk/dance/rock-paper-scissors action choices, complementary roles, role handoff, duration draws, shared RPS playback rate and unlink cooldown. The old activity-to-clip sequence mapper remains for resource-free/preview compatibility; the active native crowd sends explicit original clip/frame/blend samples to the renderer.
+
+Destination selection now uses ten accepted source candidates, preferred-distance scoring and per-obstacle clearance relaxation. Standing partners use the original mutual 18-unit distance/facing predicate, first eligible neighbor, opening bow/talk draw and role selection. Paired playback slows the leading phase to 0.7 where the original code does; orbit dances use the source 9/11-unit spacing, phase-weighted root correction and opposite tangent headings. The separate side-by-side dance predicate and selector can run during local app reactions without snapping characters into place. Circle separation uses the recovered overlap-extrema reduction with native geometry inputs.
+
+This remains a partial port. Mac Plaza supplies the window bounds, app obstacle geometry, spatial iteration order, visibility routes and reaction events. Ordinary walk speed/acceleration and foot-phase stopping, collision anti-oscillation/impulse damping, and automatic dance opportunities now use recovered routines. Automatic dances need no click or launch reaction. Each app gathering now uses the original 397-node hexagonal group topology, occupancy counts, ray searches and cost-improving assignment swaps. Automatic neighbor selection reads those node slots. Walk/run/tired/fall/recovery/catch-breath transitions, run variants and gait rates use recovered logic and original clips; standing collisions select the original four surprise reactions. Mac app membership, admission, vacancy filling, owner callbacks, the complete global dispatcher, surprise followups and head-look/blink remain host adaptations or outstanding work. Host libm replaces the original SDK normalization, reciprocal-square-root estimate and trigonometric lookup. The host uses fixed 60 Hz controller updates with 30 Hz rendering; timers remain in source updates/frames. Exact Wii U scheduling cadence and full-scene equivalence have not been established. Pause/minimize freezes simulation and pose samples. High-frequency poses use structured WebKit arguments with one in-flight frame and the latest pending snapshot, avoiding per-frame JSON formatting and request timeout tasks.
+
+Crowd locations shuffle once when the app boots. Editing appearances, refreshing friends, changing population, replacing the renderer and resizing preserve surviving Miis’ positions and animation state. Returning hidden visitors recover their previous poses. If a moved control covers a Mii, it walks out continuously. Group reassignment changes destinations rather than positions.
+
+[Original crowd port status and reproducible verification](ORIGINAL_CROWD_PORT.md) records routine addresses, source fingerprint, original-instruction differential fixtures, and remaining work. The bounded reference runner is a development tool using an existing local executable; it is excluded from the app runtime and never boots the menu or OS. Nintendo firmware/resources and generated research fixtures remain excluded from distributable archives.
+
+## Local features
+
+- Reference-matched staggered app icons, smaller Miis gathered beneath each icon, an open central walkway, and one compact journal bubble. Icon sizes and crowd clearances adapt to the window. Lower-left minus/plus controls zoom the plaza from 75% to 175%; click the percentage to reset to 100%, pinch to zoom, and drag to pan when enlarged.
+- Gently floating glass tiles, a bright diamond-mosaic plaza floor with recessed rings, and a zoomed app preview on click. Preview shows an app summary, installed version/category/availability and related local notes; choose Open to launch, or Escape / Back to return. Reduce Motion removes bobbing, tilting and animated camera travel.
+- Installed app icons, native launching, Add App, Finder app drops in Arrange mode, rename, reconnect, reorder, removal, layout undo and alphabetical reset. Twelve shortcuts per page, up to 120 total.
+- Custom shortcut images through the native picker, normalized to 128 × 128 PNGs and retained in portable plaza exports. Use App Icon restores the installed icon.
+- Journal entries and replies of up to 280 characters, a local author and optional app topic, appreciation, editing and note deletion undo.
+- Black-ink drawing, eraser, drawing undo, required accessible description, and flattened 1024 × 1024 PNG export.
+- Autosaved unfinished note drafts, restored after closing the composer or restarting the app.
+- Wii U-inspired white speech panels with dark name tabs, Mii head profile pictures, small pointers and soft gray edges, shared by journal entries and friend messages. Each profile picture uses a square head-only portrait from the same local FFL renderer as the plaza, matching the speaker's current hair and facial features; the authored head renderer remains the fallback. Plaza posts appear above their author and follow their live head position as they walk. Each message keeps the same speaker; its pointer stays aligned even near screen edges. Panels prefer to clear app controls, but may overlap app artwork to stay overhead in gathered groups; they hide briefly when the speaker is offscreen or there is no room above them. Guide messages belong to your primary Mii. One plaza post appears at a time for ten seconds: journal posts and friend statuses take turns with quiet gaps of 14–18 seconds, each recurring every 52 seconds. The initial plaza stays quiet for 12 seconds after its entrance. Cards show drawings, prefer unread notes and open the corresponding entry. Hover and keyboard focus hold cycling; Pause Posts freezes it explicitly. Hidden plazas, app previews and sheets suspend the cycle.
+- Search, native app/note list, larger plaza text, private presentation, independent motion/post pause controls, and system Reduce Motion support.
+- The requested WaraWara Plaza Home soundtrack plays locally in a loop at a quiet 12% by default, with fade-in and a footer mute button. Preferences → Music has independent plaza and Mii Maker imports, Preview/Stop buttons, volume sliders (0–35%) and default restoration. Choosing a file leaves it unapplied until Use Music; Cancel keeps the saved soundtrack. Previews pause background playback, play once at the selected volume, and stop when Settings closes, the window hides, the Mac sleeps or safe mode activates. Playable local audio files up to 256 MB are validated and copied into the local data folder; they survive moving the original and are separate from plaza exports. Explicit saved mute preferences are retained. Wallpaper music continues behind smaller app windows. Other apps’ active audio output or input, full-screen presentation, or a foreground window covering at least 85% of the plaza display’s usable area temporarily mute both background music and previews. After 1.5 seconds without other audio, eligible music fades back in when the plaza is available. Activity detection excludes Mac Plaza’s own playback and never records audio; apps retaining an active silent stream may delay resumption. Windowed playback pauses while hidden or minimized. Sleep, list/safe mode, Pause and mute stop background music. A synthesized fallback remains available if the audio resource cannot load.
+- Frame restoration and display-bound clamping, menu bar access, opt-in macOS login registration, atomic storage, validated import/export, migration from 0.1 data, backup recovery and automatic safe mode after an interrupted session.
+
+Safe mode removes the 3D crowd, custom shortcut images, music and plaza bubbles while retaining native launcher, journal and recovery controls. Wake presentation remains manual through the menu bar until automatic foreground eligibility has been validated on real hardware.
+
+## Controls
+
+| Action | Control |
+| --- | --- |
+| Preview an app | Click its island; Return or Space on a focused island |
+| Launch an app | Open in the app preview; Return while previewing |
+| Zoom plaza | Lower-left − / + buttons or trackpad pinch |
+| Reset plaza view | Click the zoom percentage or Command 0 |
+| Pan enlarged plaza | Drag the plaza outside Arrange mode |
+| Return from preview | Escape; Back to plaza; click the plaza background |
+| Island details | Shortcut settings in preview; right-click for options |
+| Plaza settings | Top-right Settings gear beside Mii Maker; Command comma |
+| Return from Settings or app details | Back to Plaza at the top of the menu; Escape also closes the menu |
+| Change home screen apps | Top-right Change Apps; drag tiles to reorder, Add App to add, click an app to change or remove it, then Back to Plaza. Changes save automatically. |
+| Move island focus | Arrow keys |
+| Add application | Command N |
+| New note | Command Shift N |
+| Show plaza | Command 1 |
+| Journal | Command J |
+| Character maker | Command E |
+| Your character profile | Command Shift E |
+| Plaza/list view | Command L |
+| Pause/resume motion | Command P |
+| Undo layout | Command Z |
+| Preferences | Command comma |
+| Close a panel | Escape |
+| Quit | Command Q |
+
+Enable macOS Keyboard Navigation for Tab access to every native control. Decorative 3D geometry is excluded from VoiceOver focus; the profile command and character library provide native alternatives. A complete VoiceOver audit remains release validation.
+
+## Build and test
+
+Xcode command line tools and the macOS SDK are required. The app bundles its renderer dependencies and builds offline; no Swift package download is needed. Third-party source, versions, licenses and WASM rebuild instructions are in `ThirdParty/README.md`. Emscripten is only needed when changing the FFL library itself.
+
+```sh
+zsh scripts/build-app.sh
+```
+
+The script builds an optimized executable, generates the original app icon, assembles the app and ad-hoc signs it. `zsh scripts/package-release.sh` creates verified app and complete corresponding-source ZIPs with SHA-256 files; it excludes local resources, user data and development toolchains. Run it in an ordinary local Terminal; native icon generation can be restricted inside execution sandboxes.
+
+```sh
+CLANG_MODULE_CACHE_PATH="$PWD/.build/ModuleCache" \
+SWIFTPM_MODULECACHE_OVERRIDE="$PWD/.build/ModuleCache" \
+swift test --disable-sandbox \
+  --cache-path .build/cache --config-path .build/config --security-path .build/security
+```
+
+The native rendering tests need access to the Mac's graphics service. Set `PLAZA_RENDER_QA=1` for fallback diagnostics. Set `PLAZA_FFL_QA_RESOURCE=/absolute/path/to/FFLResHigh.dat` to exercise the actual FFL renderer, save front/back/wave PNGs and an appearance gallery, and check that external fetches are blocked. It also tests actual ankle positions across three heights and two builds, and creates walking/contact-sheet and conversation previews. `node scripts/test-motion.cjs` checks the shipping WebGL motion solver without a resource file. That test is explicitly skipped when no resource is supplied; it never downloads one.
+
+For isolated persistent UI test data, quit the running instance and use:
+
+```sh
+open "Artifacts/Mac Plaza.app" --args --demo
+```
+
+## Architecture and efficiency
+
+`PlazaCore` owns versioned models, bounded validation, the deterministic spatial-hash crowd simulation, the Mii binary codec and the serialized storage actor. `PlazaModel` owns native app bookmarks, launching, local edits and lifecycle state. SwiftUI/AppKit provide the native maker, launcher, journal, panels and window management.
+
+FFL mode renders with Three.js/WebGL in a local WKWebView; the actual FFL library runs as WebAssembly and uses upstream FFLShaderMaterial. The Swift simulation sends a compact position/pose/expression snapshot at 30 fps without publishing per-frame SwiftUI state. At most one frame is in flight, and newer frames replace pending ones. No independent browser animation loop runs. Head geometry and expression textures are shared between copies of a character; each copy has its own expression material, allowing independent blinks. Original bodies share two geometry templates and outfit materials, with an independent 16-bone palette per character. The curve evaluator reuses pose/vector buffers. The authored body path retains GPU instancing; soft contact shadows are instanced in both paths. FFL head shaders are unchanged. Plaza masks are 256 pixels; previews/exports use 512-pixel masks. Small portrait caches have a 12 MB budget. The thumbnail renderer is serialized and released after three idle seconds. Large PNG exports bypass that cache. Web views share one nonpersistent data store; discarded views explicitly release FFL and GPU objects.
+
+The resource-free fallback retains SceneKit and original generated artwork. Its bounded texture/portrait caches are cleared when FFL is enabled. Crowd separation uses a spatial hash, routes are computed only for new destinations, and Low Power Mode caps population at 30.
+
+The simulation timer and rendering stop when occluded, minimized, sleeping, showing other sheets, explicitly paused, or using list/safe mode. A windowed Mii Maker keeps the visible crowd running; a full-screen maker pauses it. Music continues during app previews and sheets. Mii Maker uses its own soundtrack and remembered volume and pauses when its window is hidden or minimized. Wallpaper plaza music continues behind smaller app windows and when returning to Finder; other apps’ audio/calls, full-screen presentation or large foreground windows covering the plaza temporarily mute music, while Mac Plaza’s own full-screen Mii Maker retains its soundtrack; ordinary windowed plaza music pauses while hidden or minimized. Sleep, session lock, safe mode, Pause and mute silence background music in both modes. FFL heads preserve the rendering suspension controls.
+
+Atomic JSON snapshots with a previous valid backup serve the capped local dataset. This differs from the design document’s proposed SQLite storage. A transactional database should precede a connected feed or substantially larger data model.
+
+## Data
+
+Ordinary data: `~/Library/Application Support/MacPlaza/plaza.json`, with a previous valid `plaza.json.backup`. Isolated demo data: the system temporary directory under `MacPlaza-Demo`. An active-session marker detects interrupted exits. Loading failures preserve the unreadable file and block edits until explicit recovery.
+
+Portable exports retain custom icons, characters, notes, replies, drawings and drafts, but omit app paths/bookmarks. Imports strip these fields even from edited files. Reconnect shortcuts explicitly with Locate App. Launching checks the resolved app’s bundle identity.
+
+Limits: 120 shortcuts, twelve characters, 200 notes, fifty replies per note, 2,000 replies total, 280 characters per note/reply, 160 per drawing description, 20,000 points per drawing, 60,000 journal/draft points total, 2 MB total custom icons and 12 MB per imported plaza. Writes are atomic and ordered by revision.
+
+The alpha uses ordinary bookmarks and is not App Sandbox enabled. It requests no Accessibility control, Automation, Screen Recording or Full Disk Access permission. App Store sandbox packaging is separate release work.
+
+## Verification
+
+The 12 October 2026 reference-layout and plaza-zoom update passed **67 tests**, with two optional original-instruction fixture checks skipped and zero failures. This includes the actual local FFL/menu rendering checks, placement at 8/10/12 icons across three window sizes, bubble collision checks, and zoom/pan limits. The optimized app was built and its icon/Mii layout and zoom controls were inspected in the native window.
+
+The 12 October 2026 floating-app update compiled in debug and optimized release configurations. The native suite ran 60 tests: 55 passed, five optional original-resource checks skipped, and zero failed. New coverage validates real soundtrack decoding/preparation, bounded persisted volume, legacy preference decoding, installed app metadata and disconnected shortcuts. Native UI checks cover preview without launching, Escape/back, explicit launch, and music controls.
+
+On 11–12 October 2026, debug and optimized release builds compiled with Swift 6.3.3 in Swift 5 language mode. **57 tests passed with the original Wii U FFL and menu resources and recovered instruction fixtures**, covering model/data limits, ordered writes and recovery, 0.1 migration, portable exports, draft/reply/icon persistence, interrupted sessions, known Mii data and CRC failures, quantized feature round-trips, 80-character simulation over 1,800 steps, bubble collision avoidance, native bookmark identity, ink/eraser export, front/back/gesture rendering, valid original WAV audio, hairstyle ID ordering, expression differences, reciprocal conversation partners, movement continuity and bounded launch reactions.
+
+Native UI verification exercised category editing, feature positioning, saved character persistence, presets, native Mii import/export, character profiles and 3D hit testing, local replies, draft reopening, custom image picking, layout reset/undo and minimization. The 0.4 checks additionally exercised native FFL resource import, actual FFL heads in the plaza, original hairstyle selection and rotation, and matching FFL grid thumbnails. Resource validation, corrupt-resource preservation, long local names, real head/pose PNG rendering, external-request blocking, 60-character batching and independent blinking are tested. The 0.6 checks activated original Wii U head/body resources in the ordinary app and exercised body picking, maker previews, pause/resume, and live resource replacement. A renderer-ownership regression test prevents outgoing view teardown from stopping its replacement. Earlier editing checks used isolated demo data. Earlier launcher checks confirmed macOS accepted requests for Brave Browser, Discord and DaVinci Resolve.
+
+Performance observations and remaining hardware checks are recorded in `LOCAL_FEATURES.md`. The local build is functional; distribution signing, comprehensive VoiceOver, physical sleep/login, multiple displays/Spaces and long-duration performance/battery validation remain release work.
+
+## References and asset provenance
+
+The supplied [Mii Wiki Mii Maker page](https://miiwiki.org/wiki/Mii_Maker), [Wikipedia Mii page](https://en.wikipedia.org/wiki/Mii) and [datkat21/mii-creator](https://github.com/datkat21/mii-creator) informed the design investigation. The older creator relies on an external FFL image renderer; its code/assets are not runtime dependencies and have not been bundled. The Mii codec was independently implemented and cross-checked with the public example in [PretendoNetwork/mii-js](https://github.com/PretendoNetwork/mii-js); no Pretendo service is contacted.
+
+Fallback character geometry/face textures, articulated bodies, plaza art, app icon and synthesized music are original local artwork. The optional FFL pipeline uses the imported resource for head geometry and facial textures. SF Symbols and system fonts come from macOS. Third-party app icons are read from installed applications at runtime. No extracted Nintendo models, textures, fonts or FFL resource files are included. The user-requested soundtrack recordings and two short original Wii U recording excerpts used as arrival cues are bundled for offline playback, with provenance in Resources/Audio/SOURCE.txt. Mac Plaza is a working title.
+
+The renderer uses [FFL.js](https://github.com/ariankordi/FFL.js) and the [FFL native port](https://github.com/ariankordi/ffl), with [ninTexUtils](https://github.com/ariankordi/ninTexUtils) and Three.js. Licenses, pinned source and local adapter modifications are included under ThirdParty and in the source archive. Renderer credits are available in Preferences.

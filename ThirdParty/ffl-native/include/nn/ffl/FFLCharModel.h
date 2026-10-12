@@ -1,0 +1,93 @@
+#ifndef FFL_CHAR_MODEL_H_
+#define FFL_CHAR_MODEL_H_
+
+#include <nn/ffl/FFLExpression.h>
+#include <nn/ffl/FFLModelType.h>
+#include <nn/ffl/FFLResult.h>
+
+#include <nn/ffl/FFLiCharModel.h>
+
+#ifdef __cplusplus
+extern "C" {
+#endif
+
+#define FFL_CHAR_MODEL_SIZE (int)sizeof(FFLiCharModel)
+// ^^ Cast is because ClangSharp says Cannot implicitly convert type int to ulong
+
+/*
+#if INTPTR_MAX == INT64_MAX
+    #if FFL_EXPRESSION_LIMIT == FFL_EXPRESSION_MAX
+        #define FFL_CHAR_MODEL_SIZE 3088
+    #else // assuming it is lower, so like 31
+        #define FFL_CHAR_MODEL_SIZE 3056
+    #endif
+#else // assuming 32 bit
+    #define FFL_CHAR_MODEL_SIZE 2116 // 2144
+#endif
+*/
+
+typedef struct FFLCharModel
+{
+    union
+    {
+        u8 data[FFL_CHAR_MODEL_SIZE];
+        u32 data32[FFL_CHAR_MODEL_SIZE / sizeof(u32)];
+    };
+}
+FFLCharModel;
+NN_STATIC_ASSERT(sizeof(FFLCharModel) == FFL_CHAR_MODEL_SIZE);
+
+typedef struct FFLCharModelDesc FFLCharModelDesc;
+typedef struct FFLCharModelSource FFLCharModelSource;
+typedef struct FFLDrawParam FFLDrawParam;
+typedef struct FFLPartsTransform FFLPartsTransform;
+typedef struct FFLShaderCallback FFLShaderCallback;
+
+FFLResult FFLInitCharModelCPUStep(FFLCharModel* pModel, const FFLCharModelSource* pSource, const FFLCharModelDesc* pDesc);
+// not in FFL: lets you explicitly specify a texture callback for uploads
+#ifdef FFL_USE_TEXTURE_CALLBACK
+FFLResult FFLInitCharModelCPUStepWithCallback(FFLCharModel* pModel, const FFLCharModelSource* pSource, const FFLCharModelDesc* pDesc, const FFLTextureCallback* pCallback);
+#endif
+
+void FFLInitCharModelGPUStep(FFLCharModel* pModel);
+void FFLInitCharModelGPUStepWithCallback(FFLCharModel* pModel, const FFLShaderCallback* pCallback);
+
+void FFLDeleteCharModel(FFLCharModel* pModel);
+
+const FFLDrawParam* FFLGetDrawParamOpaFaceline(const FFLCharModel* pModel);
+const FFLDrawParam* FFLGetDrawParamOpaBeard(const FFLCharModel* pModel);
+const FFLDrawParam* FFLGetDrawParamOpaNose(const FFLCharModel* pModel);
+const FFLDrawParam* FFLGetDrawParamOpaForehead(const FFLCharModel* pModel);
+const FFLDrawParam* FFLGetDrawParamOpaHair(const FFLCharModel* pModel);
+const FFLDrawParam* FFLGetDrawParamOpaCap(const FFLCharModel* pModel);
+void FFLDrawOpa(const FFLCharModel* pModel);
+void FFLDrawOpaWithCallback(const FFLCharModel* pModel, const FFLShaderCallback* pCallback);
+
+const FFLDrawParam* FFLGetDrawParamXluMask(const FFLCharModel* pModel);
+const FFLDrawParam* FFLGetDrawParamXluNoseLine(const FFLCharModel* pModel);
+const FFLDrawParam* FFLGetDrawParamXluGlass(const FFLCharModel* pModel);
+void FFLDrawXlu(const FFLCharModel* pModel);
+void FFLDrawXluWithCallback(const FFLCharModel* pModel, const FFLShaderCallback* pCallback);
+
+void FFLSetExpression(FFLCharModel* pModel, FFLExpression expression);
+FFLExpression FFLGetExpression(const FFLCharModel* pModel);
+bool FFLIsAvailableExpression(const FFLCharModel* pModel, FFLExpression expression); // Deleted in NSMBU
+
+void FFLGetPartsTransform(FFLPartsTransform* pTransform, const FFLCharModel* pModel);
+
+void FFLSetViewModelType(FFLCharModel* pModel, FFLModelType type);
+void FFLGetBoundingBox(FFLBoundingBox* pBoundingBox, const FFLCharModel* pModel); // Deleted in NSMBU
+
+void FFLSetCoordinate(FFLCoordinateType upType, FFLCoordinateType frontType); // Deleted in NSMBU
+void FFLSetScale(f32 scale); // Deleted in NSMBU
+
+// Not sure how else to expose these
+const FFLiRenderTexture* FFLiGetFaceTextureFromCharModel(const FFLCharModel* pModel);
+const FFLiRenderTexture* FFLiGetMaskTextureFromCharModel(const FFLCharModel* pModel, FFLExpression expression);
+void FFLiGetCharInfoFromCharModel(FFLiCharInfo* pCharInfo, const FFLCharModel* pModel);
+
+#ifdef __cplusplus
+}
+#endif
+
+#endif // FFL_CHAR_MODEL_H_

@@ -1,0 +1,93 @@
+import SwiftUI
+import AppKit
+import PlazaCore
+
+/// Information comes from the installed application and the user's local journal.
+struct AppPreviewInfo {
+    let version: String?
+    let category: String
+    let summary: String
+    let location: String?
+
+    init(app: AppIsland, url: URL?) {
+        let bundle = url.flatMap(Bundle.init(url:))
+        version = bundle?.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String
+        let rawCategory = bundle?.object(forInfoDictionaryKey: "LSApplicationCategoryType") as? String
+        category = rawCategory.map { $0.replacingOccurrences(of: "public.app-category.", with: "").replacingOccurrences(of: "-", with: " ").capitalized } ?? "Mac application"
+        location = url?.deletingLastPathComponent().lastPathComponent
+        switch app.bundleID.lowercased() {
+        case let id where id.contains("brave") || id.contains("safari") || id.contains("chrome") || id.contains("firefox"):
+            summary = "Explore the web, return to your favorite sites, and pick up where you left off."
+        case let id where id.contains("discord"):
+            summary = "Spend time with your communities through conversations, voice chats, and shared moments."
+        case let id where id.contains("resolve"):
+            summary = "Bring your next story to life with video editing, color, visual effects, and sound."
+        case "com.apple.music": summary = "Find something to listen to and return to the music you love."
+        case "com.apple.notes": summary = "Capture a thought, make a list, or return to an idea you've been keeping."
+        case "com.apple.ical": summary = "See what's coming up and make a little room for what matters."
+        case "com.apple.photos": summary = "Revisit your photos, organize your memories, and find a favorite moment."
+        case "com.apple.mobileSMS".lowercased(): summary = "Pick up a conversation with the people you care about."
+        default: summary = bundle?.object(forInfoDictionaryKey: "NSHumanReadableDescription") as? String ?? "A little space for \(app.label) in your plaza. Open it when you're ready, or leave a note for your next visit."
+        }
+    }
+}
+
+struct AppPreviewView: View {
+    @ObservedObject var model: PlazaModel
+    let app: AppIsland
+    let close: () -> Void
+    private var url: URL? { model.resolvedURL(app) }
+    private var notes: [LocalNote] { model.document.notes.filter { $0.appID == app.id }.sorted { $0.created > $1.created } }
+
+    var body: some View {
+        let info = AppPreviewInfo(app: app, url: url)
+        VStack(alignment: .leading, spacing: 14) {
+            Text(info.category.uppercased()).font(.system(size: 10, weight: .bold)).tracking(1.6).foregroundStyle(PlazaStyle.teal)
+            Text(app.label).font(.system(size: 25, weight: .semibold, design: .rounded)).lineLimit(2).fixedSize(horizontal: false, vertical: true)
+            Text(info.summary).font(.system(size: 13)).lineSpacing(3).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+            HStack(spacing: 9) {
+                Label(url == nil ? "Needs reconnecting" : "Ready to open", systemImage: url == nil ? "link.badge.plus" : "checkmark.circle")
+                if let version = info.version { Text("v\(version)").lineLimit(1) }
+            }.font(.system(size: 10)).foregroundStyle(PlazaStyle.teal)
+            Button {
+                if url == nil { model.pickApp(replacing: app) }
+                else { close(); model.launch(app) }
+            } label: {
+                Label(url == nil ? "Locate App…" : "Open \(app.label)", systemImage: url == nil ? "folder" : "arrow.up.right")
+                    .font(.system(size: 13, weight: .semibold)).frame(maxWidth: .infinity).padding(.vertical, 8)
+            }.buttonStyle(.borderedProminent).tint(PlazaStyle.teal).keyboardShortcut(.defaultAction)
+                .disabled(model.launching.contains(app.id))
+            Divider().opacity(0.5)
+            if let note = notes.first {
+                Text(note.drawing.isEmpty ? note.text : note.drawingDescription).font(.system(size: 12)).foregroundStyle(.secondary).lineLimit(2)
+            }
+            HStack {
+                Button(notes.isEmpty ? "Leave a note" : "Read notes") {
+                    if let note = notes.first { model.openJournal(note: note.id) }
+                    else { model.sheet = .compose(app.id) }
+                }
+                Spacer()
+                Button("Shortcut settings…") { model.sheet = .app(app) }
+            }.font(.system(size: 11)).buttonStyle(.plain).foregroundStyle(PlazaStyle.teal)
+        }
+        .padding(23)
+        .background(.white.opacity(0.96), in: RoundedRectangle(cornerRadius: 22))
+        .overlay(alignment: .leading) {
+            PlazaInfoTail().fill(.white.opacity(0.96)).frame(width: 18, height: 30).offset(x: -16)
+        }
+        .shadow(color: PlazaStyle.ink.opacity(0.12), radius: 15, y: 7)
+        .accessibilityElement(children: .contain)
+        .onExitCommand(perform: close)
+    }
+}
+
+private struct PlazaInfoTail: Shape {
+    func path(in rect: CGRect) -> Path {
+        Path { p in
+            p.move(to: CGPoint(x: rect.maxX, y: rect.minY))
+            p.addQuadCurve(to: CGPoint(x: rect.minX, y: rect.midY), control: CGPoint(x: rect.midX, y: rect.midY))
+            p.addQuadCurve(to: CGPoint(x: rect.maxX, y: rect.maxY), control: CGPoint(x: rect.midX, y: rect.midY))
+            p.closeSubpath()
+        }
+    }
+}

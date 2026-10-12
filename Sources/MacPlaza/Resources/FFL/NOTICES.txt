@@ -1,0 +1,25 @@
+Mac Plaza local FFL renderer
+
+FFL.js 2.2.2, by Arian Kordi: https://github.com/ariankordi/FFL.js
+AGPL-3.0-only. Full license: vendor/FFL-LICENSE.txt.
+
+FFL native port: https://github.com/ariankordi/ffl
+Based on the Wii U Face Library decompilation by AboodXD.
+Notices: vendor/FFL-NATIVE-LICENSE.txt.
+
+Wii U texture conversion: https://github.com/ariankordi/ninTexUtils
+Notices: vendor/NINTEXUTILS-LICENSE.txt.
+RIO headers: https://github.com/ariankordi/rio
+Notices: vendor/RIO-LICENSE.txt.
+
+Three.js r144: https://github.com/mrdoob/three.js
+MIT license: vendor/THREE-LICENSE.txt.
+
+The source distribution includes the app adapter and dependency sources in ThirdParty/.
+Nintendo FFL/AFL resource archives are not included. Imported resources stay on this Mac.
+
+Original menu asset adapter (Mac Plaza 0.6)
+The SARC/Yaz0/BFRES data reader and original animation player are Mac Plaza code.
+Binary format field references: https://github.com/KillzXGaming/BfresLibrary
+The modified FFL WASM includes ninTexUtils BC3 decompression and a bounded menu-atlas conversion entry point. See the corresponding ThirdParty sources.
+Nintendo menu model, texture, animation and FFL resource data are imported separately, remain in local Application Support, and are not included in this app or its corresponding-source archive. The application never downloads assets or executes Wii U firmware.

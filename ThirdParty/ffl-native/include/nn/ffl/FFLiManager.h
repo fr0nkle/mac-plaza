@@ -1,0 +1,149 @@
+#ifndef FFLI_MANAGER_H_
+#define FFLI_MANAGER_H_
+
+#include <nn/ffl/FFLColor.h>
+#include <nn/ffl/FFLInitDesc.h>
+#include <nn/ffl/FFLResult.h>
+
+#include <nn/ffl/FFLiCharModelCreateParam.h>
+#include <nn/ffl/FFLiDatabaseManager.h>
+#include <nn/ffl/FFLiResourceManager.h>
+#include <nn/ffl/FFLiShaderCallback.h>
+#include <nn/ffl/FFLiSystemContext.h>
+
+#include <nn/ffl/detail/FFLiCopySurface.h>
+
+#include <nn/ffl/FFLiDatabaseFile.h>
+#ifdef FFL_USE_TEXTURE_CALLBACK
+#include <nn/ffl/FFLiTextureCallback.h>
+#endif
+
+struct FFLResourceDesc;
+
+//struct  FFLiDatabaseFile;
+class  FFLiFileWriteBuffer;
+struct  FFLiResourceMultiHeader;
+
+FFLResult FFLiInitResEx(const FFLInitDesc* pInitDesc, const FFLResourceDesc* pResDesc);
+void FFLiInitResGPUStep();
+
+extern "C" FFLResult FFLiFlushQuota(bool force);    // No idea why this in particular is extern "C"
+
+extern bool g_TextureFlipY; // FFLiFacelineTexture.cpp
+                            // FFLiRawMaskParts.cpp
+void FFLiSetTextureFlipY(bool textureFlipY);
+
+FFLResult FFLiExit();
+
+bool FFLiIsAvailable();
+
+// --------------------------------------------------------------------------
+
+class FFLiManager
+{
+public:
+    static FFLResult Create(const FFLInitDesc* pInitDesc, const FFLResourceDesc* pResDesc);
+    static FFLResult Destroy();
+
+    static bool IsConstruct();
+    static FFLiManager* GetInstance();
+
+private:
+    FFLiManager(const FFLInitDesc* pInitDesc);
+    ~FFLiManager();
+
+    FFLResult AfterConstruct(const FFLInitDesc* pInitDesc, const FFLResourceDesc* pResDesc);
+    FFLResult BeforeDestruct();
+
+public:
+    const FFLiSystemContext& GetSystemContext() const
+    {
+        return m_SystemContext;
+    }
+
+    const FFLiResourceManager& GetResourceManager() const
+    {
+        return m_ResourceManager;
+    }
+
+    FFLiDatabaseManager& GetDatabaseManager()
+    {
+        return m_DatabaseManager;
+    }
+
+    FFLiShaderCallback& GetShaderCallback()
+    {
+        return m_ShaderCallback;
+    }
+
+    const FFLiShaderCallback& GetShaderCallback() const
+    {
+        return m_ShaderCallback;
+    }
+
+#ifdef FFL_USE_TEXTURE_CALLBACK
+    FFLiTextureCallback& GetTextureCallback()
+    {
+        return m_TextureCallback;
+    }
+
+    const FFLiTextureCallback& GetTextureCallback() const
+    {
+        return m_TextureCallback;
+    }
+#endif
+
+    FFLiCharModelCreateParam& GetCharModelCreateParam()
+    {
+        return m_CharModelCreateParam;
+    }
+
+    const FFLiCharModelCreateParam& GetCharModelCreateParam() const
+    {
+        return m_CharModelCreateParam;
+    }
+
+    const FFLInitDesc& GetInitDesc() const
+    {
+        return m_InitDesc;
+    }
+
+#if RIO_IS_CAFE
+    FFLiCopySurface& GetCopySurface()
+    {
+        return m_CopySurface;
+    }
+
+    const FFLiCopySurface& GetCopySurface() const
+    {
+        return m_CopySurface;
+    }
+#endif // RIO_IS_CAFE
+
+    bool CanInitCharModel() const;
+
+    void SetupGPU();
+
+    FFLResult FlushQuota(bool force);
+
+private:
+    FFLiSystemContext           m_SystemContext;
+    FFLiResourceMultiHeader*    m_pResourceMultiHeader;
+    FFLiDatabaseFile*           m_pDatabaseFile;
+    FFLiFileWriteBuffer*        m_pFileWriteBuffer;
+    FFLiResourceManager         m_ResourceManager;
+    FFLiDatabaseManager         m_DatabaseManager;
+    FFLiShaderCallback          m_ShaderCallback;
+#ifdef FFL_USE_TEXTURE_CALLBACK
+    FFLiTextureCallback         m_TextureCallback;
+#endif
+    FFLiCharModelCreateParam    m_CharModelCreateParam;
+    FFLInitDesc                 m_InitDesc;
+#if RIO_IS_CAFE
+    FFLiCopySurface             m_CopySurface;
+#endif // RIO_IS_CAFE
+    bool                        m_IsSetupGPU;
+};
+//NN_STATIC_ASSERT(sizeof(FFLiManager) == 0x29B0); // needs updating
+
+#endif // FFLI_MANAGER_H_

@@ -1,0 +1,194 @@
+#ifndef FFL_TYPES_H_
+#define FFL_TYPES_H_
+
+// Hard-coded for now
+#if !defined(__BYTE_ORDER__) || !defined(__ORDER_LITTLE_ENDIAN__) || !defined(__ORDER_BIG_ENDIAN__)
+    // Define these in MSVC
+    #ifdef _MSC_VER
+        // NOTE: assuming little endian
+        // ... MSVC only targets x86, ARM anyway, all little endian
+        #define __BYTE_ORDER__ __ORDER_LITTLE_ENDIAN__
+        #define __ORDER_LITTLE_ENDIAN__ 1234
+        #define __ORDER_BIG_ENDIAN__ 4321
+    #else
+        #error "Need __BYTE_ORDER__, __ORDER_LITTLE_ENDIAN__ and __ORDER_BIG_ENDIAN__ to be defined"
+    #endif
+#endif
+
+#if (__BYTE_ORDER__ != __ORDER_LITTLE_ENDIAN__ && __BYTE_ORDER__ != __ORDER_BIG_ENDIAN__)
+    #error "Host must be either big- or little-endian"
+#endif
+
+
+#ifdef __cplusplus
+    #include <type_traits>
+
+    #define NN_STATIC_ASSERT_IS_POD(T)  static_assert(std::is_trivial<T>::value)
+
+    #ifdef NDEBUG
+        #define NN_STATIC_ASSERT(condition) static_assert(true, "")
+    #else
+        #define NN_STATIC_ASSERT static_assert
+    #endif
+
+#else // __cplusplus
+    #include <assert.h>
+
+    #ifdef NDEBUG
+        #define NN_STATIC_ASSERT(condition) _Static_assert(true, "")
+    #else
+        #define NN_STATIC_ASSERT _Static_assert
+    #endif
+
+    #define NN_STATIC_ASSERT_IS_POD(T)  ((void)0)
+#endif
+
+// NN_STATIC_ASSERT32 = NN_STATIC_ASSERT but only applies for 32 bit
+#ifdef __cplusplus
+    #if defined(NDEBUG) || (!defined(__WUT__) && INTPTR_MAX == INT64_MAX)
+        #define NN_STATIC_ASSERT32(condition) static_assert(true, "")
+    #else
+        #define NN_STATIC_ASSERT32 NN_STATIC_ASSERT
+    #endif
+#else // __cplusplus
+    #if defined(NDEBUG) || INTPTR_MAX == INT64_MAX
+        #define NN_STATIC_ASSERT32(condition) _Static_assert(true, "")
+    #else
+        #define NN_STATIC_ASSERT32 NN_STATIC_ASSERT
+    #endif
+#endif
+
+#ifndef FFL_NO_RIO
+    #define FFL_USE_RIO 1
+    #include <misc/rio_Types.h>
+#else
+    #define FFL_USE_RIO 0
+    #define FFL_NO_RENDER_TEXTURE
+    #define FFL_USE_TEXTURE_CALLBACK
+
+    // Typedefs that RIO would have otherwise imported
+
+    #if defined(__WUT__)
+        #define RIO_IS_WIN  0
+        #define RIO_IS_CAFE 1
+    #else
+        #define RIO_IS_WIN  1
+        #define RIO_IS_CAFE 0
+    #endif
+
+    #include <stdint.h>
+    #include <stddef.h>
+    #include <stdbool.h>
+    typedef  int8_t s8;
+    typedef uint8_t u8;
+
+    typedef  int16_t s16;
+    typedef uint16_t u16;
+
+    typedef  int32_t s32;
+    typedef uint32_t u32;
+
+    typedef  int64_t s64;
+    typedef uint64_t u64;
+
+    typedef float  f32;
+    typedef double f64;
+    /*
+    static_assert(sizeof(s8)  == sizeof(u8)  && sizeof(u8)  == sizeof(char) && sizeof(char) == 1);
+    static_assert(sizeof(s16) == sizeof(u16) && sizeof(u16) == 2);
+    static_assert(sizeof(s32) == sizeof(u32) && sizeof(u32) == 4);
+    static_assert(sizeof(s64) == sizeof(u64) && sizeof(u64) == 8);
+    static_assert(sizeof(f32) == 4);
+    static_assert(sizeof(f64) == 8);
+    // end of rio_Types.h typedefs
+    */
+#endif // FFL_NO_RIO
+
+#ifdef __cplusplus
+extern "C" {
+#endif
+
+/*
+    from FFLUtility asserts:
+
+    FFLI_CHAR_INFO_HAIR_TYPE_MIN <= hair && hair < FFLI_CHAR_INFO_HAIR_TYPE_COUNT
+    0 <= aEyeType && aEyeType < FFLI_CHAR_INFO_EYE_TYPE_COUNT
+    0 <= aEyebrowType && aEyebrowType < FFLI_CHAR_INFO_EYEBROW_TYPE_COUNT
+    ^^ suggests these go in FFLiCharInfo.h and using MIN/COUNT instead of MAX?
+
+    FFL_HOST_IO_DIR
+    FFL_NAME_LENGTH_SHORT
+    FFL_CREATORNAME_LENGTH_SHORT
+    FFL_GENDER_COUNT
+*/
+
+enum
+{
+    FFL_PATH_MAX_LEN = 256,
+
+    FFL_FACE_TYPE_MAX           = 12,
+    FFL_FACELINE_COLOR_MAX      = 6,
+    FFL_FACE_LINE_MAX           = 12,
+    FFL_FACE_MAKE_MAX           = 12,
+    FFL_HAIR_TYPE_EMPTY         = 30,
+    FFL_HAIR_TYPE_MAX           = 132,
+    FFL_HAIR_COLOR_MAX          = 8,
+    FFL_HAIR_DIR_MAX            = 2,
+    FFL_EYE_TYPE_DATA_MAX       = 60,
+    FFL_EYE_TYPE_RESOURCE_MAX   = 80,
+    FFL_EYE_COLOR_MAX           = 6,
+    FFL_EYE_SCALE_MAX           = 8,
+    FFL_EYE_SCALE_Y_MAX         = 7,
+    FFL_EYE_ROTATE_MAX          = 8,
+    FFL_EYE_SPACING_MAX         = 13,
+    FFL_EYE_POS_MAX             = 19,
+    FFL_EYEBROW_TYPE_EMPTY      = 23,
+    FFL_EYEBROW_TYPE_MAX        = 28,
+    FFL_EYEBROW_COLOR_MAX       = 8,
+    FFL_EYEBROW_SCALE_MAX       = 9,
+    FFL_EYEBROW_SCALE_Y_MAX     = 7,
+    FFL_EYEBROW_ROTATE_MAX      = 12,
+    FFL_EYEBROW_SPACING_MAX     = 13,
+    FFL_EYEBROW_POS_MIN         = 3,
+    FFL_EYEBROW_POS_MAX         = 19,
+    FFL_NOSE_TYPE_MAX           = 18,
+    FFL_NOSE_SCALE_MAX          = 9,
+    FFL_NOSE_POS_MAX            = 19,
+    FFL_MOUTH_TYPE_DATA_MAX     = 36,
+    FFL_MOUTH_TYPE_RESOURCE_MAX = 52,
+    FFL_MOUTH_COLOR_MAX         = 5,
+    FFL_MOUTH_SCALE_MAX         = 9,
+    FFL_MOUTH_SCALE_Y_MAX       = 7,
+    FFL_MOUTH_POS_MAX           = 19,
+    FFL_MUSTACHE_TYPE_EMPTY     = 0,
+    FFL_MUSTACHE_TYPE_MAX       = 6,
+    FFL_BEARD_SHAPE_MAX         = 4,
+    FFL_BEARD_TYPE_MAX          = 6,
+    FFL_BEARD_COLOR_MAX         = 8,
+    FFL_MUSTACHE_SCALE_MAX      = 9,
+    FFL_MUSTACHE_POS_MAX        = 17,
+    FFL_GLASS_TYPE_MAX          = 9,
+    FFL_GLASS_COLOR_MAX         = 6,
+    FFL_GLASS_SCALE_MAX         = 8,
+    FFL_GLASS_POS_MAX           = 21,
+    FFL_MOLE_TYPE_EMPTY         = 0,
+    FFL_MOLE_TYPE_MAX           = 2,
+    FFL_MOLE_SCALE_MAX          = 9,
+    FFL_MOLE_POS_X_MAX          = 17,
+    FFL_MOLE_POS_Y_MAX          = 31,
+
+    FFLI_FACELINE_COLOR_NUM = FFL_FACELINE_COLOR_MAX,
+    FFLI_HAIR_COLOR_NUM     = FFL_HAIR_COLOR_MAX,
+    FFLI_EYE_COLOR_R_NUM    = 3,
+    FFLI_EYE_COLOR_B_NUM    = FFL_EYE_COLOR_MAX,
+    FFLI_GLASS_COLOR_NUM    = FFL_GLASS_COLOR_MAX,
+    FFLI_MOUTH_COLOR_R_NUM  = FFL_MOUTH_COLOR_MAX,
+    FFLI_MOUTH_COLOR_G_NUM  = FFL_MOUTH_COLOR_MAX,
+    FFLI_FAVORITE_COLOR_NUM = 12
+};
+
+#ifdef __cplusplus
+}
+#endif
+
+#endif // FFL_TYPES_H_

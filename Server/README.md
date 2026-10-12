@@ -54,7 +54,12 @@ credentials, or Plaza invitation is required. Squarespace DNS is unchanged.
 
 The dedicated userspace daemon preserves its device identity in private
 `Server/.run/tailscale` state. Start/Stop Friend Test.command controls hosting without
-changing the system Tailscale VPN. Keep the hosting
+changing the system Tailscale VPN. Enable Hosting at Login.command installs a
+per-user login agent and moves hosting into `~/Library/Application Support/Mac Plaza Host`
+to avoid Desktop privacy restrictions. Its private settings, database and tunnel
+state become authoritative there; the original Start/Stop shortcuts forward to it.
+Disable Hosting at Login.command removes the agent and preserves the runtime. Only
+the hosting Mac needs this setup. Keep the hosting
 device and tailnet names unchanged. Existing test installs switch from the retired
 Quick Tunnel and GUI-device addresses in version 0.13.2 and need one new Discord sign-in; custom
 connection addresses are preserved. Credentials are never moved between origins.

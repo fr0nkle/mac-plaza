@@ -29,9 +29,10 @@ The test service is available at **https://mac-plaza.tail1400d.ts.net**.
 Tailscale Funnel forwards only this Mac's localhost:8787 service over HTTPS. A
 separate Homebrew userspace daemon named **mac-plaza** hosts the route; the regular
 Tailscale app and its VPN settings are independent. Keep the dedicated device and
-tailnet DNS names unchanged, and preserve **Server/.run/tailscale**: its private
-state holds the device identity and HTTPS configuration. Never put that directory
-in source archives or share it. Your friend needs no Tailscale installation.
+tailnet DNS names unchanged. Login hosting stores its private runtime in
+**~/Library/Application Support/Mac Plaza Host**. Preserve its
+**Server/.run/tailscale** state: it holds the device identity and HTTPS configuration. Never put that
+directory in source archives or share it. Your friend needs no Tailscale installation.
 
 A fresh install needs no address entry. Version 0.13.2 replaces the retired developer
 Quick Tunnel and GUI-device addresses in saved preferences, preserving custom
@@ -39,19 +40,46 @@ addresses. Install this DMG once when moving from an earlier endpoint. Existing
 users connect Discord once at the new address; credentials remain scoped to their
 original Keychain origin. Custom friend Mii assignments survive the move.
 
-After a reboot, double-click **Server/Start Friend Test.command**. It starts the
-private userspace daemon, local service, private GitHub release watcher and awake
-helper, reusing already recorded running processes. It never changes the system VPN.
-Double-click **Server/Stop Friend Test.command** to stop those recorded processes
-and disable only the dedicated Plaza HTTPS route. Your database and device identity
-are preserved. Keep this Mac powered on, online, and with its lid open during tests;
-the awake helper does not override shutdown or lid-close sleep.
+On the hosting Mac, double-click **Server/Enable Hosting at Login.command** once.
+This installs the per-user `org.squidproductions.macplaza.host` LaunchAgent in
+`~/Library/LaunchAgents`, starts hosting now, and starts it automatically at each
+login. It runs the private userspace daemon, local service, private GitHub release
+watcher and awake helper, reusing recorded running processes. If networking is
+still starting, launchd retries unsuccessful starts at 30-second intervals.
+Startup logs stay private in
+`~/Library/Application Support/Mac Plaza Host/Server/.run/login-start*.log`.
+The agent runs a private runtime copy outside Desktop privacy protection; it needs
+no Full Disk Access. Allow its background item in macOS Settings if prompted.
+The agent never changes the system VPN and is only for the developer's hosting Mac;
+testers do not install it. See Apple's [LaunchAgent documentation](https://developer.apple.com/library/archive/documentation/MacOSX/Conceptual/BPSystemStartup/Chapters/CreatingLaunchdJobs.html).
 
-The controls require the existing `Server/.venv`, `Server/.env`, Homebrew Tailscale
-formula, and authorized device state. If restoring onto another Mac or recovering
-lost device state, authorize the dedicated node explicitly:
+**Server/Disable Hosting at Login.command** removes the login agent without
+interrupting already running hosting processes. **Server/Start Friend Test.command**
+still works for manual starts.
+Double-click **Server/Stop Friend Test.command** to stop those recorded processes
+and disable only the dedicated Plaza HTTPS route. It also stops login retries for
+the current session; automatic startup resumes at the next login unless disabled.
+Your database and device identity are preserved. Keep this Mac powered on, online,
+and with its lid open during tests; the awake helper does not override shutdown
+or lid-close sleep.
+
+The first enable migrates the existing database, private settings, current update
+assets, and authorized tunnel identity into Application Support. That runtime's
+`Server/.env`, database, `.updates` and `.run/tailscale` are then authoritative;
+the old project copies are retained as migration backups and no longer serve users.
+The original Start/Stop shortcuts forward to the runtime using the private
+`Server/.run/hosting-runtime.json` marker. Disabling login startup leaves this
+runtime intact. Re-enabling refreshes helper code while preserving its active data.
+After changing hosting code/dependencies in this checkout, run Enable again to
+refresh the runtime. Private releases published to GitHub are fetched there by its
+release watcher. This host-only change needs no new installer on your friend's Mac.
+
+The controls require the existing Python environment, private `.env`, Homebrew
+Tailscale formula, and authorized device state. If restoring onto another Mac or
+recovering lost device state, authorize the dedicated node from the runtime root:
 
 ```sh
+cd "$HOME/Library/Application Support/Mac Plaza Host"
 /opt/homebrew/bin/tailscale --socket="$PWD/Server/.run/tailscale/tailscaled.sock" up --hostname=mac-plaza --accept-dns=false --accept-routes=false
 /opt/homebrew/bin/tailscale --socket="$PWD/Server/.run/tailscale/tailscaled.sock" funnel --bg --https=443 http://127.0.0.1:8787
 ```
@@ -63,8 +91,8 @@ before distributing another build. Do not register a second device under a dupli
 name and assume it will receive the same address. The hostname is public and appears
 in certificate logs.
 
-Credentials remain in `Server/.env` and Keychain and never enter the repository or
-installer. The old Cloudflare Quick Tunnel is no longer required. Tailscale Funnel
+Credentials remain in the active runtime’s private `Server/.env` and Keychain and
+never enter the repository or installer. The old Cloudflare Quick Tunnel is no longer required. Tailscale Funnel
 is a beta feature with bandwidth limits, so this remains a friend-testing service,
 not an uptime-guaranteed production host.
 

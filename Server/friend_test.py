@@ -1,5 +1,6 @@
 """Start/stop the Mac-hosted pilot without touching the system Tailscale app."""
 import json
+import fcntl
 import os
 from pathlib import Path
 import signal
@@ -108,7 +109,21 @@ def stop(items):
 
 if __name__ == "__main__":
     os.umask(0o077)
+    marker = RUN / "hosting-runtime.json"
+    if marker.exists():
+        runtime = Path(json.loads(marker.read_text())["root"]).resolve()
+        if runtime != ROOT:
+            # Preserve the familiar project shortcuts after the hosting migration.
+            python = str(runtime / "Server/.venv/bin/python")
+            os.execv(python, [python, "-B", str(runtime / "Server/friend_test.py"), *sys.argv[1:]])
     STATE.mkdir(parents=True, exist_ok=True)
+    if sys.argv[1:] == ["stop"]:
+        # Pause login retries for this session; the plist still starts next login.
+        from login_start import unload
+        unload()
+    # Manual clicks and the login agent must not launch duplicate components.
+    control = (RUN / "control.lock").open("a")
+    fcntl.flock(control, fcntl.LOCK_EX)
     items = json.loads(RECORD.read_text()) if RECORD.exists() else []
     items = [row for row in items if matches(row)]
     try:

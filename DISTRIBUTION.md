@@ -1,7 +1,7 @@
 # Private friend testing — Mac Plaza 0.13
 
 The repository and GitHub releases are private at https://github.com/fr0nkle/mac-plaza.
-Send `Artifacts/Mac-Plaza-0.13.0.dmg` to your tester. It contains the installer,
+Send `Artifacts/Mac-Plaza-0.13.1.dmg` to your tester. It contains the installer,
 the app for drag-to-Applications installation, instructions, and corresponding source.
 The tester needs an Apple silicon Mac and macOS 15 or later. They do not need Python,
 GitHub, Developer Portal access, bot tokens, or a Plaza invitation code.
@@ -25,17 +25,45 @@ local imports; the built-in renderer works immediately.
 
 ## Keep the Mac-hosted service available
 
-The current test uses an HTTPS Quick Tunnel to the service on localhost:8787.
-The public origin is embedded in `scripts/Info.plist`; a fresh install needs no
-address entry. Advanced connection settings allow changing it. Credentials remain
-in `Server/.env` and Keychain and never enter the repository or installer.
+The test service is available at **https://alexanders-macbook-pro.tail1400d.ts.net**.
+Tailscale Funnel forwards only this Mac's localhost:8787 service over HTTPS. The
+Funnel runs in background mode and retains its configuration when Tailscale restarts.
+Keep the same Tailscale device name and tailnet DNS name; renaming/removing the
+hosting device or changing the tailnet name changes this address. Your friend does
+not need Tailscale installed. The hostname appears in public certificate logs.
 
-Keep this Mac awake and keep the service and tunnel running during the test. A
-restarted Quick Tunnel gets a new hostname. Update `PLAZA_PUBLIC_URL` in the private
-environment, the exact Discord callback, and the client service address together.
-Changing the service address requires signing in again; sessions are scoped by origin.
-Do not use a CNAME pointing your domain at a temporary tunnel: that does not provide
-a certificate or a persistent route for your custom hostname.
+A fresh install needs no address entry. Version 0.13.1 automatically replaces the
+two retired developer Quick Tunnel addresses in saved preferences, while preserving
+custom service addresses. Sessions stay scoped to their original Keychain origin:
+existing users connect Discord once at the new address. Local custom friend Mii
+assignments are scoped to the Discord account and survive this change.
+
+Keep this Mac awake, Tailscale connected, and the Python service running during the
+test. Background Funnel configuration alone does not start the Python service.
+After a reboot, start the service from the repository root:
+
+```sh
+Server/.venv/bin/python Server/run_local.py
+```
+
+In another terminal, start `zsh scripts/watch-private-releases.sh` to pick up future
+private releases. If needed, restore the approved route without changing its URL:
+
+```sh
+/Applications/Tailscale.app/Contents/MacOS/Tailscale funnel --bg --https=443 http://127.0.0.1:8787
+```
+
+To take Plaza offline, first disable this specific route (do not reset unrelated
+Tailscale services), then stop the service and release watcher:
+
+```sh
+/Applications/Tailscale.app/Contents/MacOS/Tailscale funnel --https=443 off
+```
+
+Credentials remain in `Server/.env` and Keychain and never enter the repository or
+installer. The old Cloudflare Quick Tunnel is no longer required. Tailscale Funnel
+is a beta feature with bandwidth limits, so this remains a friend-testing service,
+not an uptime-guaranteed production host.
 
 Your Squarespace domain can later provide `plaza.squidproductions.org` for the API
 and updates. A domain is an address, not a running Python/Discord host. Use a stable

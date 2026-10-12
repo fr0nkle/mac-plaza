@@ -2,6 +2,19 @@ import XCTest
 @testable import PlazaCore
 
 final class SocialTests: XCTestCase {
+    func testRetiredServiceMigrationPreservesCustomOriginsAndRequiresHTTPS() {
+        let old = "https://expired.trycloudflare.com"
+        let stable = "https://plaza.example.ts.net"
+        XCTAssertEqual(SocialEndpoint.initialAddress(saved: nil, bundled: stable, retired: [old]), stable)
+        XCTAssertEqual(SocialEndpoint.initialAddress(saved: old + "/", bundled: stable, retired: [old]), stable)
+        for custom in ["https://my-service.example", old + ".evil.example", old + "/other", old + ":8443", ""] {
+            XCTAssertEqual(SocialEndpoint.initialAddress(saved: custom, bundled: stable, retired: [old]), custom)
+        }
+        XCTAssertEqual(SocialEndpoint.initialAddress(saved: old, bundled: nil, retired: [old]), old)
+        XCTAssertEqual(SocialEndpoint.initialAddress(saved: old, bundled: "http://127.0.0.1:8787", retired: [old]), old)
+        XCTAssertEqual(SocialEndpoint.initialAddress(saved: old, bundled: stable, retired: []), old)
+    }
+
     func testAssignedFriendsGetLimitedPlazaSlotsBeforeRandomFriends() {
         var friends = (0..<224).map { index in
             var friend = SharedMii(id: UUID().uuidString, displayName: "Friend \(index)", avatar: Avatar(),

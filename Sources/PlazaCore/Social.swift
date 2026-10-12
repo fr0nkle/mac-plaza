@@ -333,6 +333,20 @@ public struct SocialSnapshot: Codable, Equatable, Sendable {
 }
 
 public enum SocialEndpoint {
+    /// Only a bundled list of retired test origins can replace a saved address.
+    /// Credentials remain scoped to their original endpoint in Keychain.
+    public static func initialAddress(saved: String?, bundled: String?, retired: [String]) -> String {
+        guard let saved else { return bundled ?? "" }
+        func origin(_ value: String) -> URL? {
+            guard let url = try? validated(value), var parts = URLComponents(url: url, resolvingAgainstBaseURL: false) else { return nil }
+            parts.scheme = parts.scheme?.lowercased(); parts.host = parts.host?.lowercased(); parts.path = ""
+            return parts.url
+        }
+        guard let bundled, let replacement = origin(bundled), replacement.scheme == "https",
+              let previous = origin(saved), retired.contains(where: { origin($0) == previous }) else { return saved }
+        return bundled
+    }
+
     /// Production must use TLS; plaintext is allowed only on the local development host.
     public static func validated(_ text: String) throws -> URL {
         guard let parts = URLComponents(string: text.trimmingCharacters(in: .whitespacesAndNewlines)),

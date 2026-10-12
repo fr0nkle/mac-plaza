@@ -42,23 +42,20 @@ In the Mac app, open **Discord & Friends**, enter `http://127.0.0.1:8787`, and s
 
 For two different Macs to connect, both must use the same remotely reachable HTTPS service. HTTP is accepted only for local development hosts. A loopback service is not reachable from your friend's Mac.
 
-### Temporary Mac-hosted test with a friend
+### Stable Mac-hosted test with a friend
 
-Install `cloudflared` from [Cloudflare's official downloads](https://developers.cloudflare.com/cloudflare-one/networks/connectors/cloudflare-tunnel/downloads/) (or use the project-local `Server/.tools/cloudflared` if already installed). In a separate terminal, run:
+The current private build uses **https://alexanders-macbook-pro.tail1400d.ts.net**
+through Tailscale Funnel to localhost:8787. See [DISTRIBUTION.md](../DISTRIBUTION.md)
+for start/stop commands and restart behavior. The registered Discord callback is
+that origin plus `/oauth/discord/callback`. The private `.env` uses the same origin.
+Tailscale and the Python service must be running on the hosting Mac, which must
+stay awake. Testers need only Mac Plaza; no Tailscale install, Python, developer
+credentials, or Plaza invitation is required. Squarespace DNS is unchanged.
 
-```sh
-cloudflared tunnel --no-autoupdate --url http://127.0.0.1:8787 --protocol http2
-```
-
-Keep that terminal running. Copy its `https://….trycloudflare.com` origin into `PLAZA_PUBLIC_URL` in `Server/.env`, and register that exact origin plus `/oauth/discord/callback` under Discord's **OAuth2 → Redirects**. Keep **Public Client** off: this service performs the confidential OAuth exchange. Store the client secret and bot token only in the private `.env` file. Then, from the repository root:
-
-```sh
-Server/.venv/bin/python Server/run_local.py
-```
-
-This loader reads quoted settings without executing shell commands. It uses the existing isolated environment; create it and install `Server/requirements.txt` first if needed. Keep the service and tunnel running, with your Mac awake. Both Macs enter the same public origin in Discord & Friends. The friend needs the built Mac app, not Python or your secrets. Automatic Discord friends and availability need no bot installation or Plaza invitation.
-
-Verify the public origin's `/health` returns `{"ok": true}` before connecting. Stop both processes with Control-C after testing. A restarted Quick Tunnel gets a new hostname: update `.env`, Discord's redirect, and both clients. Local SQLite data remains on your Mac; this temporary route has no uptime guarantee. [Quick Tunnel limitations](https://developers.cloudflare.com/tunnel/get-started/quick-tunnels/).
+Funnel's background configuration survives Tailscale restarts. Keep the hosting
+device and tailnet names unchanged. Existing test installs switch from the retired
+Quick Tunnel addresses in version 0.13.1 and need one new Discord sign-in; custom
+connection addresses are preserved. Credentials are never moved between origins.
 
 ## Automatic Discord friends and online status
 
@@ -124,7 +121,7 @@ Run one service process with a persistent private SQLite volume, supervised rest
 
 Disable query-string/access logging for `/oauth/discord/callback` at the proxy so OAuth codes never enter logs. Do not log Authorization headers, request bodies, or invitation codes. Apply request size limits and per-client rate limits at the proxy; the included limiter is a small-service safeguard and sees the proxy's address. `/health` returns `{"ok": true}` for liveness. SQLite backups contain private profile/account data and need restricted access.
 
-The live pilot uses a registered Discord application and temporary HTTPS tunnel. Automatic SDK discovery has been verified with a real linked account: 224 actual Discord friends loaded without invitations, and online status cards were visually confirmed on the live wallpaper. Complete a two-account pilot before releasing live sharing: sign in, publish, exchange/accept invitations, change availability, opt into activity, switch matching apps, check recent-activity expiry, revoke sharing, block, disconnect the bot, and unlink. A third account must never receive private profiles. Signing/notarization of the Mac app remains part of public distribution.
+The live pilot uses a registered Discord application and stable Tailscale Funnel address. Automatic SDK discovery has been verified with a real linked account: 224 actual Discord friends loaded without invitations, and online status cards were visually confirmed on the live wallpaper. Complete a two-account pilot before releasing live sharing: sign in, publish, exchange/accept invitations, change availability, opt into activity, switch matching apps, check recent-activity expiry, revoke sharing, block, disconnect the bot, and unlink. A third account must never receive private profiles. Signing/notarization of the Mac app remains part of public distribution.
 
 ## Verification
 

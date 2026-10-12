@@ -102,7 +102,10 @@ final class SocialController: NSObject, ObservableObject, ASWebAuthenticationPre
     init(isolated: Bool = false) {
         self.isolated = isolated
         localMiiChoices = LocalFriendMiiChoices(defaults: isolated ? nil : .standard)
-        serverAddress = isolated ? "" : UserDefaults.standard.string(forKey: "social.service") ?? Bundle.main.object(forInfoDictionaryKey: "PlazaServiceURL") as? String ?? ""
+        serverAddress = isolated ? "" : SocialEndpoint.initialAddress(
+            saved: UserDefaults.standard.string(forKey: "social.service"),
+            bundled: Bundle.main.object(forInfoDictionaryKey: "PlazaServiceURL") as? String,
+            retired: Bundle.main.object(forInfoDictionaryKey: "PlazaRetiredServiceURLs") as? [String] ?? [])
         let config = URLSessionConfiguration.ephemeral
         config.timeoutIntervalForRequest = 15; config.timeoutIntervalForResource = 20
         config.httpCookieStorage = nil; config.urlCredentialStorage = nil

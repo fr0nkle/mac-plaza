@@ -21,7 +21,9 @@ Updates. Updates preserve local Miis, journals and settings.
 
 This test service is hosted on the developer's Mac. Sign-in, Mii sharing,
 custom status/game lookup, and updates need that Mac awake with the service
-and HTTPS tunnel running. The local plaza continues working offline.
+and Tailscale Funnel running. The connection address remains the same when
+the tunnel restarts. Your friend does not need Tailscale installed.
+The local plaza continues working offline.
 
 This preview is not Apple notarized. macOS may block the installer/app.
 If you trust the copy you received, Apple's Privacy & Security settings

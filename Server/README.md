@@ -44,7 +44,7 @@ For two different Macs to connect, both must use the same remotely reachable HTT
 
 ### Stable Mac-hosted test with a friend
 
-The current private build uses **https://alexanders-macbook-pro.tail1400d.ts.net**
+The current private build uses **https://mac-plaza.tail1400d.ts.net**
 through Tailscale Funnel to localhost:8787. See [DISTRIBUTION.md](../DISTRIBUTION.md)
 for start/stop commands and restart behavior. The registered Discord callback is
 that origin plus `/oauth/discord/callback`. The private `.env` uses the same origin.
@@ -52,9 +52,11 @@ Tailscale and the Python service must be running on the hosting Mac, which must
 stay awake. Testers need only Mac Plaza; no Tailscale install, Python, developer
 credentials, or Plaza invitation is required. Squarespace DNS is unchanged.
 
-Funnel's background configuration survives Tailscale restarts. Keep the hosting
+The dedicated userspace daemon preserves its device identity in private
+`Server/.run/tailscale` state. Start/Stop Friend Test.command controls hosting without
+changing the system Tailscale VPN. Keep the hosting
 device and tailnet names unchanged. Existing test installs switch from the retired
-Quick Tunnel addresses in version 0.13.1 and need one new Discord sign-in; custom
+Quick Tunnel and GUI-device addresses in version 0.13.2 and need one new Discord sign-in; custom
 connection addresses are preserved. Credentials are never moved between origins.
 
 ## Automatic Discord friends and online status

@@ -13,9 +13,9 @@
 	<key>CFBundlePackageType</key>
 	<string>APPL</string>
 	<key>CFBundleShortVersionString</key>
-	<string>0.13.1</string>
+	<string>0.13.2</string>
 	<key>CFBundleVersion</key>
-	<string>16</string>
+	<string>17</string>
 	<key>CFBundleURLTypes</key>
 	<array>
 		<dict>
@@ -41,9 +41,9 @@
 	<key>NSSupportsAutomaticGraphicsSwitching</key>
 	<true/>
 	<key>PlazaServiceURL</key>
-	<string>https://alexanders-macbook-pro.tail1400d.ts.net</string>
+	<string>https://mac-plaza.tail1400d.ts.net</string>
 	<key>SUFeedURL</key>
-	<string>https://alexanders-macbook-pro.tail1400d.ts.net/updates/appcast.xml</string>
+	<string>https://mac-plaza.tail1400d.ts.net/updates/appcast.xml</string>
 	<key>SUPublicEDKey</key>
 	<string>nb75UIGtfJC3VgrIPHOZWMKdZoo9l8ZpQUqenSJgGXE=</string>
 	<key>SUEnableAutomaticChecks</key>
@@ -58,6 +58,7 @@
 	<array>
 		<string>https://adipex-experiments-ministries-containing.trycloudflare.com</string>
 		<string>https://location-freeze-armstrong-embassy.trycloudflare.com</string>
+		<string>https://alexanders-macbook-pro.tail1400d.ts.net</string>
 	</array>
 </dict>
 </plist>

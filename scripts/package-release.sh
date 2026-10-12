@@ -14,7 +14,7 @@ for item in Sources Tests scripts ThirdParty Package.swift README.md DISTRIBUTIO
 done
 mkdir "$staging/$sourceName/Server"
 # Explicit allowlist: never package environment secrets, databases, or virtual environments.
-for item in server.py updates.py presence_bot.py run_local.py test_server.py test_presence_bot.py test_updates.py requirements.txt README.md .env.example; do
+for item in server.py updates.py presence_bot.py run_local.py friend_test.py 'Start Friend Test.command' 'Stop Friend Test.command' test_server.py test_presence_bot.py test_updates.py requirements.txt README.md .env.example; do
   ditto "Server/$item" "$staging/$sourceName/Server/$item"
 done
 ditto -c -k --sequesterRsrc --keepParent "$staging/$sourceName" "Artifacts/$sourceName.zip"

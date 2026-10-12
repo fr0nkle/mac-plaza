@@ -64,6 +64,12 @@ device and tailnet names unchanged. Existing test installs switch from the retir
 Quick Tunnel and GUI-device addresses in version 0.13.2 and need one new Discord sign-in; custom
 connection addresses are preserved. Credentials are never moved between origins.
 
+The host can also create expiring ZIP download links for testers without GitHub
+accounts using `scripts/share-test-zip.py`; see [DISTRIBUTION.md](../DISTRIBUTION.md).
+The private `Server/.downloads` registry is excluded from source bundles. A link
+allows only its registered ZIP download; account APIs and update feeds keep their
+normal authentication.
+
 ## Automatic Discord friends and online status
 
 In the Mac app, connect Discord and authorize the friends presence scopes. Existing identity-only sessions use **Load My Discord Friends**. The official SDK reads the real Discord friend list directly on the Mac and tracks online, idle, do-not-disturb, and offline status. Pending requests and blocked relationships are excluded. Friends need not install Plaza. Random Miis fill in for friends without an authorized shared appearance. Custom status, game, and authored note cards cycle periodically overhead; generic availability is shown only in the native friends list and profiles. Invisible friends appear offline. No invitation is required for this flow.

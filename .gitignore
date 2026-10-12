@@ -27,6 +27,7 @@ Server/__pycache__/
 Server/.tools/
 Server/.run/
 Server/.updates/
+Server/.downloads/
 .release.env
 *.p12
 *.p8

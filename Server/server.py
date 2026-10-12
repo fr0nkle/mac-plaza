@@ -18,6 +18,7 @@ import urllib.parse
 import urllib.request
 import uuid
 from updates import ReleaseStore
+from downloads import DownloadStore, byte_range
 from collections import defaultdict, deque
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
@@ -507,7 +508,51 @@ class Handler(BaseHTTPRequestHandler):
         for key, value in (headers or {}).items():
             self.send_header(key, value)
         self.end_headers()
-        self.wfile.write(body)
+        if self.command != "HEAD":
+            self.wfile.write(body)
+
+    def download(self, path):
+        try:
+            asset, data = DownloadStore(os.environ.get("PLAZA_DOWNLOADS", ".downloads")).resolve(path[len("/download/"):])
+            stream = asset.open("rb")
+        except OSError:
+            raise APIError("Download unavailable or expired.", 404)
+        with stream:
+            etag = '"' + data["sha256"] + '"'
+            # HEAD describes the full representation. If-Range mismatch means full GET.
+            requested = self.headers.get("Range") if self.command == "GET" else None
+            if self.headers.get("If-Range") not in (None, etag):
+                requested = None
+            try:
+                first, last = byte_range(requested, data["size"])
+            except ValueError:
+                return self.respond(416, {"error": "Requested range unavailable."},
+                                    {"Content-Range": "bytes */" + str(data["size"])})
+            self.send_response(206 if requested else 200)
+            self.send_header("Content-Type", "application/zip")
+            self.send_header("Content-Disposition", 'attachment; filename="' + data["filename"] + '"')
+            self.send_header("Content-Length", str(last - first + 1))
+            self.send_header("Cache-Control", "private, no-store")
+            self.send_header("Referrer-Policy", "no-referrer")
+            self.send_header("X-Content-Type-Options", "nosniff")
+            self.send_header("Accept-Ranges", "bytes")
+            self.send_header("ETag", etag)
+            if requested:
+                self.send_header("Content-Range", "bytes %d-%d/%d" % (first, last, data["size"]))
+            self.end_headers()
+            if self.command == "HEAD":
+                return
+            stream.seek(first)
+            remaining = last - first + 1
+            try:
+                while remaining:
+                    chunk = stream.read(min(256 * 1024, remaining))
+                    if not chunk:
+                        break
+                    self.wfile.write(chunk)
+                    remaining -= len(chunk)
+            except OSError:
+                pass  # Transfer already began; do not append a JSON error to the ZIP.
 
     def dispatch(self):
         try:
@@ -534,6 +579,8 @@ class Handler(BaseHTTPRequestHandler):
                 return self.respond(302, {}, {"Location": location})
             if self.headers.get("Origin"):
                 raise APIError("Browser API requests are not supported.", 403)
+            if self.command in ("GET", "HEAD") and path.startswith("/download/"):
+                return self.download(path)
             length = int(self.headers.get("Content-Length", "0"))
             if length < 0 or length > 65536 or self.headers.get("Transfer-Encoding"):
                 raise APIError("Request exceeds the 64 KB limit.", 413)
@@ -580,6 +627,8 @@ class Handler(BaseHTTPRequestHandler):
                     raise APIError("No complete testing release is available yet.", 503)
             result = self.server.service.handle(self.command, path, data, token)
             self.respond(200, result)
+        except (BrokenPipeError, ConnectionResetError):
+            pass  # A cancelled/resumed download must not produce another response.
         except APIError as error:
             self.respond(error.status, {"error": str(error)})
         except (ValueError, KeyError, TypeError):
@@ -589,7 +638,7 @@ class Handler(BaseHTTPRequestHandler):
         except Exception:
             self.respond(500, {"error": "The Plaza service could not complete this request."})
 
-    do_GET = do_POST = do_PUT = do_DELETE = dispatch
+    do_GET = do_HEAD = do_POST = do_PUT = do_DELETE = dispatch
 
 
 def make_server(service, host="127.0.0.1", port=8787):

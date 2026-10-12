@@ -23,6 +23,33 @@ Privacy & Security. This cannot be made prompt-free without Apple distribution
 credentials. Do not disable Gatekeeper. Original Wii U resources remain optional
 local imports; the built-in renderer works immediately.
 
+## Private download without a GitHub account
+
+To share a prepared friend-test ZIP through the running Plaza service:
+
+```sh
+python3 -B scripts/share-test-zip.py /path/to/Friend-Test.zip --days 7
+```
+
+This copies that ZIP into the active runtime's private `Server/.downloads` folder
+and returns an unguessable HTTPS download URL with an expiry. Anyone given the link
+can download that file without signing in; it does not grant Plaza account access
+or access to GitHub, credentials, other files, or the authenticated update feed.
+Keep the URL private and send it only to your tester. Links default to seven days,
+can last 1–30 days, and survive service restarts until expiry or revocation.
+The hosting Mac must remain online. Browser downloads support resuming.
+
+To revoke a link immediately:
+
+```sh
+python3 -B scripts/share-test-zip.py --revoke 'PASTE-THE-DOWNLOAD-URL-HERE'
+```
+
+The download route serves only explicitly registered ZIP copies, with no directory
+listing. Records store hashes of the random tokens; access logs are suppressed and
+responses are attachments with `private, no-store` caching and `no-referrer` policy.
+Private ZIPs and token records never enter Git or corresponding-source packages.
+
 ## Keep the Mac-hosted service available
 
 The test service is available at **https://mac-plaza.tail1400d.ts.net**.

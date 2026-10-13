@@ -1,6 +1,6 @@
 # Discord & Plaza friends: first-release setup
 
-**0.13 private testing:** the packaged app has the test service preconfigured, signed private updates, and opt-in linked Mii sharing without invitations. See [DISTRIBUTION.md](../DISTRIBUTION.md). The older invitation workflow below remains available for explicit Plaza contacts. Automatic sharing synchronizes publisher-controlled recipient grants from the official SDK; viewer-supplied friend lists never grant access to another publisher’s profile. Grants expire after seven days without sync.
+**0.13 testing preview:** the packaged app has the test service preconfigured, signed private updates, and opt-in linked Mii sharing without invitations. See [DISTRIBUTION.md](../DISTRIBUTION.md). The older invitation workflow below remains available for explicit Plaza contacts. Automatic sharing synchronizes publisher-controlled recipient grants from the official SDK; viewer-supplied friend lists never grant access to another publisher’s profile. Grants expire after seven days without sync.
 
 This pilot adds Discord identity linking, a published Mii per account, automatic Discord friend discovery and availability through the official Social SDK, optional Plaza invitations for chosen profiles and app activity, and overhead Plaza notes. Friends using or recently using a matching app gather around its island. The Mac app remains usable offline. Nothing connects until a service address is configured and the user signs in.
 
@@ -44,7 +44,7 @@ For two different Macs to connect, both must use the same remotely reachable HTT
 
 ### Stable Mac-hosted test with a friend
 
-The current private build uses **https://mac-plaza.tail1400d.ts.net**
+The current preview uses **https://mac-plaza.tail1400d.ts.net**
 through Tailscale Funnel to localhost:8787. See [DISTRIBUTION.md](../DISTRIBUTION.md)
 for start/stop commands and restart behavior. The registered Discord callback is
 that origin plus `/oauth/discord/callback`. The private `.env` uses the same origin.

@@ -34,4 +34,5 @@ Original Wii U resource files are not included. The built-in character
 renderer works without them; imports in Preferences are optional.
 
 Corresponding Source.zip contains the source and component license notices
-for this build. Keep this private testing package within the test group.
+for this build. Downloads are available at https://plaza.squidproductions.org
+even when the developer’s Mac is offline. No GitHub account is required.

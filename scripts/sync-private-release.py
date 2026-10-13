@@ -1,4 +1,4 @@
-"""Pull new private GitHub prereleases onto the developer's Mac for app updates."""
+"""Pull published GitHub prereleases onto the developer's Mac for app updates."""
 import hashlib
 import json
 import os
@@ -13,8 +13,6 @@ gh = os.environ.get('PLAZA_GH', str(root / 'Server/.tools/gh'))
 repo = 'fr0nkle/mac-plaza'
 def query(*args):
     return subprocess.check_output([gh, *args], text=True)
-if query('repo', 'view', repo, '--json', 'isPrivate', '--jq', '.isPrivate').strip() != 'true':
-    raise SystemExit('Repository must remain private.')
 releases = json.loads(query('api', 'repos/' + repo + '/releases?per_page=30'))
 releases = [release for release in releases if not release['draft']]
 if not releases: raise SystemExit(0)
@@ -51,4 +49,4 @@ with tempfile.TemporaryDirectory(prefix='macplaza-update-') as temporary:
         if hashlib.sha256(installer.read_bytes()).hexdigest() != manifest['installerSHA256']:
             raise SystemExit('Installer checksum failed.')
         stage(root / 'Server/.downloads', installer, staging / manifest['source'], manifest['version'], manifest['build'])
-print('Private update ready:', latest['tag_name'])
+print('Signed update ready:', latest['tag_name'])

@@ -2,11 +2,11 @@
 
 A working native macOS plaza inspired by WaraWara Plaza, built from the supplied design document. It launches installed Mac apps and keeps local characters, notes, replies and drawings on your Mac. Optional Discord linking imports your Discord friends and availability through the official Social SDK. Chosen Miis and authored Plaza notes can also be shared through a separately configured service. The local plaza still works offline; there is no Pretendo integration.
 
-## Private friend-testing release
+## Testing preview
 
-Use **Artifacts/Mac-Plaza-0.13.3.dmg** to install on Apple silicon/macOS 15+. Discord setup opens on first launch with the test service preconfigured. Choose a Mii, enable **Share my chosen Mii and note with my Discord friends**, then save. Both people can share their own Miis without Plaza invitation codes. Sharing is opt-in and older explicit Plaza friendships remain supported.
+Download from **https://plaza.squidproductions.org** to install on Apple silicon/macOS 15+. Discord setup opens on first launch with the test service preconfigured. Choose a Mii, enable **Share my chosen Mii and note with my Discord friends**, then save. Both people can share their own Miis without Plaza invitation codes. Sharing is opt-in and older explicit Plaza friendships remain supported.
 
-Sparkle provides signed private updates after Discord sign-in, with **Check for Updates…** in the app menu and automatic download/install options in Preferences. The private GitHub repository is **fr0nkle/mac-plaza**; GitHub credentials stay on the hosting Mac. This preview is not Apple notarized, and the Mac-hosted service/tunnel must remain running. A restarted temporary tunnel changes its address. [Installer, release publishing, hosting, and signing instructions](DISTRIBUTION.md).
+Sparkle provides signed private updates after Discord sign-in, with **Check for Updates…** in the app menu and automatic download/install options in Preferences. The public GitHub repository is **[fr0nkle/mac-plaza](https://github.com/fr0nkle/mac-plaza)**. Downloads need no account and work while the hosting Mac is offline. This preview is not Apple notarized. Discord features and in-app updates still need the Mac-hosted service/tunnel running; its Tailscale address survives restarts. [Installer, release publishing, hosting, and signing instructions](DISTRIBUTION.md).
 
 ## Discord & Plaza friends pilot
 
@@ -202,6 +202,6 @@ The renderer uses [FFL.js](https://github.com/ariankordi/FFL.js) and the [FFL na
 
 ## License and download page
 
-Original Mac Plaza code is MIT licensed; see [LICENSE](LICENSE) and [LICENSING.md](LICENSING.md). Third-party components keep their own terms, including the AGPL renderer and separately licensed Discord Social SDK. The installer includes corresponding source. Get the latest preview at https://plaza.squidproductions.org. The GitHub repository remains private during testing.
+Original Mac Plaza code is MIT licensed; see [LICENSE](LICENSE) and [LICENSING.md](LICENSING.md). Third-party components keep their own terms, including the AGPL renderer and separately licensed Discord Social SDK. The installer includes corresponding source. Get the latest preview at https://plaza.squidproductions.org. GitHub releases and corresponding source are public; downloads do not depend on the hosting Mac.
 
 Distributable builds omit the optional local Nintendo recordings and console resources. Synthesized ambience works immediately, and local music/resource imports remain available. To make a distributable build use `PLAZA_DISTRIBUTION=1 zsh scripts/build-app.sh`. Source builds require the separately obtained Discord SDK as described in ThirdParty/DiscordSocialSDK/README.md. Recording-specific tests require the optional local audio fixtures; the files are intentionally not supplied in source releases.

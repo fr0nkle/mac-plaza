@@ -1,7 +1,9 @@
-# Private friend testing — Mac Plaza 0.13
+# Testing preview — Mac Plaza 0.13
 
-The repository and GitHub releases are private at https://github.com/fr0nkle/mac-plaza.
-Send `Artifacts/Mac-Plaza-0.13.3.dmg` to your tester. It contains the installer,
+The repository and current GitHub release are public at https://github.com/fr0nkle/mac-plaza.
+Send https://plaza.squidproductions.org to your tester. Its download buttons point
+directly to GitHub release assets and work while the hosting Mac is asleep or off.
+The current installer is `Mac-Plaza-0.13.3.dmg`. It contains the installer,
 the app for drag-to-Applications installation, instructions, and corresponding source.
 The tester needs an Apple silicon Mac and macOS 15 or later. They do not need Python,
 GitHub, Developer Portal access, bot tokens, or a Plaza invitation code.
@@ -123,33 +125,32 @@ never enter the repository or installer. The old Cloudflare Quick Tunnel is no l
 is a beta feature with bandwidth limits, so this remains a friend-testing service,
 not an uptime-guaranteed production host.
 
-Your Squarespace domain can later provide `plaza.squidproductions.org` for the API
-and updates. A domain is an address, not a running Python/Discord host. Use a stable
+The Squarespace DNS for `plaza.squidproductions.org` points to the hosted download
+page. The API and updates continue using the stable Tailscale address. A domain is an address, not a running Python/Discord host. Use a stable
 HTTPS hosting destination, or a named tunnel configured for a domain/zone supported
 by your tunnel provider. Follow the provider's exact DNS records in Squarespace;
 do not replace the website or email records. This testing release makes no DNS changes.
 
-## Publish a new private update
+## Publish a new update
 
 1. Increment both version and build in `scripts/Info.plist` (build must increase).
 2. Write `scripts/release-notes/VERSION.md`.
 3. Run the focused Swift tests and `Server/.venv/bin/python -B -m unittest discover -s Server`.
 4. Run `PLAZA_DISTRIBUTION=1 zsh scripts/build-app.sh`, `zsh scripts/package-release.sh`, and
    `zsh scripts/build-installer.sh`.
-5. Commit and push the tested source to the private repository.
+5. Commit and push the tested source to the repository.
 6. Run `zsh scripts/publish-release.sh`. It signs the app ZIP with the
    `macplaza-updates` Ed25519 key in this Mac's Keychain, stages it locally,
-   and uploads the installer, app, source, and release manifest to a private
-   GitHub prerelease. The script refuses a public repository.
+   and uploads the installer, app, source, and release manifest to a
+   GitHub prerelease. It refreshes Website links locally; deploy that updated Site
+   through the Sites workflow to point the page to the new version.
 
 For releases uploaded from another machine, run `python3 scripts/sync-private-release.py`
 on the hosting Mac. `zsh scripts/watch-private-releases.sh` checks every minute while
-running. It authenticates to private GitHub locally, checks archive hashes and the
+running. It accesses GitHub locally, checks archive hashes and the
 update signature, and stages assets before atomically replacing the feed manifest.
 No GitHub credential goes to testers. The service generates a same-origin Sparkle
-appcast and requires a live Plaza session for the feed and archives. Leaving the
-source repository private does not withhold corresponding source from recipients:
-each installer DMG includes its source ZIP and dependency notices.
+appcast and requires a live Plaza session for the feed and archives. Each installer DMG includes its source ZIP and dependency notices.
 
 The update feed is ready for future versions; installing a version newer than the
 current release requires publishing that version. Git push alone does not build or
@@ -195,17 +196,25 @@ Discord authorization, chosen appearance, game visibility and installer behavior
 
 ## Download page and licensed releases
 
-The public page is hosted separately at plaza.squidproductions.org. The app service
-and downloads remain on the hosting Mac. GitHub stays private. The page uses the
-public `/releases/latest.json` metadata and permanent `/releases/download/installer`
-and `/releases/download/source` routes, so subsequent releases keep the same links.
-These routes publish only explicitly staged release files; normal account APIs and
-private Sparkle updates still require their existing authentication.
+The public page is hosted separately at https://plaza.squidproductions.org. Installer
+and corresponding-source buttons link directly to public GitHub release assets,
+with no GitHub login and no dependency on the Mac's service or tunnel. Download
+links are versioned so the installer, source and displayed version agree.
 
-`publish-release.sh` stages the current installer/source after uploading the private
-release. The runtime release watcher stages downloads for later private releases
-after verifying ZIP signatures and archive/installer checksums. To restage locally,
-run `python3 scripts/stage-public-release.py` after preparing the release manifest.
+`python3 scripts/update-download-page.py` reads Artifacts/release.json, verifies both
+asset hashes and sizes, and refreshes Website/index.html and Website/release.json.
+It also updates DownloadSite/dist when that Sites checkout is present. Publish the
+updated Site through the Sites source/save/deploy workflow after each release.
+`publish-release.sh` runs this step after uploading the release. Git push alone does
+not deploy the website. The Mac's old staged routes remain for compatibility.
+
+Discord sign-in, friend profile sharing, bot status and authenticated Sparkle updates
+still require the Mac-hosted service online. Website downloads do not.
+
+Before this repository became public, Nintendo audio and the standalone Discord SDK
+were removed from every published commit/tag. Older releases 0.13.0–0.13.2 are
+unpublished drafts for private archival use and must not be published. The original
+history backup remains local, ignored under .qa; never publish that backup.
 
 Original code uses the MIT license. Build with PLAZA_DISTRIBUTION=1 to exclude local
 Nintendo audio; source packaging always excludes those recordings and the standalone

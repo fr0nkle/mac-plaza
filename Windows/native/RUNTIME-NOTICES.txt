@@ -2,7 +2,7 @@ Swift runtime and Foundation
 Copyright the Swift project authors. Apache License 2.0 with Runtime Library Exception.
 https://www.swift.org/LICENSE.txt
 https://github.com/swiftlang/swift/blob/main/LICENSE.txt
-Foundation: https://github.com/swiftlang/swift-foundation/blob/main/LICENSE
+Foundation: https://github.com/swiftlang/swift-foundation/blob/main/LICENSE.md
 ICU: https://github.com/unicode-org/icu/blob/main/icu4c/LICENSE
 libdispatch: https://github.com/swiftlang/swift-corelibs-libdispatch/blob/main/LICENSE
 

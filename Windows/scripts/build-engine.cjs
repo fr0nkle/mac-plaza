@@ -16,6 +16,7 @@ if(process.platform==='win32'){
   const runtime=candidates.find(dir=>fs.existsSync(path.join(dir,'swiftCore.dll')));if(!runtime)throw new Error('Could not locate Swift runtime DLLs. Set SWIFT_RUNTIME.');
   for(const name of fs.readdirSync(runtime))if(name.toLowerCase().endsWith('.dll'))fs.copyFileSync(path.join(runtime,name),path.join(output,name));
   for(const name of ['vcruntime140.dll','vcruntime140_1.dll','msvcp140.dll','concrt140.dll']){const file=path.join(process.env.SystemRoot||'C:/Windows','System32',name);if(fs.existsSync(file))fs.copyFileSync(file,path.join(output,name));}
+  fs.cpSync(path.join(windows,'native/RuntimeLicenses'),path.join(output,'RuntimeLicenses'),{recursive:true});
   fs.copyFileSync(path.join(windows,'native/RUNTIME-NOTICES.txt'),path.join(output,'RUNTIME-NOTICES.txt'));
   console.log('Bundled Swift runtime from '+runtime);
 }

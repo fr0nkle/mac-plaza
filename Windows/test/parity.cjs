@@ -7,13 +7,14 @@ async function main(){
   const result=path.join(root,'test-results');await fs.mkdir(result,{recursive:true});
   const document=core.document();document.settings={population:20,rotateHome:false};
   await fs.writeFile(path.join(directory,'plaza.json'),JSON.stringify({origin:core.DEFAULT_SERVICE,accounts:{offline:document},apps:Array.from({length:12},(_,i)=>({id:require('node:crypto').randomUUID(),label:'App '+(i+1),bundleID:'test.app.'+i,path:'',icon:''}))}));
+  if(process.env.PLAZA_FFL_RESOURCE){await fs.mkdir(path.join(directory,'Renderer'),{recursive:true});await fs.copyFile(process.env.PLAZA_FFL_RESOURCE,path.join(directory,'Renderer/FFLResHigh.dat'));if(process.env.PLAZA_BODY_RESOURCE)await fs.copyFile(process.env.PLAZA_BODY_RESOURCE,path.join(directory,'Renderer/body.json'));}
   let app,page;const errors=[];
   try{
     app=await electron.launch({...(process.env.PLAZA_EXECUTABLE?{executablePath:process.env.PLAZA_EXECUTABLE}:{}),args:[...(process.env.PLAZA_EXECUTABLE?[]:[root]),'--user-data-dir='+directory],timeout:60000});page=await app.firstWindow();page.on('pageerror',e=>errors.push(e.message));
     await page.waitForFunction(()=>document.body.dataset.sceneReady==='true',null,{timeout:60000});
     await page.evaluate(()=>plaza.call('engine',{command:'finishEntrance',args:{}}));
     await page.waitForFunction(()=>plazaScene.surface().iframe.contentWindow.plazaFFL.diagnostics().roster.every(r=>r.visible));
-    const diagnostics=await page.evaluate(()=>plazaScene.surface().call('diagnostics'));assert.equal(diagnostics.rigs,20);assert(diagnostics.drawCalls>0);console.log('Crowd diagnostics:',JSON.stringify({rigs:diagnostics.rigs,drawCalls:diagnostics.drawCalls,positions:diagnostics.roster.slice(0,2)}));
+    const diagnostics=await page.evaluate(()=>plazaScene.surface().call('diagnostics'));assert.equal(diagnostics.rigs,20);if(process.env.PLAZA_BODY_RESOURCE){assert.equal(diagnostics.originalBodies,true);assert(diagnostics.originalClips>40);assert(diagnostics.original.some(Boolean));}assert(diagnostics.drawCalls>0);console.log('Crowd diagnostics:',JSON.stringify({rigs:diagnostics.rigs,drawCalls:diagnostics.drawCalls,positions:diagnostics.roster.slice(0,2)}));
     const png=await page.evaluate(()=>plazaScene.surface().call('snapshot'));await fs.writeFile(path.join(result,'crowd-render.png'),Buffer.from(png.split(',')[1],'base64'));await page.screenshot({path:path.join(result,'parity-plaza.png')});
     await page.locator('#zoom-in').click();assert.equal(await page.locator('#zoom-reset').textContent(),'110%');await page.locator('#zoom-reset').click();
     await page.locator('.home-controls [data-view=maker]').click();await page.waitForFunction(()=>document.querySelectorAll('#feature-grid img').length===12,null,{timeout:60000});await page.screenshot({path:path.join(result,'mii-maker.png')});

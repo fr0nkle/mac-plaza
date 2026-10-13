@@ -1,13 +1,11 @@
-First Windows desktop preview, compatible with Mac Plaza 0.16+ and the existing Plaza service.
+Plaza for Windows 0.2.0 brings the Mac plaza experience to Windows 10/11 x64.
 
-- Animated plaza, character customization and Mac character JSON import/export.
-- Shared text notes, drawings and Steam game topics between Windows and Mac friends.
-- Shared likes, replies, edits, deletion and privacy changes, with the same friend/block authorization.
-- Plaza invitations and friend management. Discord signs in using your browser.
-- Private offline notes, recovered drafts, persistent pending uploads and encrypted sessions.
+- Mac-style plaza and Mii Maker with the shared Swift crowd engine, original artwork and feature catalogs, app/Steam pins, zoom and gathering.
+- Windows Explorer wallpaper mode, passive interaction with Escape, tray controls, companion windows, login preferences, audio suppression and lock/sleep handling.
+- Automatic Discord friends and availability through the official Social SDK. Reconnect existing 0.1 sessions once to authorize discovery. Shared Miis and optional local friend assignments use the same appearance fields as Mac.
+- Cross-platform notes, drawings, likes and replies; offline drafts, pending changes, private notes and separate account data.
+- Local head/body resource imports, binary Mii/JSON/portrait export, five soundtrack roles with crossfades and local recording imports, portable Mac/Windows plazas and backup recovery.
 
-Download the Setup EXE for installation, or extract the portable ZIP and run Plaza.exe. Windows 10/11 x64. This preview is unsigned. No Node, Python or GitHub account is needed.
+Install the Setup EXE or extract the entire portable ZIP. The preview is unsigned. No development tools are required by users. Platform fonts, title bars, system dialogs and desktop integration follow Windows. Use the website for updates. Imported console resources and recordings are not bundled.
 
-Use Friends → Create invitation to connect with Mac or Windows friends. Mac invitation controls are in Discord & Friends → Optional shared Mii profiles & Plaza invitations. Select Public · Plaza friends when writing a shared note. The service must be online for sign-in and synchronization.
-
-This initial Windows companion uses procedural characters and explicit Plaza friendships. Automatic Discord friend discovery, native wallpaper integration, installed-app launching and imported FFL resources remain Mac features. See Windows/README.md for details and build/test instructions.
+Validation: source and packaged Windows desktop suites plus shared-service interoperability and roster/portable-data tests. Automated SDK checks load the official runtime but do not authorize a live Discord account. Corresponding source, dependency notices and SHA256SUMS.txt accompany the downloads.

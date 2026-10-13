@@ -23,7 +23,7 @@ static std::vector<DWORD> ourProcesses;
 static bool ours(DWORD pid){return std::find(ourProcesses.begin(),ourProcesses.end(),pid)!=ourProcesses.end();}
 static napi_value fail(napi_env env,const char*message){napi_throw_error(env,nullptr,message);return nullptr;}
 static napi_value string(napi_env env,const std::string&text){napi_value v;napi_create_string_utf8(env,text.c_str(),text.size(),&v);return v;}
-static napi_value jsBoolean(napi_env env,bool value){napi_value v;napi_get_jsBoolean(env,value,&v);return v;}
+static napi_value jsBoolean(napi_env env,bool value){napi_value v;napi_get_boolean(env,value,&v);return v;}
 static std::string field(napi_env env,napi_value object,const char*name){napi_value v;if(napi_get_named_property(env,object,name,&v)!=napi_ok)return{};size_t n=0;if(napi_get_value_string_utf8(env,v,nullptr,0,&n)!=napi_ok||n>4096)return{};std::vector<char>bytes(n+1);napi_get_value_string_utf8(env,v,bytes.data(),bytes.size(),&n);return{bytes.data(),n};}
 static std::string quoted(const std::string&value){std::string out="\"";for(unsigned char c:value){switch(c){case'"':out+="\\\"";break;case'\\':out+="\\\\";break;case'\n':out+="\\n";break;case'\r':out+="\\r";break;case'\t':out+="\\t";break;default:if(c>=32)out+=c;}}return out+'"';}
 static void disconnect(){++generation;if(client)client->Disconnect();client.reset();expectedUser=0;discordState="disconnected";}

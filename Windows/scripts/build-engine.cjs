@@ -1,7 +1,7 @@
 const fs=require('node:fs'),path=require('node:path'),{spawnSync}=require('node:child_process');
 const windows=path.resolve(__dirname,'..');
 require('./prepare-shared.cjs');
-const result=spawnSync('swift',['build','-c','release','--package-path',path.join(windows,'Engine')],{stdio:'inherit'});if(result.status!==0)process.exit(result.status||1);
+const result=spawnSync('swift',['build',...(process.platform==='darwin'?['--disable-sandbox']:[]),'-c','release','--package-path',path.join(windows,'Engine')],{stdio:'inherit'});if(result.status!==0)process.exit(result.status||1);
 const output=path.join(windows,'native/runtime');fs.mkdirSync(output,{recursive:true});
 const binary=path.join(windows,'Engine/.build/release',process.platform==='win32'?'PlazaEngine.exe':'PlazaEngine');fs.copyFileSync(binary,path.join(output,path.basename(binary)));
 if(process.platform==='win32'){
@@ -15,5 +15,7 @@ if(process.platform==='win32'){
   if(process.env.LOCALAPPDATA)find(path.join(process.env.LOCALAPPDATA,'Programs/Swift'));
   const runtime=candidates.find(dir=>fs.existsSync(path.join(dir,'swiftCore.dll')));if(!runtime)throw new Error('Could not locate Swift runtime DLLs. Set SWIFT_RUNTIME.');
   for(const name of fs.readdirSync(runtime))if(name.toLowerCase().endsWith('.dll'))fs.copyFileSync(path.join(runtime,name),path.join(output,name));
+  for(const name of ['vcruntime140.dll','vcruntime140_1.dll','msvcp140.dll','concrt140.dll']){const file=path.join(process.env.SystemRoot||'C:/Windows','System32',name);if(fs.existsSync(file))fs.copyFileSync(file,path.join(output,name));}
+  fs.copyFileSync(path.join(windows,'native/RUNTIME-NOTICES.txt'),path.join(output,'RUNTIME-NOTICES.txt'));
   console.log('Bundled Swift runtime from '+runtime);
 }

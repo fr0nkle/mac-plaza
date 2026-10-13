@@ -23,7 +23,7 @@ static std::vector<DWORD> ourProcesses;
 static bool ours(DWORD pid){return std::find(ourProcesses.begin(),ourProcesses.end(),pid)!=ourProcesses.end();}
 static napi_value fail(napi_env env,const char*message){napi_throw_error(env,nullptr,message);return nullptr;}
 static napi_value string(napi_env env,const std::string&text){napi_value v;napi_create_string_utf8(env,text.c_str(),text.size(),&v);return v;}
-static napi_value boolean(napi_env env,bool value){napi_value v;napi_get_boolean(env,value,&v);return v;}
+static napi_value jsBoolean(napi_env env,bool value){napi_value v;napi_get_jsBoolean(env,value,&v);return v;}
 static std::string field(napi_env env,napi_value object,const char*name){napi_value v;if(napi_get_named_property(env,object,name,&v)!=napi_ok)return{};size_t n=0;if(napi_get_value_string_utf8(env,v,nullptr,0,&n)!=napi_ok||n>4096)return{};std::vector<char>bytes(n+1);napi_get_value_string_utf8(env,v,bytes.data(),bytes.size(),&n);return{bytes.data(),n};}
 static std::string quoted(const std::string&value){std::string out="\"";for(unsigned char c:value){switch(c){case'"':out+="\\\"";break;case'\\':out+="\\\\";break;case'\n':out+="\\n";break;case'\r':out+="\\r";break;case'\t':out+="\\t";break;default:if(c>=32)out+=c;}}return out+'"';}
 static void disconnect(){++generation;if(client)client->Disconnect();client.reset();expectedUser=0;discordState="disconnected";}
@@ -36,10 +36,10 @@ static napi_value configure(napi_env env,napi_callback_info info){
   client=std::make_shared<discordpp::Client>();client->SetApplicationId(applicationID);discordState="connecting";
   client->SetStatusChangedCallback([current](auto status,auto error,auto){if(current!=generation)return;discordState=status==discordpp::Client::Status::Ready?"ready":error!=discordpp::Client::Error::None?"authorization-required":"connecting";});
   client->UpdateToken(discordpp::AuthorizationTokenType::Bearer,token,[current](auto result){if(current!=generation||!client)return;if(result.Successful())client->Connect();else discordState="authorization-required";});
-  return boolean(env,true);
+  return jsBoolean(env,true);
 }
-static napi_value pump(napi_env env,napi_callback_info){discordpp::RunCallbacks();return boolean(env,true);}
-static napi_value stop(napi_env env,napi_callback_info){disconnect();return boolean(env,true);}
+static napi_value pump(napi_env env,napi_callback_info){discordpp::RunCallbacks();return jsBoolean(env,true);}
+static napi_value stop(napi_env env,napi_callback_info){disconnect();return jsBoolean(env,true);}
 static napi_value snapshot(napi_env env,napi_callback_info){
   std::string friends="[";size_t count=0;
   if(client&&discordState=="ready"){
@@ -65,9 +65,9 @@ static napi_value attach(napi_env env,napi_callback_info info){
   auto exStyle=GetWindowLongPtrW(window,GWL_EXSTYLE);SetWindowLongPtrW(window,GWL_EXSTYLE,(exStyle&~WS_EX_APPWINDOW)|WS_EX_TOOLWINDOW);
   MONITORINFO monitor{sizeof(MONITORINFO)};GetMonitorInfoW(MonitorFromPoint(POINT{0,0},MONITOR_DEFAULTTOPRIMARY),&monitor);POINT point{monitor.rcMonitor.left,monitor.rcMonitor.top};MapWindowPoints(nullptr,host,&point,1);
   SetWindowPos(window,HWND_TOP,point.x,point.y,monitor.rcMonitor.right-monitor.rcMonitor.left,monitor.rcMonitor.bottom-monitor.rcMonitor.top,SWP_FRAMECHANGED|SWP_SHOWWINDOW|SWP_NOACTIVATE);
-  return boolean(env,true);
+  return jsBoolean(env,true);
 }
-static napi_value detach(napi_env env,napi_callback_info info){HWND window=handle(env,info);auto found=desktops.find(window);if(found==desktops.end())return boolean(env,false);auto state=found->second;SetParent(window,IsWindow(state.oldParent)?state.oldParent:nullptr);SetWindowLongPtrW(window,GWL_STYLE,state.style);SetWindowLongPtrW(window,GWL_EXSTYLE,state.exStyle);SetWindowPos(window,nullptr,state.rect.left,state.rect.top,state.rect.right-state.rect.left,state.rect.bottom-state.rect.top,SWP_FRAMECHANGED|SWP_NOZORDER|SWP_NOACTIVATE);desktops.erase(found);return boolean(env,true);}
+static napi_value detach(napi_env env,napi_callback_info info){HWND window=handle(env,info);auto found=desktops.find(window);if(found==desktops.end())return jsBoolean(env,false);auto state=found->second;SetParent(window,IsWindow(state.oldParent)?state.oldParent:nullptr);SetWindowLongPtrW(window,GWL_STYLE,state.style);SetWindowLongPtrW(window,GWL_EXSTYLE,state.exStyle);SetWindowPos(window,nullptr,state.rect.left,state.rect.top,state.rect.right-state.rect.left,state.rect.bottom-state.rect.top,SWP_FRAMECHANGED|SWP_NOZORDER|SWP_NOACTIVATE);desktops.erase(found);return jsBoolean(env,true);}
 static napi_value desktopStatus(napi_env env,napi_callback_info info){HWND window=handle(env,info);HWND host=desktopHost();return string(env,std::string("{\"attached\":")+(window&&desktops.count(window)&&GetParent(window)==host?"true":"false")+",\"hostAvailable\":"+(host?"true":"false")+"}");}
 template<class T>static void release(T*&object){if(object){object->Release();object=nullptr;}}
 static bool otherAudio(EDataFlow flow){

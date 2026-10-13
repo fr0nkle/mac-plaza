@@ -46,6 +46,7 @@ Windows/dist/
 Windows/test-results/
 Windows/Engine/.build/
 Windows/Engine/Sources/PlazaCore/
+Windows/Engine/Sources/PlazaEngine/GeneratedArtwork.swift
 Windows/src/ffl/
 Windows/native/sdk/
 Windows/native/build/

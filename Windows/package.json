@@ -13,6 +13,7 @@
     "build:engine": "node scripts/build-engine.cjs",
     "build:native": "node node_modules/node-gyp/bin/node-gyp.js rebuild --target=44.7.0 --arch=x64 --dist-url=https://electronjs.org/headers",
     "test:desktop": "node test/desktop.cjs",
+    "test:parity": "node test/parity.cjs",
     "dist": "electron-builder --win nsis zip --x64 --publish never"
   },
   "devDependencies": {

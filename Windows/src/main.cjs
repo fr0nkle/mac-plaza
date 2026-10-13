@@ -8,8 +8,9 @@ const {Engine}=require('./engine.cjs');
 const {Wallpaper}=require('./wallpaper.cjs');
 const {FriendRoster,validateFriends,recipients}=require('./social.cjs');
 const applications=require('./apps.cjs');
+const portable=require('./portable.cjs');
 const {pathToFileURL}=require('node:url');
-let engine,native,wallpaper,quitting=false,locked=false,suspended=false,roster=new FriendRoster(),sdk={state:'disconnected',friends:[]},games={},sdkToken='',installed=[],lastSDKRefresh=0;
+let engine,native,wallpaper,quitting=false,locked=false,suspended=false,roster=new FriendRoster(),sdk={state:'disconnected',friends:[]},games={},sdkToken='',installed=[],lastSDKRefresh=0,recoveryRequired=false;
 const windows=new Set(),panels=new Map(),resourceImports=new Map();
 protocol.registerSchemesAsPrivileged([{scheme:'plaza-media',privileges:{standard:true,secure:true,supportFetchAPI:true,stream:true}}]);
 let window, store, session = null, login = null;
@@ -21,10 +22,10 @@ async function atomic(file, data) {
   await fs.writeFile(file + '.tmp', data, { mode: 0o600 });
   await fs.rename(file + '.tmp', file);
 }
-async function save() { await atomic(filename(), JSON.stringify(store)); }
+async function save() {if(recoveryRequired)throw new Error('Restore a backup or import a plaza before saving changes.');const previous=await fs.readFile(filename()).catch(()=>null);if(previous){try{const parsed=JSON.parse(previous);if(parsed.accounts?.offline)await atomic(filename()+'.backup',previous);}catch{}}await atomic(filename(), JSON.stringify(store)); }
 function key() { return session ? `${session.origin}/${session.accountID}` : 'offline'; }
 function doc() { const value=store.accounts[key()] ||= core.document();value.avatars ||= [value.avatar];value.friendAssignments ||= {};value.settings ||= {};return value; }
-function publicState() { return { connected: !!session, origin: session?.origin || store.origin, document: doc(), version: app.getVersion(), settings:store.settings||{}, apps:store.apps||[],history:store.history||[],music:store.music||{},wallpaper:wallpaper?.state()||{supported:process.platform==='win32',active:false,interactive:true}, discord:{state:sdk.state,count:sdk.friends.length},accountID:session?.accountID }; }
+function publicState() { return { connected: !!session,recoveryRequired, origin: session?.origin || store.origin, document: doc(), version: app.getVersion(), settings:store.settings||{}, apps:store.apps||[],history:store.history||[],music:store.music||{},wallpaper:wallpaper?.state()||{supported:process.platform==='win32',active:false,interactive:true}, discord:{state:sdk.state,count:sdk.friends.length},accountID:session?.accountID }; }
 function broadcast(){for(const item of windows)if(!item.isDestroyed())item.webContents.send('plaza-state',publicState());}
 async function ensureSDK(){
   if(!native||!session?.discordSDK){sdk={state:session?'authorization-required':'disconnected',friends:[]};return;}
@@ -87,7 +88,7 @@ const actions = {
     // Import appearance only, using the same bounded fields as the Mac service.
     core.validateAvatar(value);
     if (JSON.stringify(value).length > 20000) throw new Error('Character file is too large.');
-    doc().avatar = value; await save();
+    if(!doc().avatars.some(a=>a.id===value.id)&&doc().avatars.length>=100)throw new Error('The character library is full. Remove a Mii before adding another.');doc().avatar = value; await save();
     const existing=doc().avatars.findIndex(a=>a.id===value.id);if(existing>=0)doc().avatars[existing]=value;else if(doc().avatars.length<100)doc().avatars.push(value);await save();
     await publishProfile();
     return publicState();
@@ -176,7 +177,7 @@ function cryptoUUID(){return require('node:crypto').randomUUID();}
 function resourceDirectory(){return path.join(root(),'Renderer');}
 Object.assign(actions,{
   scene:async args=>{const body=await fs.readFile(path.join(resourceDirectory(),'body.json'),'utf8').then(JSON.parse).catch(()=>null);const hasFFL=await fs.stat(path.join(resourceDirectory(),'FFLResHigh.dat')).then(()=>true).catch(()=>false);return engine.call('configure',{...args,clips:hasFFL?body?.animations||[]:[]});},
-  engine:async value=>{if(!['renderAvatar','decodeMii','encodeMii','acknowledge','cheer','arrival','finishEntrance'].includes(value.command))throw new Error('Unknown character operation.');return engine.call(value.command,value.args);},
+  engine:async value=>{if(!['renderAvatar','fallback','music','rotateHome','portable','decodeMii','encodeMii','acknowledge','cheer','arrival','finishEntrance'].includes(value.command))throw new Error('Unknown character operation.');return engine.call(value.command,value.args);},
   panel:async kind=>{await openPanel(kind);return{};},
   wallpaper:async value=>{if(value.action==='attach')await wallpaper.attach();else if(value.action==='restore')await wallpaper.restore();else if(value.action==='interactive')await wallpaper.setInteractive(value.value);else throw new Error('Unknown wallpaper action.');return publicState();},
   settings:async value=>{
@@ -185,7 +186,8 @@ Object.assign(actions,{
     await save();broadcast();return publicState();
   },
   loginSettings:async value=>{store.settings ||= {};store.settings.openAtLogin=!!value.openAtLogin;store.settings.wallpaperAtLogin=!!value.wallpaperAtLogin;app.setLoginItemSettings({openAtLogin:store.settings.openAtLogin,path:process.execPath,args:store.settings.wallpaperAtLogin?['--wallpaper']:[]});await save();return publicState();},
-  sharing:async value=>{doc().shareProfile=!!value.shareProfile;doc().sharePresence=!!value.sharePresence;doc().shareActivity=!!value.shareActivity;doc().showDiscordGames=!!value.showDiscordGames;doc().profileNote=String(value.note||'').slice(0,280);await save();await publishProfile();await audience();return refresh();},
+  sharing:async value=>{doc().shareProfile=!!value.shareProfile;doc().sharePresence=!!value.sharePresence;doc().shareActivity=!!value.shareActivity;doc().showDiscordGames=!!value.showDiscordGames;if(!doc().showDiscordGames){games={};lastSDKRefresh=0;}doc().profileNote=String(value.note||'').slice(0,280);await save();await publishProfile();await audience();return refresh();},
+  hideFriend:async value=>{if(!/^\d{1,20}$/.test(value.discordID))throw new Error('Choose a Discord friend.');doc().hiddenFriends ||= [];doc().hiddenFriends=doc().hiddenFriends.filter(id=>id!==value.discordID);if(value.hidden)doc().hiddenFriends.push(value.discordID);await save();await audience();return refresh();},
   assignFriend:async value=>{if(!/^\d{1,20}$/.test(value.discordID))throw new Error('Choose a Discord friend.');if(value.avatarID){const a=doc().avatars.find(a=>a.id===value.avatarID);if(!a)throw new Error('Choose a saved Mii.');doc().friendAssignments[value.discordID]=a;}else delete doc().friendAssignments[value.discordID];await save();return refresh();},
   characters:async value=>{if(value.action==='remove'){if(doc().avatars.length===1)throw new Error('Keep at least one Mii.');doc().avatars=doc().avatars.filter(a=>a.id!==value.id);if(doc().avatar.id===value.id)doc().avatar=doc().avatars[0];}else if(value.action==='primary'){const a=doc().avatars.find(a=>a.id===value.id);if(!a)throw new Error('Choose a saved Mii.');doc().avatar=a;}else throw new Error('Unknown Mii action.');await save();await publishProfile();broadcast();return publicState();},
   installedApps:async()=>{installed=await applications.installed(app);const result=[];for(const entry of installed){let icon='';if(!entry.steamAppID)try{icon=(await app.getFileIcon(entry.path,{size:'large'})).toDataURL();}catch{}result.push({...entry,icon});}return result;},
@@ -209,11 +211,16 @@ Object.assign(actions,{
   activity:async()=>{try{return await request('GET','/v1/notes/activity');}catch(error){if(error.status===404)return{activities:[],unreadCount:0};throw error;}},
   activityRead:async ids=>request('PUT','/v1/notes/activity/read',{ids}),
   musicImport:async kind=>{if(!['plaza','maker','friends','settings','writing'].includes(kind))throw new Error('Unknown soundtrack.');const picked=await dialog.showOpenDialog(BrowserWindow.getFocusedWindow()||window,{filters:[{name:'Music',extensions:['wav','mp3','m4a','ogg']}],properties:['openFile']});if(picked.canceled)return publicState();const file=picked.filePaths[0],stat=await fs.stat(file);if(stat.size>250*1024*1024)throw new Error('Choose a recording smaller than 250 MB.');const target=path.join(root(),'Music',kind+path.extname(file).toLowerCase());await fs.mkdir(path.dirname(target),{recursive:true});await fs.copyFile(file,target);store.music ||= {};store.music[kind]={file:target,name:path.basename(file)};await save();broadcast();return publicState();},
+  exportPlaza:async()=>{const document=await engine.call('portable',{document:portable.exportDocument(doc(),store.apps||[])});const picked=await dialog.showSaveDialog(BrowserWindow.getFocusedWindow()||window,{defaultPath:'My-Plaza.json',filters:[{name:'Portable Plaza',extensions:['json']}]});if(!picked.canceled)await fs.writeFile(picked.filePath,JSON.stringify(document,null,2));return{};},
+  importPlaza:async()=>{const picked=await dialog.showOpenDialog(BrowserWindow.getFocusedWindow()||window,{filters:[{name:'Portable Plaza',extensions:['json']}],properties:['openFile']});if(picked.canceled)return publicState();const file=picked.filePaths[0];if((await fs.stat(file)).size>12000000)throw new Error('Plaza files must be smaller than 12 MB.');const document=await engine.call('portable',{document:JSON.parse(await fs.readFile(file,'utf8'))});const choice=await dialog.showMessageBox(BrowserWindow.getFocusedWindow()||window,{type:'question',buttons:['Import Plaza','Cancel'],defaultId:1,cancelId:1,message:`Import ${document.avatars.length} Miis and ${document.notes.length} local notes?`,detail:'This replaces this account’s local Miis, private notes and settings. Shared server notes are preserved. Reconnect Windows app shortcuts in Change Apps.'});if(choice.response!==0)return publicState();const next=portable.importDocument(document,doc());await preserveRecovery();store.accounts[key()]=next;store.apps=document.apps.map(a=>({...a,path:a.steamAppID?'steam://rungameid/'+a.steamAppID:'',icon:''}));await save();await publishProfile();broadcast();return publicState();},
+  recoverBackup:async()=>{const value=JSON.parse(await fs.readFile(filename()+'.backup','utf8'));if(!value.accounts?.offline)throw new Error('No readable backup is available.');for(const document of Object.values(value.accounts)){core.validateAvatar(document.avatar);for(const n of document.privateNotes||[])core.validateNote(n);}await preserveRecovery();store=value;store.settings ||= {};store.apps ||= [];doc();await save();broadcast();return publicState();},
+  musicRole:async kind=>{if(!['plaza','maker','friends','settings','writing'].includes(kind))throw new Error('Unknown music role.');window.webContents.send('plaza-music-role',kind);return{};},
   musicInfo:async()=>Object.fromEntries(Object.entries(store.music||{}).map(([kind,item])=>[kind,{name:item.name,url:'plaza-media://music/'+kind}])),
   musicReset:async kind=>{delete(store.music||{})[kind];await save();return publicState();},
   notify:async value=>{if(doc().settings.notifications&&Notification.isSupported())new Notification({title:'Plaza activity',body:doc().settings.privatePresentation?'You have new Plaza activity.':String(value||'A friend interacted with your note.').slice(0,160)}).show();return{};}
 });
-async function openPanel(kind){if(!['maker','friends','settings','composer','activity','journal','apps'].includes(kind))throw new Error('Unknown panel.');if(panels.has(kind)){panels.get(kind).show();panels.get(kind).focus();return;}const panel=new BrowserWindow({width:kind==='maker'?1000:850,height:kind==='maker'?840:740,minWidth:700,minHeight:560,title:kind==='maker'?'Mii Maker':'Plaza',backgroundColor:'#f5f7f2',webPreferences:{preload:path.join(__dirname,'preload.cjs'),contextIsolation:true,sandbox:true,nodeIntegration:false,autoplayPolicy:'no-user-gesture-required'}});windows.add(panel);panels.set(kind,panel);secure(panel);panel.on('closed',()=>{windows.delete(panel);panels.delete(kind);});await panel.loadFile(path.join(__dirname,'index.html'),{query:{panel:kind}});}
+async function preserveRecovery(){if(recoveryRequired){await fs.copyFile(filename(),filename()+'.unreadable-'+Date.now()).catch(()=>{});recoveryRequired=false;}}
+async function openPanel(kind){if(!['maker','friends','settings','composer','activity','journal','apps'].includes(kind))throw new Error('Unknown panel.');if(panels.has(kind)){panels.get(kind).show();panels.get(kind).focus();return;}const panel=new BrowserWindow({width:kind==='maker'?1000:850,height:kind==='maker'?840:740,minWidth:700,minHeight:560,title:kind==='maker'?'Mii Maker':'Plaza',backgroundColor:'#f5f7f2',webPreferences:{preload:path.join(__dirname,'preload.cjs'),contextIsolation:true,sandbox:true,nodeIntegration:false,autoplayPolicy:'no-user-gesture-required'}});windows.add(panel);panels.set(kind,panel);secure(panel);panel.on('closed',()=>{windows.delete(panel);panels.delete(kind);window.webContents.send('plaza-music-role','plaza');});await panel.loadFile(path.join(__dirname,'index.html'),{query:{panel:kind}});}
 function secure(item){item.webContents.setWindowOpenHandler(()=>({action:'deny'}));item.webContents.on('will-navigate',event=>event.preventDefault());item.webContents.session.setPermissionRequestHandler((_contents,_permission,callback)=>callback(false));}
 function validID(id) { if (typeof id !== 'string' || !/^[\da-f]{8}-(?:[\da-f]{4}-){3}[\da-f]{12}$/i.test(id)) throw new Error('Invalid note identity.'); return id; }
 app.whenReady().then(async () => {
@@ -221,9 +228,9 @@ app.whenReady().then(async () => {
   try { store = JSON.parse(await fs.readFile(filename(), 'utf8')); if (!store.accounts.offline) throw new Error('Invalid saved plaza.'); }
   catch (error) {
     if (error.code !== 'ENOENT') {
-      dialog.showErrorBox('Saved plaza could not be read', 'Your plaza was preserved. Restore plaza.json from a backup before reopening.'); app.quit(); return;
+      recoveryRequired=true;
     }
-    store = { origin: core.DEFAULT_SERVICE, accounts: { offline: core.document() } }; await save();
+    store = { origin: core.DEFAULT_SERVICE, accounts: { offline: core.document() } };if(!recoveryRequired)await save();
   }
   try { session = JSON.parse(safeStorage.decryptString(await fs.readFile(path.join(root(), 'session.bin')))); core.endpoint(session.origin); validID(session.accountID); }
   catch { session = null; }
@@ -235,7 +242,7 @@ app.whenReady().then(async () => {
     const source=BrowserWindow.fromWebContents(event.sender);
     if (!windows.has(source) || event.senderFrame !== source.webContents.mainFrame || !Object.hasOwn(actions, action)) throw new Error('Unsupported request.');
     const next = operation.then(async () => {
-      try { return { ok: true, value: await actions[action](value) }; }
+      try { if(recoveryRequired&&!['state','resources','engine','recoverBackup','importPlaza','musicInfo','website'].includes(action))throw new Error('Restore a backup or import a plaza in Preferences. The unreadable save is preserved.');return { ok: true, value: await actions[action](value) }; }
       catch (error) { return { ok: false, error: error.message }; }
     });
     operation = next.catch(() => {}); return next;
@@ -259,6 +266,6 @@ app.whenReady().then(async () => {
   function backgroundRefresh(){if(refreshing||!session||locked||suspended)return;refreshing=true;const next=operation.then(()=>sync()).then(value=>{for(const item of windows)if(!item.isDestroyed())item.webContents.send('plaza-snapshot',value);}).catch(error=>{for(const item of windows)if(!item.isDestroyed())item.webContents.send('plaza-error',error.message);}).finally(()=>refreshing=false);operation=next;}
   setInterval(backgroundRefresh,15000).unref();
   if(native)setInterval(()=>{if(!session?.discordSDK)return;try{const current=JSON.parse(native.discordSnapshot()).state;if(current!==lastState){lastState=current;if(current==='ready')backgroundRefresh();}}catch{}},1000).unref();
-});
+}).catch(error=>{console.error('Plaza startup failed:',error);dialog.showErrorBox('Plaza could not start',error.message);app.exit(1);});
 app.on('before-quit',()=>{quitting=true;wallpaper?.cleanup();native?.disconnectDiscord();engine?.close();});
 app.on('window-all-closed',()=>{if(process.platform!=='win32')app.quit();});

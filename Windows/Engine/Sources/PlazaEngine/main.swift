@@ -27,6 +27,14 @@ func viewport(_ args: [String:Any]) {
 }
 func perform(_ command: String, _ args: [String:Any]) throws -> Any {
     switch command {
+    case "rotateHome":
+        let recent=try decode(args["recent"] ?? [],[AppIsland].self),games=try decode(args["games"] ?? [],[AppIsland].self),fallback=try decode(args["fallback"] ?? [],[AppIsland].self)
+        guard recent.count<=120,games.count<=120,fallback.count<=120 else{throw PlazaError.invalid("Too many app shortcuts.")}
+        var random=SystemRandomNumberGenerator()
+        return try encode(HomeScreenRotation.select(recent:recent,friendGames:games,fallback:fallback,previous:args["previous"] as? [String] ?? [],using:&random))
+    case "portable":
+        let data=try JSONSerialization.data(withJSONObject:args["document"] ?? [:])
+        return try encode(DocumentStorage.decode(data).portable())
     case "configure":
         let own = try decode(args["avatars"] ?? [], [Avatar].self)
         guard own.count <= 200 else { throw PlazaError.invalid("Too many characters.") }
@@ -74,7 +82,9 @@ func perform(_ command: String, _ args: [String:Any]) throws -> Any {
             return base+(simulation.originalSample(i)?.bridge ?? [])
         }
         return ["poses":poses,"identities":characters.map{$0.id.uuidString},"entrance":simulation.entranceElapsed as Any? ?? NSNull(),"arrival":simulation.arrivalElapsed as Any? ?? NSNull()]
+    case "music":return ["data":Soundtrack.loop().base64EncodedString()]
     case "renderAvatar":return try rendering(decode(args["avatar"] ?? [:],Avatar.self).validated())
+    case "fallback":return CharacterRig.fallback(try decode(args["avatar"] ?? [:],Avatar.self).validated())
     case "decodeMii":guard let bytes=Data(base64Encoded:args["data"] as? String ?? ""),bytes.count==96 else{throw PlazaError.invalid("Choose a 96-byte Mii file.")};return try encode(MiiFile.decode(bytes))
     case "encodeMii":return ["data":try MiiFile.encode(decode(args["avatar"] ?? [:],Avatar.self)).base64EncodedString()]
     case "acknowledge":simulation.acknowledge(args["index"] as? Int ?? -1);return [:]

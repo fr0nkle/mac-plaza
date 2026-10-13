@@ -1,0 +1,36 @@
+{
+  "name": "plaza-windows",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Plaza for Windows — shared notes with your Mac friends",
+  "author": "Squid Productions",
+  "license": "MIT",
+  "main": "src/main.cjs",
+  "scripts": {
+    "start": "electron .",
+    "test": "node --test test/core.test.cjs",
+    "test:desktop": "node test/desktop.cjs",
+    "dist": "electron-builder --win nsis zip --x64 --publish never"
+  },
+  "devDependencies": {
+    "electron": "44.7.0",
+    "electron-builder": "26.15.3",
+    "playwright": "1.64.0"
+  },
+  "build": {
+    "appId": "org.squidproductions.plaza.windows",
+    "productName": "Plaza",
+    "copyright": "Copyright © 2026 Squid Productions",
+    "directories": { "output": "dist" },
+    "files": ["src/**/*", "package.json", "README.md", "LICENSE"],
+    "win": { "icon": "src/icon.ico", "target": ["nsis", "zip"], "artifactName": "Plaza-Windows-${version}-${arch}.${ext}" },
+    "nsis": {
+      "artifactName": "Plaza-Windows-${version}-Setup-${arch}.${ext}",
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "deleteAppDataOnUninstall": false,
+      "createDesktopShortcut": true
+    }
+  }
+}

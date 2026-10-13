@@ -1,0 +1,85 @@
+name: Windows build and cross-platform notes
+on:
+  push:
+    branches: [main]
+    paths: ['Windows/**', '.github/workflows/windows.yml']
+  pull_request:
+    paths: ['Windows/**', 'Server/**', '.github/workflows/windows.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: windows-${{ github.ref }}
+  cancel-in-progress: false
+jobs:
+  windows:
+    runs-on: windows-latest
+    timeout-minutes: 25
+    defaults:
+      run:
+        working-directory: Windows
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - uses: pnpm/action-setup@v4
+        with:
+          version: '11.25.0'
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: pnpm install --frozen-lockfile --ignore-scripts --config.block-exotic-subdeps=false
+      - run: node node_modules/electron/install.js
+      - run: pnpm test
+      - run: python -m pip install -r ../Server/requirements.txt
+      - run: python -B -m unittest discover -s ../Server
+      - run: pnpm test:desktop
+        env:
+          PYTHON: python
+      - run: pnpm dist
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+      - name: Test the packaged Windows executable
+        run: pnpm test:desktop
+        env:
+          PYTHON: python
+          PLAZA_EXECUTABLE: ${{ github.workspace }}\Windows\dist\win-unpacked\Plaza.exe
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: windows-test-evidence
+          path: Windows/test-results
+      - uses: actions/upload-artifact@v4
+        with:
+          name: windows-downloads
+          path: |
+            Windows/dist/*.exe
+            Windows/dist/*.zip
+  release:
+    if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+    needs: windows
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: windows-downloads
+          path: Windows/dist
+      - name: Publish tested Windows preview
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          version=$(node -p "require('./Windows/package.json').version")
+          tag="windows-v$version"
+          git archive --format=zip --prefix="Plaza-Windows-$version-Source/" -o "Windows/dist/Plaza-Windows-$version-Source.zip" HEAD Windows Server LICENSE
+          cd Windows/dist
+          sha256sum *.exe *.zip > SHA256SUMS.txt
+          if gh release view "$tag" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo 'Release already exists; refusing to replace tested downloads.'
+            exit 1
+          fi
+          gh release create "$tag" --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" --prerelease --title "Plaza for Windows $version — cross-platform preview" --notes-file ../../Windows/RELEASE-NOTES.md *.exe *.zip SHA256SUMS.txt

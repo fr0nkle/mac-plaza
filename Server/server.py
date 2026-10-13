@@ -570,6 +570,11 @@ class PlazaService:
                     self.db.execute("DELETE FROM discord_recipients WHERE owner=?", (aid,))
                     self.db.execute("UPDATE accounts SET audience_seen=0 WHERE id=?", (aid,))
                 return dict(saved=len(notes))
+            if method == "GET" and path == "/v1/notes/owned":
+                # Complete publisher payloads, without the feed's interaction
+                # budget. A new device can safely merge before replacement.
+                rows = self.db.execute("SELECT payload FROM journal_notes WHERE owner=? ORDER BY created DESC,id", (aid,)).fetchall()
+                return dict(notes=[json.loads(row["payload"]) for row in rows])
             if method == "GET" and path == "/v1/notes/threads":
                 return self.journal_snapshot(me,include_own=True)
             if path.startswith("/v1/notes/"):

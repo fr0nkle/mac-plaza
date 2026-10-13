@@ -41,3 +41,6 @@ DownloadSite/.sites-local/
 DownloadSite/.openai/local*
 
 DownloadSite/
+Windows/node_modules/
+Windows/dist/
+Windows/test-results/

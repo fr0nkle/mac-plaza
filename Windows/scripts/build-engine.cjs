@@ -11,6 +11,8 @@ if(process.platform==='win32'){
   const base=path.join(process.env.SystemDrive||'C:','Library','Developer');
   function find(dir,depth=0){if(depth>11||!fs.existsSync(dir))return;for(const item of fs.readdirSync(dir,{withFileTypes:true})){const file=path.join(dir,item.name);if(item.isDirectory())find(file,depth+1);else if(item.name==='swiftCore.dll')candidates.push(dir);}}
   find(base);
+  if(process.env.SDKROOT)find(process.env.SDKROOT);
+  if(process.env.LOCALAPPDATA)find(path.join(process.env.LOCALAPPDATA,'Programs/Swift'));
   const runtime=candidates.find(dir=>fs.existsSync(path.join(dir,'swiftCore.dll')));if(!runtime)throw new Error('Could not locate Swift runtime DLLs. Set SWIFT_RUNTIME.');
   for(const name of fs.readdirSync(runtime))if(name.toLowerCase().endsWith('.dll'))fs.copyFileSync(path.join(runtime,name),path.join(output,name));
   console.log('Bundled Swift runtime from '+runtime);

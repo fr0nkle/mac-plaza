@@ -31,14 +31,14 @@ jobs:
           python-version: '3.12'
       - run: pnpm install --frozen-lockfile --ignore-scripts --config.block-exotic-subdeps=false
       - run: node node_modules/electron/install.js
-      - uses: compnerd/gha-setup-swift@main
+      - uses: compnerd/gha-setup-swift@bbae8ce86bac5a3449f3992b3d88bc4ca25f2057
         with:
           swift-version: swift-6.4.1-release
           swift-build: 6.4.1-RELEASE
-      - run: pnpm run build:engine
       - run: ./scripts/prepare-native.ps1
         env:
           GH_TOKEN: ${{ github.token }}
+      - run: pnpm run build:engine
       - run: pnpm test
       - run: python -m pip install -r ../Server/requirements.txt
       - run: python -B -m unittest discover -s ../Server

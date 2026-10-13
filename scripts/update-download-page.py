@@ -43,14 +43,16 @@ site = root / 'Website'
 html = (site / 'index.html').read_text()
 html, count = re.subn(r'(<a class="button download" href=")[^"]+',
                      lambda match: match[1] + public['installer']['url'], html)
-if count != 2:
-    raise SystemExit('Expected two installer links; page not changed.')
+if count not in (1, 2):
+    raise SystemExit('Expected one or two installer links; page not changed.')
 html, count = re.subn(r'(<a class="source-download" href=")[^"]+',
                      lambda match: match[1] + public['source']['url'], html)
 if count != 1:
     raise SystemExit('Expected a corresponding-source link; page not changed.')
+html = re.sub(r'(<a class="release-notes" href=")[^"]+',
+              lambda match: match[1] + 'https://github.com/fr0nkle/mac-plaza/releases/tag/v' + version, html)
 html = re.sub(r'(<p id="release-status"[^>]*>)[^<]+',
-              lambda match: match[1] + f'Version {version} · {round(public["installer"]["size"] / 1048576)} MB · Installer includes corresponding source', html)
+              lambda match: match[1] + f'Version {version} · {round(public["installer"]["size"] / 1048576)} MB', html)
 (site / 'index.html').write_text(html)
 (site / 'release.json').write_text(json.dumps(public, indent=2) + '\n')
 checkout = root / 'DownloadSite/dist'

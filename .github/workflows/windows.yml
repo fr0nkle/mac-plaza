@@ -32,9 +32,21 @@ jobs:
       - run: pnpm install --frozen-lockfile --ignore-scripts --config.block-exotic-subdeps=false
       - run: node node_modules/electron/install.js
       - uses: compnerd/gha-setup-swift@bbae8ce86bac5a3449f3992b3d88bc4ca25f2057
+        continue-on-error: true
         with:
           swift-version: swift-6.4.1-release
           swift-build: 6.4.1-RELEASE
+      - name: Resolve installed Swift paths
+        shell: pwsh
+        run: |
+          $roots = @("$env:LOCALAPPDATA\Programs\Swift", "C:\Library\Developer", "C:\Program Files\Swift") | Where-Object { Test-Path $_ }
+          $swift = $roots | ForEach-Object { Get-ChildItem $_ -Filter swift.exe -Recurse -ErrorAction SilentlyContinue } | Select-Object -First 1
+          $sdk = $roots | ForEach-Object { Get-ChildItem $_ -Directory -Filter Windows.sdk -Recurse -ErrorAction SilentlyContinue } | Select-Object -First 1
+          if (!$swift -or !$sdk) { throw 'Swift installer did not provide a complete toolchain and Windows SDK.' }
+          $swift.DirectoryName | Out-File $env:GITHUB_PATH -Append -Encoding utf8
+          "SDKROOT=$($sdk.FullName)" | Out-File $env:GITHUB_ENV -Append -Encoding utf8
+      - uses: compnerd/gha-setup-vsdevenv@f1ba60d553a3216ce1b89abe0201213536bc7557
+      - run: swift --version
       - run: ./scripts/prepare-native.ps1
         env:
           GH_TOKEN: ${{ github.token }}

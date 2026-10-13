@@ -13,6 +13,9 @@ struct PlazaHomeControls: View {
                     if model.editing { model.editing = false }
                     else { model.beginChangingApps() }
                 }.help(model.editing ? "Finish changing apps and return to the plaza. Changes are saved automatically." : "Add, replace, remove and arrange home screen apps")
+                control("Friends", icon: "person.2.fill", width: 78) {
+                    model.sheet = .friends
+                }.help("View friends, their status and assigned Miis")
                 control("Settings", icon: "gearshape", width: 78) {
                     model.sheet = .preferences
                 }.help("Open plaza settings")
@@ -23,6 +26,7 @@ struct PlazaHomeControls: View {
             if model.editing {
                 HStack(spacing: 16) {
                     Button { model.pickApp() } label: { Label("Add App", systemImage: "plus") }
+                    Button { model.pickSteamGame() } label: { Label("Add Steam Game", systemImage: "gamecontroller") }
                     Spacer(minLength: 0)
                     Button { model.undoLayout() } label: { Label("Undo", systemImage: "arrow.uturn.backward") }
                 }

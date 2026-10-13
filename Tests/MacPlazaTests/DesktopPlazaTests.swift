@@ -49,8 +49,10 @@ final class DesktopPlazaTests: XCTestCase {
         try assertControlHit(width - 18 - 78 + 5, 18 + 5, "Mii Maker corner")
         try assertControlHit(width - 18 - 39, 18 + 35, "Mii Maker center")
         try assertControlHit(width - 18 - 78 - 12 - 39, 18 + 35, "Settings center")
-        try assertControlHit(width - 18 - 284 + 5, 18 + 5, "Change Apps corner")
-        try assertControlHit(width - 18 - 284 + 52, 18 + 35, "Change Apps center")
+        try assertControlHit(width - 18 - 78 - 12 - 78 - 12 - 39, 18 + 35, "Friends center")
+        try assertControlHit(width - 18 - 78 - 12 - 78 - 12 - 78 + 5, 18 + 5, "Friends corner")
+        try assertControlHit(width - 18 - 374 + 5, 18 + 5, "Change Apps corner")
+        try assertControlHit(width - 18 - 374 + 52, 18 + 35, "Change Apps center")
         func captureControls(_ name: String) throws {
             guard ProcessInfo.processInfo.environment["PLAZA_HOME_QA"] == "1" else { return }
             let rep = try XCTUnwrap(host.bitmapImageRepForCachingDisplay(in: host.bounds))
@@ -65,7 +67,7 @@ final class DesktopPlazaTests: XCTestCase {
         model.scene.finishEntrance()
         try await Task.sleep(for: .milliseconds(150))
         host.layoutSubtreeIfNeeded()
-        try assertControlHit(width - 18 - 284 + 50, 18 + 70 + 10 + 21, "Add App")
+        try assertControlHit(width - 18 - 374 + 50, 18 + 70 + 10 + 21, "Add App")
         try assertControlHit(width - 18 - 30, 18 + 70 + 10 + 21, "Undo app change")
         for (index, slot) in PlazaLayout.slots(for: model.visibleApps.count).prefix(model.visibleApps.count).enumerated() {
             try assertControlHit(slot.x * width, slot.y * height, "App drag surface \(index)")
@@ -112,6 +114,13 @@ final class DesktopPlazaTests: XCTestCase {
     func testWallpaperAppDragMovesOnlyOnReleaseAndCancelsOutside() async throws {
         _ = NSApplication.shared
         let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        // Optional local QA fixture is copied before loading; the source save is
+        // never opened for writing by this test.
+        if let fixture = ProcessInfo.processInfo.environment["PLAZA_WALLPAPER_TEST_DOCUMENT"] {
+            try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+            try FileManager.default.copyItem(at: URL(fileURLWithPath: fixture),
+                                            to: directory.appendingPathComponent("plaza.json"))
+        }
         let model = PlazaModel(directory: directory)
         let suite = "MacPlaza.WallpaperDragTests.\(UUID().uuidString)"
         let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
@@ -137,6 +146,7 @@ final class DesktopPlazaTests: XCTestCase {
             return view.subviews.flatMap { apps(in: $0) }
         }
         let original = model.document.apps
+        let originalDocument = model.document
         let views = apps(in: host)
         XCTAssertEqual(views.count, original.count)
         let source = try XCTUnwrap(views.first { $0.appID == original[0].id })
@@ -144,21 +154,39 @@ final class DesktopPlazaTests: XCTestCase {
         func center(_ view: NSView) -> NSPoint {
             view.convert(NSPoint(x: view.bounds.midX, y: view.bounds.midY), to: nil)
         }
+        func event(_ type: NSEvent.EventType, at point: NSPoint) throws -> NSEvent {
+            try XCTUnwrap(NSEvent.mouseEvent(with: type, location: point,
+                modifierFlags: [], timestamp: 0, windowNumber: controller.window!.windowNumber,
+                context: nil, eventNumber: 0, clickCount: 1, pressure: 1))
+        }
         var clicks = 0
         source.selectApp = { clicks += 1 }
         source.beginDrag(at: center(source))
         source.updateDrag(at: center(source))
         source.endDrag(at: center(source))
         XCTAssertEqual(clicks, 1, "A click must still open app details")
-        source.beginDrag(at: center(source))
-        source.updateDrag(at: center(destination))
+        source.mouseDown(with: try event(.leftMouseDown, at: center(source)))
+        source.mouseDragged(with: try event(.leftMouseDragged, at: center(destination)))
         XCTAssertTrue(source.dragging)
         XCTAssertEqual(model.document.apps, original, "Hovering cannot save or consume Undo")
-        source.endDrag(at: center(destination))
+        source.mouseUp(with: try event(.leftMouseUp, at: center(destination)))
         XCTAssertEqual(model.document.apps, Array(original.dropFirst()) + [original[0]])
         XCTAssertEqual(clicks, 1, "Dropping must not open app details")
         XCTAssertFalse(source.dragging); XCTAssertEqual(source.alphaValue, 1)
+        await model.flush()
+        let reorderedSave = try await model.storage.load()
+        XCTAssertEqual(reorderedSave?.apps, model.document.apps)
         model.undoLayout(); XCTAssertEqual(model.document.apps, original)
+        try await Task.sleep(for: .milliseconds(150)); host.layoutSubtreeIfNeeded()
+        // Reverse direction, starting from the label rather than the icon.
+        let label = destination.convert(NSPoint(x: destination.bounds.midX,
+            y: destination.isFlipped ? destination.bounds.maxY - 8 : destination.bounds.minY + 8), to: nil)
+        destination.mouseDown(with: try event(.leftMouseDown, at: label))
+        destination.mouseDragged(with: try event(.leftMouseDragged, at: center(source)))
+        destination.mouseUp(with: try event(.leftMouseUp, at: center(source)))
+        XCTAssertEqual(model.document.apps, [original.last!] + Array(original.dropLast()))
+        model.undoLayout()
+        XCTAssertEqual(model.document, originalDocument)
         try await Task.sleep(for: .milliseconds(150)); host.layoutSubtreeIfNeeded()
         let outside = NSPoint(x: -100, y: -100)
         source.beginDrag(at: center(source)); source.updateDrag(at: outside); source.endDrag(at: outside)
@@ -170,7 +198,11 @@ final class DesktopPlazaTests: XCTestCase {
         XCTAssertEqual(model.document.apps, original, "Closing Change Apps must cancel a held drag")
         XCTAssertFalse(source.dragging)
         XCTAssertEqual(clicks, 1)
-        await model.flush(); try await model.storage.endSession()
+        XCTAssertEqual(model.document, originalDocument)
+        await model.flush()
+        let restored = try await model.storage.load()
+        XCTAssertEqual(restored, originalDocument)
+        try await model.storage.endSession()
     }
 
     @MainActor
@@ -198,6 +230,7 @@ final class DesktopPlazaTests: XCTestCase {
         model.loginEnabled = false // Isolate this test from this Mac's login registration.
         model.document.preferences.musicVolume = 0
         model.document.preferences.makerMusicVolume = 0
+        model.document.preferences.settingsMusicVolume = 0
         let originalFrame = main.frame
         let originalStyle = main.styleMask
 
@@ -258,9 +291,11 @@ final class DesktopPlazaTests: XCTestCase {
 
         model.sheet = .preferences
         XCTAssertFalse(model.desktopInteractive)
-        XCTAssertTrue(main.isVisible)
+        XCTAssertFalse(main.isVisible)
+        XCTAssertEqual(controller.menuWindow?.identifier?.rawValue, "MacPlazaDesktopSettings")
         XCTAssertTrue(model.wallpaperEnabled)
-        XCTAssertFalse(model.isMoving)
+        model.desktopVisible = true
+        XCTAssertTrue(model.isMoving, "Settings keeps the visible wallpaper crowd moving")
         model.sheet = nil
         XCTAssertFalse(main.isVisible)
         XCTAssertTrue(model.desktopInteractive, "Dismissing an editor restores direct wallpaper input")
@@ -293,7 +328,7 @@ final class DesktopPlazaTests: XCTestCase {
         XCTAssertFalse(main.isVisible)
         model.editing = false
         model.sheet = .characters
-        let maker=try XCTUnwrap(controller.makerWindow)
+        let maker=try XCTUnwrap(controller.menuWindow)
         XCTAssertTrue(maker.isVisible,"Mii Maker opens directly over the wallpaper")
         XCTAssertFalse(main.isVisible,"Opening Mii Maker must not show the companion placeholder")
         XCTAssertTrue(controller.window === wallpaper)
@@ -313,16 +348,16 @@ final class DesktopPlazaTests: XCTestCase {
         model.document.preferences.pauseMotion=true
         XCTAssertFalse(model.isMoving,"Opening Mii Maker must respect Pause Motion")
         model.document.preferences.pauseMotion=false
-        model.desktopMakerVisible=true
+        model.desktopMenuVisible=true
         model.windowVisible=false
         XCTAssertTrue(model.audioEligible,"Mii Maker music remains eligible without the companion window")
         model.makerEditorVisible=true
         model.updateAudio()
         model.sheet = nil
-        XCTAssertNil(controller.makerWindow)
-        XCTAssertFalse(model.desktopMakerVisible)
+        XCTAssertNil(controller.menuWindow)
+        XCTAssertFalse(model.desktopMenuVisible)
         XCTAssertFalse(model.makerEditorVisible,"Closing the maker clears editor audio before tearing down its panel")
-        XCTAssertEqual(model.audio.backgroundPlayback.filter(\.playing).count,2,"Closing the feature editor must retain both sides of the crossfade")
+        XCTAssertTrue(Set(model.audio.backgroundPlayback.filter(\.playing).map(\.track)).isSuperset(of: [.maker, .plaza]),"Closing the feature editor must retain both sides of the crossfade")
         XCTAssertTrue(model.audioEligible,"Leaving Mii Maker resumes plaza music on the wallpaper")
         XCTAssertFalse(main.isVisible)
         XCTAssertTrue(model.desktopInteractive, "Leaving Mii Maker restores direct wallpaper input")
@@ -330,15 +365,15 @@ final class DesktopPlazaTests: XCTestCase {
         // checked here, while actual keyboard focus is verified in the app.
         XCTAssertTrue(wallpaper.canBecomeKey,"Keyboard controls return to the plaza")
         model.sheet = .characters
-        let closeMaker=try XCTUnwrap(controller.makerWindow)
+        let closeMaker=try XCTUnwrap(controller.menuWindow)
         XCTAssertFalse(controller.windowShouldClose(closeMaker))
         XCTAssertNil(model.sheet)
-        XCTAssertNil(controller.makerWindow,"The panel close button returns to the same plaza")
+        XCTAssertNil(controller.menuWindow,"The panel close button returns to the same plaza")
         XCTAssertTrue(wallpaper.isVisible)
         model.sheet = .characters
         model.sheet = .preferences
-        XCTAssertNil(controller.makerWindow,"Changing to another panel closes the maker")
-        XCTAssertTrue(main.isVisible)
+        XCTAssertEqual(controller.menuWindow?.title, "Settings", "Settings replaces the maker with another overlay")
+        XCTAssertFalse(main.isVisible)
         model.sheet = nil
         controller.returnToDesktop(activateFinder: false)
         model.sheet = .characters

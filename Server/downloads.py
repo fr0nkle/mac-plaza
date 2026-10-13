@@ -22,14 +22,14 @@ class DownloadStore:
 
     def create(self, source, days=7):
         source = Path(source)
-        if source.suffix.lower() != ".zip" or not source.is_file() or not 1 <= days <= 30:
-            raise ValueError("Choose an existing ZIP and an expiry between 1 and 30 days.")
-        if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9 ._()-]{0,159}\.zip", source.name):
-            raise ValueError("Use a simple ZIP filename.")
+        if source.suffix.lower() not in (".zip", ".dmg") or not source.is_file() or (days is not None and not 1 <= days <= 30):
+            raise ValueError("Choose an existing ZIP/DMG and a valid expiry.")
+        if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9 ._()-]{0,159}\.(?:zip|dmg)", source.name):
+            raise ValueError("Use a simple download filename.")
         self.root.mkdir(mode=0o700, parents=True, exist_ok=True)
         self.root.chmod(0o700)
         token = secrets.token_urlsafe(32)
-        asset = self.root / (secrets.token_hex(16) + ".zip")
+        asset = self.root / (secrets.token_hex(16) + source.suffix.lower())
         shutil.copyfile(source, asset)
         asset.chmod(0o600)
         sha = hashlib.sha256()
@@ -37,7 +37,7 @@ class DownloadStore:
             for chunk in iter(lambda: stream.read(1024 * 1024), b""):
                 sha.update(chunk)
         metadata = dict(asset=asset.name, filename=source.name, size=asset.stat().st_size,
-                        expires=self.now() + days * 86400, sha256=sha.hexdigest())
+                        expires=self.now() + days * 86400 if days is not None else 0, sha256=sha.hexdigest())
         record = self.root / (self.key(token) + ".json")
         with record.open("x") as stream:
             json.dump(metadata, stream)
@@ -48,11 +48,11 @@ class DownloadStore:
         record = self.root / (self.key(token) + ".json")
         try:
             data = json.loads(record.read_text())
-            if not isinstance(data["expires"], (int, float)) or not math.isfinite(data["expires"]) or data["expires"] <= self.now():
+            if not isinstance(data["expires"], (int, float)) or not math.isfinite(data["expires"]) or (data["expires"] != 0 and data["expires"] <= self.now()):
                 raise ValueError("Expired")
-            if not re.fullmatch(r"[0-9a-f]{32}\.zip", data["asset"]):
+            if not re.fullmatch(r"[0-9a-f]{32}\.(?:zip|dmg)", data["asset"]):
                 raise ValueError("Invalid asset")
-            if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9 ._()-]{0,159}\.zip", data["filename"]):
+            if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9 ._()-]{0,159}\.(?:zip|dmg)", data["filename"]):
                 raise ValueError("Invalid filename")
             if not re.fullmatch(r"[0-9a-f]{64}", data["sha256"]):
                 raise ValueError("Invalid checksum")

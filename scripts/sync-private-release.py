@@ -25,7 +25,7 @@ if (destination / 'release.json').exists():
     if latest['tag_name'] == 'v' + current['version']: raise SystemExit(0)
 with tempfile.TemporaryDirectory(prefix='macplaza-update-') as temporary:
     query('release', 'download', latest['tag_name'], '--repo', repo, '--dir', temporary,
-          '--pattern', 'release.json', '--pattern', 'Mac-Plaza-*.zip')
+          '--pattern', 'release.json', '--pattern', 'Mac-Plaza-*.zip', '--pattern', 'Mac-Plaza-*.dmg')
     staging = Path(temporary)
     import sys
     sys.path.insert(0, str(root / 'Server'))
@@ -45,4 +45,10 @@ with tempfile.TemporaryDirectory(prefix='macplaza-update-') as temporary:
         partial.replace(destination / manifest[key])
     partial = destination / 'release.json.tmp'; shutil.copyfile(staging / 'release.json', partial)
     partial.replace(destination / 'release.json')
+    from public_releases import stage
+    installer = staging / ('Mac-Plaza-' + manifest['version'] + '.dmg')
+    if installer.is_file() and manifest.get('installerSHA256'):
+        if hashlib.sha256(installer.read_bytes()).hexdigest() != manifest['installerSHA256']:
+            raise SystemExit('Installer checksum failed.')
+        stage(root / 'Server/.downloads', installer, staging / manifest['source'], manifest['version'], manifest['build'])
 print('Private update ready:', latest['tag_name'])

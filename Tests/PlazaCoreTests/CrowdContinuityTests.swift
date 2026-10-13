@@ -2,6 +2,40 @@ import XCTest
 @testable import PlazaCore
 
 final class CrowdContinuityTests:XCTestCase {
+    func testFriendsReplacingVisitorsDuringBootKeepVisibleEntranceDestinations() {
+        var crowd=CrowdSimulation(population:0,localCount:0,seed:42)
+        var ids=(0..<60).map {_ in UUID()}
+        crowd.reconcileRoster(ids,localCount:4)
+        crowd.islands=[.init(0.2,0.2),.init(0.8,0.2)]
+        let goals=crowd.walkers.map(\.position)
+        crowd.beginEntrance();crowd.step(0.3)
+        let positions=crowd.walkers.map(\.position)
+        for i in 4..<60 {ids[i]=UUID()}
+        crowd.reconcileRoster(ids,localCount:4)
+        XCTAssertEqual(crowd.walkers.map(\.position),positions)
+        crowd.finishEntrance()
+        XCTAssertEqual(crowd.walkers.map(\.position),goals,"Incoming friends must inherit the final plaza destination, not the off-screen starting point")
+    }
+    func testReplacingOneOfSixtyActorsKeepsItsSlotAndAllOtherActors() {
+        var crowd=CrowdSimulation(population:0,localCount:0,seed:42)
+        var ids=(0..<60).map {_ in UUID()}
+        crowd.enableOriginalControllers(catalog());crowd.reconcileRoster(ids,localCount:3)
+        crowd.islands=[.init(0.2,0.2),.init(0.8,0.2)]
+        for _ in 0..<300 {crowd.step(1.0/30)}
+        let before=crowd.walkers
+        ids[59]=UUID();crowd.reconcileRoster(ids,localCount:3)
+        XCTAssertEqual(crowd.walkers.count,60)
+        XCTAssertEqual(crowd.walkers.map(\.position),before.map(\.position))
+        for _ in 0..<1800 {
+            let previous=crowd.walkers;crowd.step(1.0/30)
+            XCTAssertEqual(crowd.walkers.count,60)
+            for i in 0..<60 {
+                let p=crowd.walkers[i].position,old=previous[i].position
+                XCTAssertTrue(p.x.isFinite && p.y.isFinite)
+                XCTAssertLessThan(hypot(p.x-old.x,p.y-old.y),0.006,"An actor must move continuously, never jump to another slot")
+            }
+        }
+    }
     private func catalog()->OriginalLoungeCatalog {
         OriginalLoungeCatalog(clips:Set(OriginalLounge.animations.map(\.name)).sorted().map {.init(name:$0,frames:40,loop:$0.hasSuffix("_l"))})!
     }

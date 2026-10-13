@@ -43,7 +43,7 @@ final class WallpaperMusicTests: XCTestCase {
         XCTAssertTrue(model.audio.isBackgroundPlaying)
         model.makerEditorVisible = true
         XCTAssertFalse(model.audioEligible,"A hidden maker does not play its own music")
-        model.desktopMakerVisible = true
+        model.desktopMenuVisible = true
         model.updateAudio()
         XCTAssertEqual(model.musicTrack,.maker)
         XCTAssertTrue(model.audio.isBackgroundPlaying)
@@ -52,7 +52,7 @@ final class WallpaperMusicTests: XCTestCase {
         model.otherAppFullScreen = false
         XCTAssertTrue(model.audio.isBackgroundPlaying)
         model.makerEditorVisible = false
-        model.desktopMakerVisible = false
+        model.desktopMenuVisible = false
         model.updateAudio()
         XCTAssertEqual(model.musicTrack,.plaza)
         XCTAssertTrue(model.audio.isBackgroundPlaying,"Closing the maker restores the wallpaper soundtrack")

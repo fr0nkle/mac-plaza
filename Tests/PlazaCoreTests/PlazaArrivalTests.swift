@@ -34,7 +34,8 @@ final class PlazaArrivalTests:XCTestCase {
                 crowd.enableOriginalControllers(catalog)
             }
             crowd.setGatheringIslands([0:0,1:1,2:0])
-            let others=crowd.walkers.prefix(3).map(\.position)
+            let others=crowd.walkers.enumerated().filter {$0.offset != 3}.map {$0.element.position}
+            let otherClocks=crowd.walkers.prefix(3).map(\.animationTime)
             crowd.beginArrival(index:3)
             var sawWave=false,sawOriginalWave=false
             for _ in 0..<180 {
@@ -50,7 +51,10 @@ final class PlazaArrivalTests:XCTestCase {
             }
             XCTAssertTrue(sawWave)
             if original {XCTAssertTrue(sawOriginalWave)}
-            XCTAssertNotEqual(others,crowd.walkers.prefix(3).map(\.position),"Other Miis keep simulating during the welcome")
+            // Gathered Miis may naturally stand still for the whole welcome.
+            // Their clocks must advance, while travelers elsewhere keep moving.
+            for i in 0..<3 {XCTAssertGreaterThan(crowd.walkers[i].animationTime,otherClocks[i]+5.9)}
+            XCTAssertNotEqual(others,crowd.walkers.enumerated().filter {$0.offset != 3}.map {$0.element.position},"Other Miis keep simulating during the welcome")
             for _ in 0..<600 {crowd.step(1.0/30)}
             XCTAssertNil(crowd.arrivalIndex);XCTAssertNil(crowd.arrivalElapsed)
             XCTAssertGreaterThan(hypot(crowd.walkers[3].position.x-0.5,crowd.walkers[3].position.y-0.55),0.005)

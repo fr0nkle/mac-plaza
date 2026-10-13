@@ -53,20 +53,24 @@ final class PlazaViewportTests: XCTestCase {
             }
         }
     }
-    func testSavedMiisStartInTheCenterAndBeginWalkingPromptly() {
+    func testSavedMiisJoinNaturalGroupsWithOngoingMovement() {
         var crowd=CrowdSimulation(population:60,localCount:3)
         crowd.minimumSpacing=0.025;crowd.groupsBelowIslands=true
         crowd.islandHalfWidth=0.05;crowd.islandTopClearance=0.06;crowd.islandBottomClearance=0.15
         crowd.islands=PlazaLayout.compactSlots.map { CrowdPoint($0.x,$0.y) }
         let start=Array(crowd.walkers.prefix(3)).map(\.position)
+        let home=crowd.islands[0]
         for walker in crowd.walkers.prefix(3) {
-            XCTAssertTrue((0.42...0.58).contains(walker.position.x))
-            XCTAssertTrue((0.43...0.57).contains(walker.position.y))
-            XCTAssertLessThanOrEqual(walker.wait,1.0)
+            XCTAssertLessThan(abs(walker.position.x-home.x),0.11)
+            XCTAssertGreaterThan(walker.position.y,home.y+crowd.islandBottomClearance)
+            XCTAssertLessThanOrEqual(walker.wait,25)
         }
-        XCTAssertTrue(crowd.walkers.dropFirst(3).allSatisfy { $0.wait>=2 })
-        for _ in 0..<150 {crowd.step(1.0/30)}
-        XCTAssertTrue(zip(start,crowd.walkers.prefix(3)).contains { $0 != $1.position })
+        var moved=Set<Int>()
+        for _ in 0..<1800 {
+            crowd.step(1.0/30)
+            for index in 0..<3 where start[index] != crowd.walkers[index].position {moved.insert(index)}
+        }
+        XCTAssertFalse(moved.isEmpty,"Saved Miis should take part in the ongoing crowd, alongside quiet group members")
     }
     func testZoomAndPanKeepThePlazaReachable() {
         let size=CGSize(width:1280,height:580)
@@ -120,7 +124,7 @@ final class PlazaViewportTests: XCTestCase {
             XCTAssertLessThan(group.count,22,"Visitors should spread beyond compact piles")
         }
         let between=crowd.walkers.dropFirst(3).filter {w in !slots.contains {nearGroup(w.position,$0)}}
-        XCTAssertGreaterThan(between.count,25,"Open walkways should contain visitors from the first frame")
+        XCTAssertTrue((20...45).contains(between.count),"A minority should occupy open walkways while most visitors gather")
         var moving=0
         for frame in 0..<1800 {
             crowd.step(1.0/30)

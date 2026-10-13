@@ -86,7 +86,8 @@ final class FFLSurface: NSObject, WKScriptMessageHandler, WKNavigationDelegate {
     }
     var onFailure:((String)->Void)?
     private var frameBusy=false
-    private var pendingFrame:[[Double]]?
+    private var pendingFrame:(values:[[Double]],identities:[String])?
+    private var frameIdentities:[String]=[]
     init(mode:String,resource:Data?=nil,bodyResource:Data?=nil,useInstalledBody:Bool=true) {
         self.mode=mode;self.resource=resource;self.bodyResource=bodyResource ?? (useInstalledBody ? PlazaBodyResources.shared.data:nil)
         let config=WKWebViewConfiguration();config.websiteDataStore = Self.localDataStore
@@ -114,7 +115,7 @@ final class FFLSurface: NSObject, WKScriptMessageHandler, WKNavigationDelegate {
         rendering.features.browY=min(1,max(0,a.features.browY+shift))
         rendering.features.noseY=min(1,max(0,a.features.noseY+shift))
         rendering.features.mouthY=min(1,max(0,a.features.mouthY+shift))
-        return ["data":try MiiFile.encode(rendering).base64EncodedString(),"height":a.height,"build":a.build,"outfit":a.outfit,"gender":a.features.gender]
+        return ["id":a.id.uuidString,"data":try MiiFile.encode(rendering).base64EncodedString(),"height":a.height,"build":a.build,"outfit":a.outfit,"gender":a.features.gender]
     }
     func userContentController(_ userContentController:WKUserContentController,didReceive message:WKScriptMessage) {
         guard message.frameInfo.isMainFrame,let body=message.body as? [String:Any],let type=body["type"] as? String else{return}
@@ -181,7 +182,12 @@ final class FFLSurface: NSObject, WKScriptMessageHandler, WKNavigationDelegate {
             if case .failure(let error)=result{self?.fail(error.localizedDescription);completion?(error)}else{completion?(nil)}
         }
     }
-    func configure(_ avatars:[Avatar],completion:((Error?)->Void)?=nil){do{invoke("configure",[try avatars.map(Self.avatar)],completion:completion)}catch{fail(error.localizedDescription);completion?(error)}}
+    func identifyFrames(_ avatars:[Avatar]) {frameIdentities=avatars.map { $0.id.uuidString }}
+    func configure(_ avatars:[Avatar],completion:((Error?)->Void)?=nil){do{
+        let payload=try avatars.map(Self.avatar)
+        frameIdentities=avatars.map { $0.id.uuidString }
+        invoke("configure",[payload],completion:completion)
+    }catch{fail(error.localizedDescription);completion?(error)}}
     func importMenu(_ data:Data) async throws->Data {
         try await waitUntilReady()
         let value:Any=try await withCheckedThrowingContinuation{c in request("importMenu",[data.base64EncodedString()]){c.resume(with:$0)}}
@@ -192,15 +198,16 @@ final class FFLSurface: NSObject, WKScriptMessageHandler, WKNavigationDelegate {
         let _:Any=try await withCheckedThrowingContinuation{ continuation in request("preview",args){continuation.resume(with:$0)} }
     }
     func frame(_ values:[[Double]]) {
-        pendingFrame=values;guard ready,!frameBusy else{return};sendFrame()
+        pendingFrame=(values,frameIdentities);guard ready,!frameBusy else{return};sendFrame()
     }
     private func sendFrame(){guard let values=pendingFrame else{return};pendingFrame=nil;frameBusy=true
-        // Pose snapshots contain numbers only. Structured WebKit arguments
+        // Pose rows contain numbers and a parallel list identifies their Miis.
+        // Structured WebKit arguments
         // avoid NSNumber JSON formatting/parsing and a request/deadline task
         // for every display update. Keep one frame in flight and the newest
         // pending snapshot, including when the renderer is briefly busy.
-        webView.callAsyncJavaScript("window.plazaFFL.frame(values); return null;",
-            arguments:["values":values],in:nil,in:.page){[weak self] result in
+        webView.callAsyncJavaScript("window.plazaFFL.frame(values, identities); return null;",
+            arguments:["values":values.values,"identities":values.identities],in:nil,in:.page){[weak self] result in
             guard let self else{return};self.frameBusy=false
             if case .failure(let error)=result {self.pendingFrame=nil;self.fail(error.localizedDescription);return}
             if self.ready,self.pendingFrame != nil{self.sendFrame()}
@@ -315,7 +322,7 @@ struct FFLSceneView:NSViewRepresentable {
         }
         private var configuring=false
         private var pending:[Avatar]?
-        func configure(_ avatars:[Avatar]){pending=avatars;guard !configuring else{return};configuring=true
+        func configure(_ avatars:[Avatar]){surface.identifyFrames(avatars);pending=avatars;guard !configuring else{return};configuring=true
             Task {do{try await surface.waitUntilReady();sendConfiguration()}catch{configuring=false}}
         }
         func sendConfiguration(){guard let avatars=pending else{configuring=false;return};pending=nil

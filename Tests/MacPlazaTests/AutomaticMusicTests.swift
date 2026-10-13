@@ -25,6 +25,22 @@ final class AutomaticMusicTests: XCTestCase {
         XCTAssertFalse(quiet.update(active: false, now: 12.6))
     }
 
+    func testBackgroundSpeechListenerDoesNotSuppressMusicButAppsStillDo() {
+        typealias State = AudioProcessActivity.ProcessState
+        let listener = State(pid: 20, output: true, input: true, bundleID: "com.apple.CoreSpeech")
+        XCTAssertFalse(AudioProcessActivity.hasOtherActivity([listener], ownPID: 10))
+        for app in ["com.brave.Browser.helper", "com.hnc.Discord", "com.apple.Music", "com.apple.Siri", "com.apple.CoreSpeech.other"] {
+            XCTAssertTrue(AudioProcessActivity.hasOtherActivity([listener, State(pid: 30, output: true, input: false, bundleID: app)], ownPID: 10))
+            XCTAssertTrue(AudioProcessActivity.hasOtherActivity([listener, State(pid: 30, output: false, input: true, bundleID: app)], ownPID: 10))
+        }
+        XCTAssertTrue(AudioProcessActivity.hasOtherActivity([listener, State(pid: 30, output: true, input: false)], ownPID: 10), "An unknown app identity must still suppress playback")
+        var quiet = AudioQuietPeriod()
+        XCTAssertTrue(quiet.update(active: true, now: 0))
+        let active = AudioProcessActivity.hasOtherActivity([listener], ownPID: 10)
+        XCTAssertTrue(quiet.update(active: active, now: 1))
+        XCTAssertFalse(quiet.update(active: active, now: 2.6), "The background listener must not prevent music from resuming after a call")
+    }
+
     @MainActor func testMaximizedWindowBlocksThePlazaButSmallOrOffscreenWindowsDoNot() {
         let usable = CGRect(x: -1920, y: 38, width: 1920, height: 980)
         XCTAssertTrue(FullScreenAudioMonitor.coversMostOfPlaza(window: usable, usableArea: usable))
@@ -62,7 +78,7 @@ final class AutomaticMusicTests: XCTestCase {
         XCTAssertFalse(model.audio.isBackgroundPlaying, "Saved mute must survive automatic resume")
         model.document.preferences.ambientSound = true
         model.sheet = .characters
-        model.desktopMakerVisible = true
+        model.desktopMenuVisible = true
         model.updateAudio()
         XCTAssertTrue(model.audio.isBackgroundPlaying)
         model.otherAudioActive = true

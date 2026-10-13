@@ -31,8 +31,8 @@ final class PlazaModel: ObservableObject {
     @Published var wallpaperEnabled = false
     @Published var desktopInteractive = false
     @Published var desktopVisible = false
-    @Published var desktopMakerVisible = false
-    @Published var makerFullScreen = false
+    @Published var desktopMenuVisible = false
+    @Published var menuFullScreen = false
     @Published var otherAppFullScreen = false {
         didSet { if oldValue != otherAppFullScreen { updateAudio() } }
     }
@@ -72,10 +72,22 @@ final class PlazaModel: ObservableObject {
     var renderVisible: Bool { wallpaperEnabled ? desktopVisible : windowVisible }
     var isMoving: Bool {
         loaded && sessionActive && renderVisible && !listMode &&
-        (sheet == nil || (sheet?.id == "characters" && !makerFullScreen)) && !document.preferences.pauseMotion &&
+        (sheet == nil || (sheet?.isFloatingMenu == true && !menuFullScreen)) && !document.preferences.pauseMotion &&
         !document.preferences.safeMode && !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
     }
-    var musicTrack: PlazaAudio.Track { sheet?.id == "characters" || makerEditorVisible ? .maker : .plaza }
+    var musicTrack: PlazaAudio.Track {
+        if sheet?.id == "preferences" { return .settings }
+        if sheet?.id == "friends" { return .friends }
+        return sheet?.id == "characters" || makerEditorVisible ? .maker : .plaza
+    }
+    var musicVolume: Double {
+        switch musicTrack {
+        case .plaza: return document.preferences.musicVolume ?? 0.12
+        case .maker: return document.preferences.makerMusicVolume ?? 0.10
+        case .friends: return document.preferences.friendsMusicVolume ?? 0.10
+        case .settings: return document.preferences.settingsMusicVolume ?? 0.10
+        }
+    }
     var automaticMusicMuteReason: String? {
         if otherAudioActive { return "Music muted while another app is playing audio or using the microphone" }
         if otherAppFullScreen { return "Music muted for full-screen app" }
@@ -84,14 +96,14 @@ final class PlazaModel: ObservableObject {
     }
     var audioEligible: Bool {
         guard loaded, sessionActive, automaticMusicMuteReason == nil, !document.preferences.pauseMotion, !document.preferences.safeMode else { return false }
-        if musicTrack == .maker { return windowVisible || desktopMakerVisible }
+        if musicTrack != .plaza { return windowVisible || desktopMenuVisible }
         // Small windows and hidden companion controls may keep music playing;
         // the window monitor separately detects a blocked plaza.
         return !listMode && (wallpaperEnabled || windowVisible)
     }
     func updateAudio() {
-        let volume = musicTrack == .maker ? document.preferences.makerMusicVolume ?? 0.10 : document.preferences.musicVolume ?? 0.12
-        audio.update(enabled: (document.preferences.ambientSound ?? true) && audioEligible, volume: volume, track: musicTrack, customURL: music.url(for: musicTrack), allowPreview: sessionActive && automaticMusicMuteReason == nil && (windowVisible || desktopMakerVisible) && !document.preferences.safeMode)
+        let volume = musicVolume
+        audio.update(enabled: (document.preferences.ambientSound ?? true) && audioEligible, volume: volume, track: musicTrack, customURL: music.url(for: musicTrack), allowPreview: sessionActive && automaticMusicMuteReason == nil && (windowVisible || desktopMenuVisible) && !document.preferences.safeMode)
     }
     var filteredApps: [AppIsland] {
         document.apps.filter { search.isEmpty || $0.label.localizedCaseInsensitiveContains(search) }
@@ -172,9 +184,9 @@ final class PlazaModel: ObservableObject {
     func rebuildScene() {
         social.setLocalMiis(document.avatars)
         updateVisibleIslands()
-        let population = document.preferences.safeMode ? 0 : lowPower ? min(30, document.preferences.population) : document.preferences.population
+        let population = document.preferences.safeMode ? 0 : document.preferences.population
         let room = max(0, population - document.avatars.count)
-        let plazaFriends = FriendMiiAssignments.plazaFriends(social.friends, capacity: room)
+        let plazaFriends = FriendMiiAssignments.plazaFriends(social.friends, capacity: room, retaining: scene.fflCharacters.map(\.id))
         scene.configure(avatars: document.avatars + plazaFriends.map(\.avatar), population: population, localCount: document.avatars.count)
         updateVisibleIslands()
     }
@@ -230,7 +242,9 @@ final class PlazaModel: ObservableObject {
         let label = (bundle.object(forInfoDictionaryKey: "CFBundleDisplayName") as? String) ??
             (bundle.object(forInfoDictionaryKey: "CFBundleName") as? String) ?? url.deletingPathExtension().lastPathComponent
         let bookmark = try url.bookmarkData(options: [], includingResourceValuesForKeys: nil, relativeTo: nil)
-        return AppIsland(label: String(label.prefix(60)), bundleID: identifier, path: url.path, bookmark: bookmark)
+        var island = AppIsland(label: String(label.prefix(60)), bundleID: identifier, path: url.path, bookmark: bookmark)
+        if let game = SteamGames.game(forApplication: url) { island.label = game.name; island.steamAppID = game.id }
+        return island
     }
     func resolvedURL(_ app: AppIsland) -> URL? {
         if let bookmark = app.bookmark {
@@ -262,14 +276,26 @@ final class PlazaModel: ObservableObject {
         if let fresh = try? Self.island(at: url), fresh.path != app.path || fresh.bookmark != app.bookmark {
             mutate { doc in if let i = doc.apps.firstIndex(where: { $0.id == app.id }) { doc.apps[i].path = fresh.path; doc.apps[i].bookmark = fresh.bookmark } }
         }
-        launching.insert(app.id); status = "Opening \(app.label)…"
-        NSWorkspace.shared.openApplication(at: url, configuration: NSWorkspace.OpenConfiguration()) { [weak self] _, error in
+        let game = SteamGames.game(forApplication: url)
+        if let id = app.steamAppID, game?.id != id {
+            error = "This Steam game has moved or changed. Use Add Steam Game to reconnect this shortcut."; return
+        }
+        let completion: @Sendable (NSRunningApplication?, Error?) -> Void = { [weak self] _, error in
             Task { @MainActor in
                 guard let self else { return }
                 self.launching.remove(app.id)
                 if let error { self.error = "Could not open \(app.label): \(error.localizedDescription)" }
-                else { self.status = "\(app.label) opened. Welcome back whenever you like."; if let i=self.visibleApps.firstIndex(where:{$0.id==app.id}) {self.scene.react(to:i)} }
+                else { self.status = game == nil ? "\(app.label) opened. Welcome back whenever you like." : "Steam is opening \(app.label)."; if let i=self.visibleApps.firstIndex(where:{$0.id==app.id}) {self.scene.react(to:i)} }
             }
+        }
+        launching.insert(app.id); status = "Opening \(app.label)…"
+        if let game {
+            guard let steam = NSWorkspace.shared.urlForApplication(withBundleIdentifier: "com.valvesoftware.steam") else {
+                launching.remove(app.id); error = "Install Steam to launch \(app.label)."; return
+            }
+            NSWorkspace.shared.open([game.launchURL], withApplicationAt: steam, configuration: NSWorkspace.OpenConfiguration(), completionHandler: completion)
+        } else {
+            NSWorkspace.shared.openApplication(at: url, configuration: NSWorkspace.OpenConfiguration(), completionHandler: completion)
         }
     }
     func beginChangingApps() {
@@ -294,6 +320,10 @@ final class PlazaModel: ObservableObject {
         panel.message = old == nil ? "Choose applications to add to your plaza." : "Choose the application for this shortcut."
         guard panel.runModal() == .OK else { return }
         addApps(panel.urls, replacing: old)
+    }
+    func pickSteamGame(replacing old: AppIsland? = nil) {
+        guard document.apps.count < 120 || old != nil else { error = "This plaza supports up to 120 apps."; return }
+        sheet = .steamGames(old)
     }
     func addApps(_ urls: [URL], replacing old: AppIsland? = nil) {
         do {
@@ -431,8 +461,9 @@ final class PlazaModel: ObservableObject {
 }
 
 enum PlazaSheet: Identifiable {
-    case characters, compose(UUID?), feed, preferences, social, app(AppIsland), profile(Avatar), friend(SharedMii)
+    case characters, friends, compose(UUID?), feed, preferences, social, app(AppIsland), profile(Avatar), friend(SharedMii), steamGames(AppIsland?)
+    var isFloatingMenu: Bool { id == "characters" || id == "friends" || id == "preferences" }
     var id: String {
-        switch self { case .friend(let friend): return "friend-"+friend.id; case .social: return "social"; case .profile(let avatar): return "profile-"+avatar.id.uuidString; case .characters: return "characters"; case .compose: return "compose"; case .feed: return "feed"; case .preferences: return "preferences"; case .app(let app): return app.id.uuidString }
+        switch self { case .steamGames: return "steam-games"; case .friends: return "friends"; case .friend(let friend): return "friend-"+friend.id; case .social: return "social"; case .profile(let avatar): return "profile-"+avatar.id.uuidString; case .characters: return "characters"; case .compose: return "compose"; case .feed: return "feed"; case .preferences: return "preferences"; case .app(let app): return app.id.uuidString }
     }
 }

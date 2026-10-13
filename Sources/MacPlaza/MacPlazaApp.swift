@@ -29,6 +29,7 @@ struct MacPlazaApp: App {
             CommandGroup(after: .appInfo) { CheckForPlazaUpdates() }
             CommandGroup(replacing: .newItem) {
                 Button("Add Application…") { show(); model.pickApp() }.keyboardShortcut("n", modifiers: .command)
+                Button("Add Steam Game…") { present(.steamGames(nil)) }
                 Button("New Local Note…") { present(.compose(nil)) }.keyboardShortcut("n", modifiers: [.command, .shift])
             }
             CommandGroup(replacing: .appSettings) {
@@ -41,6 +42,7 @@ struct MacPlazaApp: App {
                 Divider()
                 Button("Plaza Journal") { if !model.wallpaperEnabled { show() }; model.openJournal() }.keyboardShortcut("j", modifiers: .command)
                 Button("Your Character Profile") { present(.profile(model.document.primaryAvatar)) }.keyboardShortcut("e", modifiers:[.command,.shift])
+                Button("Friends") { present(.friends) }.keyboardShortcut("f", modifiers: [.command, .shift])
                 Button("Characters") { present(.characters) }.keyboardShortcut("e", modifiers: .command)
                 Button(model.listMode ? "Show Animated Plaza" : "Show Accessible List") { show(); model.listMode.toggle() }.keyboardShortcut("l", modifiers: .command)
                 Button(model.document.preferences.pauseMotion ? "Resume Motion" : "Pause Motion") { model.mutate { $0.preferences.pauseMotion.toggle() } }.keyboardShortcut("p", modifiers: .command)
@@ -54,6 +56,7 @@ struct MacPlazaApp: App {
             Divider()
             Button(model.document.preferences.pauseMotion ? "Resume Motion" : "Pause Motion") { model.mutate { $0.preferences.pauseMotion.toggle() } }
             Button("Plaza Journal") { if !model.wallpaperEnabled { show() }; model.openJournal() }
+            Button("Friends…") { present(.friends) }
             Button("Characters…") { present(.characters) }
             Button("Preferences…") { present(.preferences) }
             CheckForPlazaUpdates()

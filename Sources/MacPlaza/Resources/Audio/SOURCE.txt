@@ -31,3 +31,22 @@ and its original rights holders; no ownership or redistribution license is claim
 The playlist credits the following soundtrack sources:
 https://downloads.khinsider.com/game-soundtracks/album/wii-u-system-audio-background-music
 https://downloads.khinsider.com/game-soundtracks/album/nintendo-wii-u-system-menu-soundtrack-wii-u-gamerip-2012
+
+22. Friend List | Wii U System Soundtrack
+Source requested by the user: https://www.youtube.com/watch?v=e4y-KXu6syM
+Uploader: LuisFerLCC 2. Retrieved 12 October 2026 for the local Friends menu.
+Original 147-second AAC recording, looped offline with a separate saved volume.
+Music belongs to Nintendo and its original rights holders.
+
+11. System Settings | Wii U System Soundtrack
+Video requested by the user: https://www.youtube.com/watch?v=jXhHavjf-X8
+Uploader: LuisFerLCC 2. Verified title and source credits in the video description.
+Direct YouTube retrieval was unavailable; the recording was retrieved from the
+soundtrack archive explicitly credited by that video, 13 October 2026:
+https://downloads.khinsider.com/game-soundtracks/album/wii-u-system-audio-background-music
+Track: 10. System Music - System Settings (TV), 117.984 seconds.
+Recording source: https://lambda.vgmtreasurechest.com/soundtracks/wii-u-system-audio-background-music/lkpwoglm/10.%20System%20Music%20-%20System%20Settings%20%28TV%29.mp3
+Original MP3 SHA-256: 408accc3f3b56ec4890dd26736199b110950e015b9ceedc3c115d9ddf4d2da76
+Converted locally with macOS afconvert to stereo AAC at 128 kbps; original speed
+and pitch retained. Looped offline with an independent saved Settings volume.
+Music belongs to Nintendo and its original rights holders.

@@ -83,6 +83,31 @@ final class AudioTransitionTests: XCTestCase {
         XCTAssertEqual(audio.backgroundPlayback.filter(\.playing).count, 1)
     }
 
+    @MainActor func testFriendsMusicCrossfadesToPlazaAndMakerWithIndependentVolumes() async throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        let source = try silentTrack(in: root)
+        let audio = PlazaAudio()
+        defer { audio.update(enabled: false); try? FileManager.default.removeItem(at: root) }
+        audio.update(enabled: true, volume: 0.12, track: .plaza, customURL: source)
+        audio.update(enabled: true, volume: 0.07, track: .friends, customURL: source)
+        XCTAssertEqual(audio.backgroundPlayback.filter(\.playing).count, 2)
+        XCTAssertEqual(audio.backgroundPlayback.first?.track, .friends)
+        XCTAssertEqual(try XCTUnwrap(audio.backgroundPlayback.first).volume, 0.07, accuracy: 0.001)
+        try await Task.sleep(for: .seconds(1.4))
+        XCTAssertEqual(audio.backgroundPlayback.count, 1)
+        audio.update(enabled: true, volume: 0.10, track: .maker, customURL: source)
+        XCTAssertEqual(Set(audio.backgroundPlayback.map(\.track)), Set([.maker, .friends]))
+        XCTAssertTrue(audio.backgroundPlayback.allSatisfy(\.playing))
+        audio.update(enabled: true, volume: 0.07, track: .friends, customURL: source)
+        XCTAssertGreaterThan(try XCTUnwrap(audio.backgroundPlayback.first).time, 1,
+                             "Quickly returning to Friends must retain its playback position")
+        audio.update(enabled: true, volume: 0.12, track: .plaza, customURL: source)
+        try await Task.sleep(for: .seconds(1.4))
+        XCTAssertEqual(audio.backgroundPlayback.count, 1)
+        XCTAssertEqual(audio.backgroundPlayback.first?.track, .plaza)
+    }
+
     @MainActor func testFullScreenPolicyExcludesOwnMakerAndOrdinaryMaximizedWindows() {
         XCTAssertTrue(FullScreenAudioMonitor.shouldMute(frontmostPID: 42, ownPID: 7, coversDisplay: true))
         XCTAssertFalse(FullScreenAudioMonitor.shouldMute(frontmostPID: 7, ownPID: 7, coversDisplay: true))

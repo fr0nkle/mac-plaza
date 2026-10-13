@@ -48,7 +48,7 @@ def prepare_runtime():
     HOST.chmod(0o700)
     server.mkdir(mode=0o700, exist_ok=True)
     (server / ".run").mkdir(mode=0o700, exist_ok=True)
-    for name in ("server.py", "updates.py", "downloads.py", "presence_bot.py", "run_local.py",
+    for name in ("server.py", "updates.py", "downloads.py", "public_releases.py", "presence_bot.py", "run_local.py",
                  "friend_test.py", "login_start.py", "Start Friend Test.command",
                  "Stop Friend Test.command"):
         shutil.copy2(SERVER / name, server / name)

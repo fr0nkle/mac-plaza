@@ -12,11 +12,23 @@ cp .build/release/MacPlaza "$app/Contents/MacOS/MacPlaza"
 cp scripts/Info.plist "$app/Contents/Info.plist"
 ditto .build/release/MacPlaza_MacPlaza.bundle/FFL "$app/Contents/Resources/FFL"
 ditto .build/release/MacPlaza_MacPlaza.bundle/Audio "$app/Contents/Resources/Audio"
+if [[ "${PLAZA_DISTRIBUTION:-0}" == 1 ]]; then
+  # Local soundtrack imports are retained on the developer's Mac, not shipped.
+  python3 - "$app/Contents/Resources/Audio" <<'PY'
+from pathlib import Path
+import sys
+for item in Path(sys.argv[1]).iterdir():
+    if item.suffix.lower() in ('.m4a', '.wav'):
+        item.unlink()
+PY
+fi
 mkdir -p "$app/Contents/Frameworks"
 ditto ThirdParty/DiscordSocialSDK/discord_social_sdk/lib/release/discord_partner_sdk.framework "$app/Contents/Frameworks/discord_partner_sdk.framework"
 ditto ThirdParty/Sparkle/Sparkle.framework "$app/Contents/Frameworks/Sparkle.framework"
 cp ThirdParty/Sparkle/LICENSE "$app/Contents/Resources/Sparkle-LICENSE.txt"
 cp ThirdParty/DiscordSocialSDK/discord_social_sdk/License-Notices.txt "$app/Contents/Resources/Discord-License-Notices.txt"
+cp LICENSE "$app/Contents/Resources/Mac-Plaza-LICENSE.txt"
+cp LICENSING.md "$app/Contents/Resources/Mac-Plaza-Licensing.md"
 if [[ -f Artifacts/PlazaIcon.icns ]]; then
   cp Artifacts/PlazaIcon.icns "$app/Contents/Resources/PlazaIcon.icns"
 fi

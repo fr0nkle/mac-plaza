@@ -255,9 +255,17 @@ public struct FriendMiiAssignments {
     public mutating func reset() { avatars = [:] }
     /// Reserve friend slots for explicit local Mii choices before filling the
     /// remaining crowd. Preserve roster order within each group across refreshes.
-    public static func plazaFriends(_ friends: [SharedMii], capacity: Int) -> [SharedMii] {
+    public static func plazaFriends(_ friends: [SharedMii], capacity: Int, retaining identities: [UUID] = []) -> [SharedMii] {
         guard capacity > 0 else { return [] }
-        return Array(prioritizedFriends(friends).prefix(capacity))
+        let rank=Dictionary(identities.enumerated().map {($0.element,$0.offset)},uniquingKeysWith:min)
+        // Presence/activity sorting must not rotate friends in and out of a
+        // full plaza. Explicit Mii assignments still take priority.
+        let ordered=prioritizedFriends(friends).enumerated().sorted {a,b in
+            let assignedA=a.element.locallyAssignedAvatar == true,assignedB=b.element.locallyAssignedAvatar == true
+            if assignedA != assignedB {return assignedA}
+            return (rank[a.element.avatar.id] ?? (identities.count+a.offset)) < (rank[b.element.avatar.id] ?? (identities.count+b.offset))
+        }.map(\.element)
+        return Array(ordered.prefix(capacity))
     }
     /// Use the same stable priority for full friend lists and the bounded crowd.
     public static func prioritizedFriends(_ friends: [SharedMii]) -> [SharedMii] {
@@ -267,7 +275,10 @@ public struct FriendMiiAssignments {
     }
     public mutating func resolve(shared: [SharedMii], unlinked: [UnlinkedFriend], localAppearances: [String: Avatar] = [:]) -> [SharedMii] {
         let accepted = Set(shared.map(\.id) + unlinked.map(\.id))
-        avatars = avatars.filter { accepted.contains($0.key) }
+        // Brief roster/service gaps must not generate a different Mii when a
+        // friend returns. Only the bounded appearance cache persists; missing
+        // friends are still excluded from the displayed roster immediately.
+        if avatars.count>1100 {avatars=avatars.filter {accepted.contains($0.key)}}
         return shared + unlinked.map { friend in
             let fallback = avatars[friend.id] ?? Self.randomAvatar()
             avatars[friend.id] = fallback

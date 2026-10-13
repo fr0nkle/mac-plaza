@@ -1,7 +1,7 @@
 # Private friend testing — Mac Plaza 0.13
 
 The repository and GitHub releases are private at https://github.com/fr0nkle/mac-plaza.
-Send `Artifacts/Mac-Plaza-0.13.2.dmg` to your tester. It contains the installer,
+Send `Artifacts/Mac-Plaza-0.13.3.dmg` to your tester. It contains the installer,
 the app for drag-to-Applications installation, instructions, and corresponding source.
 The tester needs an Apple silicon Mac and macOS 15 or later. They do not need Python,
 GitHub, Developer Portal access, bot tokens, or a Plaza invitation code.
@@ -134,7 +134,7 @@ do not replace the website or email records. This testing release makes no DNS c
 1. Increment both version and build in `scripts/Info.plist` (build must increase).
 2. Write `scripts/release-notes/VERSION.md`.
 3. Run the focused Swift tests and `Server/.venv/bin/python -B -m unittest discover -s Server`.
-4. Run `zsh scripts/build-app.sh`, `zsh scripts/package-release.sh`, and
+4. Run `PLAZA_DISTRIBUTION=1 zsh scripts/build-app.sh`, `zsh scripts/package-release.sh`, and
    `zsh scripts/build-installer.sh`.
 5. Commit and push the tested source to the private repository.
 6. Run `zsh scripts/publish-release.sh`. It signs the app ZIP with the
@@ -192,3 +192,21 @@ Status/game observations remain in memory. Native app activity, notes and appear
 keep their separate sharing controls. Portable plaza exports contain no credentials
 or recipient grants. A live two-person test is still needed to confirm the friend's
 Discord authorization, chosen appearance, game visibility and installer behavior.
+
+## Download page and licensed releases
+
+The public page is hosted separately at plaza.squidproductions.org. The app service
+and downloads remain on the hosting Mac. GitHub stays private. The page uses the
+public `/releases/latest.json` metadata and permanent `/releases/download/installer`
+and `/releases/download/source` routes, so subsequent releases keep the same links.
+These routes publish only explicitly staged release files; normal account APIs and
+private Sparkle updates still require their existing authentication.
+
+`publish-release.sh` stages the current installer/source after uploading the private
+release. The runtime release watcher stages downloads for later private releases
+after verifying ZIP signatures and archive/installer checksums. To restage locally,
+run `python3 scripts/stage-public-release.py` after preparing the release manifest.
+
+Original code uses the MIT license. Build with PLAZA_DISTRIBUTION=1 to exclude local
+Nintendo audio; source packaging always excludes those recordings and the standalone
+Discord SDK. Local files remain on the developer's Mac. See LICENSING.md.

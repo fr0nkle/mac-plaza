@@ -46,11 +46,16 @@ final class PlazaMusicLibrary: ObservableObject {
     }
     func title(for track: PlazaAudio.Track) -> String {
         if url(for: track) != nil { return recordings[track.rawValue]!.name }
-        return track == .plaza ? "WaraWara Plaza · Home" : "Mii Maker"
+        switch track {
+        case .plaza: return "WaraWara Plaza · Home"
+        case .maker: return "Mii Maker"
+        case .friends: return "Friend List · Wii U"
+        case .settings: return "System Settings · Wii U"
+        }
     }
     func choose(for track: PlazaAudio.Track) {
         let panel = NSOpenPanel()
-        panel.title = track == .plaza ? "Choose Plaza Music" : "Choose Mii Maker Music"
+        panel.title = "Choose \(title(for: track)) Music"
         panel.allowedContentTypes = [.audio]
         panel.canChooseDirectories = false
         panel.allowsMultipleSelection = false
@@ -81,6 +86,7 @@ final class PlazaMusicLibrary: ObservableObject {
     func discardSelections() {
         discardSelection(for: .plaza)
         discardSelection(for: .maker)
+        discardSelection(for: .friends)
         try? FileManager.default.removeItem(at: previewDirectory)
     }
     private func validatedCopy(_ source: URL, into destination: URL, displayName: String? = nil) throws -> Recording {
@@ -134,7 +140,7 @@ final class PlazaMusicLibrary: ObservableObject {
             revision = UUID()
             onChange?()
             if let previous { try? FileManager.default.removeItem(at: directory.appendingPathComponent(previous.file)) }
-            message = "Default \(track == .plaza ? "plaza" : "Mii Maker") music restored."
+            message = "Default \(title(for: track)) music restored."
         } catch { message = "Could not restore the default music: \(error.localizedDescription)" }
     }
 }

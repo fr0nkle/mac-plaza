@@ -13,3 +13,4 @@ $gh release create "v$version" --repo "$repo" --prerelease --title "Mac Plaza $v
   "Artifacts/Mac-Plaza-$version.zip" "Artifacts/Mac-Plaza-$version-Source.zip" \
   "Artifacts/Mac-Plaza-$version.dmg" "Artifacts/Mac-Plaza-$version.pkg" \
   "Artifacts/Mac-Plaza-$version.sha256" "Artifacts/Mac-Plaza-$version.dmg.sha256" Artifacts/release.json
+python3 scripts/stage-public-release.py

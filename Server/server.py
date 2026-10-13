@@ -19,6 +19,7 @@ import urllib.request
 import uuid
 from updates import ReleaseStore
 from downloads import DownloadStore, byte_range
+from public_releases import current as public_release
 from collections import defaultdict, deque
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
@@ -529,7 +530,7 @@ class Handler(BaseHTTPRequestHandler):
                 return self.respond(416, {"error": "Requested range unavailable."},
                                     {"Content-Range": "bytes */" + str(data["size"])})
             self.send_response(206 if requested else 200)
-            self.send_header("Content-Type", "application/zip")
+            self.send_header("Content-Type", "application/x-apple-diskimage" if asset.suffix == ".dmg" else "application/zip")
             self.send_header("Content-Disposition", 'attachment; filename="' + data["filename"] + '"')
             self.send_header("Content-Length", str(last - first + 1))
             self.send_header("Cache-Control", "private, no-store")
@@ -577,6 +578,21 @@ class Handler(BaseHTTPRequestHandler):
                 query = urllib.parse.parse_qs(parsed.query)
                 location = self.server.service.callback(text(query.get("state", [""])[0], 64, 1), query.get("code", [""])[0])
                 return self.respond(302, {}, {"Location": location})
+            if self.command in ("GET", "HEAD") and (path == "/releases/latest.json" or path.startswith("/releases/download/")):
+                try:
+                    release = public_release(os.environ.get("PLAZA_DOWNLOADS", ".downloads"))
+                    if path == "/releases/latest.json":
+                        files = {key: {**{k: v for k, v in entry.items() if k != "token"},
+                                       "path": "/releases/download/" + key}
+                                 for key, entry in release["files"].items()}
+                        return self.respond(200, dict(version=release["version"], build=release["build"], files=files),
+                                            {"Access-Control-Allow-Origin": "*"})
+                    key = path[len("/releases/download/"):]
+                    if key not in ("installer", "source"):
+                        raise APIError("Download unavailable.", 404)
+                    return self.download("/download/" + release["files"][key]["token"])
+                except (OSError, ValueError, KeyError, TypeError):
+                    raise APIError("The testing release is not available yet.", 503)
             if self.headers.get("Origin"):
                 raise APIError("Browser API requests are not supported.", 403)
             if self.command in ("GET", "HEAD") and path.startswith("/download/"):

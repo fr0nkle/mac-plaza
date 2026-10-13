@@ -144,11 +144,16 @@ public struct CrowdSimulation: Sendable {
                 idle:originalIdles.indices.contains(i) ? originalIdles[i]:nil)
         }
         let oldRoster=roster
+        let present=Set(oldRoster)
         let oldGoals=Dictionary(uniqueKeysWithValues:oldRoster.enumerated().compactMap {i,id in
             entranceGoals.indices.contains(i) ? (id,(entranceGoals[i],entranceRanks[i])):nil
         })
         let arriving=arrivalIndex.flatMap {oldRoster.indices.contains($0) ? oldRoster[$0]:nil}
         let indices=Dictionary(uniqueKeysWithValues:identities.enumerated().map {($0.element,$0.offset)})
+        var vacancies=oldRoster.compactMap {id -> (actor:RetainedActor,entrance:(CrowdPoint,Int)?)? in
+            guard indices[id] == nil,let actor=retainedActors[id] else{return nil}
+            return (actor,oldGoals[id])
+        }.makeIterator()
         let remapping=Dictionary(uniqueKeysWithValues:oldRoster.enumerated().compactMap {i,id in indices[id].map {(i,$0)}})
         for g in originalGroups.indices {originalGroups[g].remapActors(remapping)}
         let oldGathering=gatheringIslands
@@ -157,8 +162,22 @@ public struct CrowdSimulation: Sendable {
         })
         roster=identities;rosterOrdinals=identities.map(Self.stableOrdinal);walkers=[];originalPlayers=[];originalIdles=[]
         var added:[Int]=[]
+        var replacementEntrances:[Int:(CrowdPoint,Int)]=[:]
         for (i,id) in identities.enumerated() {
-            if let saved=retainedActors[id] {
+            if !present.contains(id),let vacancy=vacancies.next() {
+                var replacement=vacancy.actor
+                replacementEntrances[i]=vacancy.entrance
+                // Replacing one slot in a full crowd must not spawn a new
+                // actor elsewhere or disturb any of its surviving peers.
+                replacement.walker.partner=nil;replacement.walker.conversation=0;replacement.walker.greeting=0
+                replacement.walker.originalSocialAction=25;replacement.walker.originalSocialTicks=0
+                replacement.walker.originalSocialLeader=false
+                walkers.append(replacement.walker)
+                if let catalog=originalCatalog {
+                    originalPlayers.append(replacement.player ?? OriginalLoungePlayback(catalog:catalog))
+                    originalIdles.append(replacement.idle ?? OriginalLoungeIdle())
+                }
+            } else if let saved=retainedActors[id] {
                 var actor=saved.walker
                 actor.partner=saved.partner.flatMap {indices[$0]}
                 if actor.partner == nil && saved.partner != nil {
@@ -196,8 +215,8 @@ public struct CrowdSimulation: Sendable {
             }
         }
         if entranceElapsed != nil {
-            entranceGoals=identities.enumerated().map {oldGoals[$0.element]?.0 ?? walkers[$0.offset].position}
-            entranceRanks=identities.enumerated().map {oldGoals[$0.element]?.1 ?? $0.offset}
+            entranceGoals=identities.enumerated().map {oldGoals[$0.element]?.0 ?? replacementEntrances[$0.offset]?.0 ?? walkers[$0.offset].position}
+            entranceRanks=identities.enumerated().map {oldGoals[$0.element]?.1 ?? replacementEntrances[$0.offset]?.1 ?? $0.offset}
         }
         arrivalIndex=arriving.flatMap {indices[$0]}
         if arrivalIndex == nil {arrivalElapsed=nil}
@@ -384,8 +403,7 @@ public struct CrowdSimulation: Sendable {
             for i in walkers.indices {
                 let p=destination(i);walkers[i].position=p;walkers[i].target=p
                 walkers[i].angle=i<localCount ? (random.unit()-0.5)*0.6:random.unit()*2 * .pi
-                if groupsBelowIslands && i<localCount {walkers[i].wait=0.4+Double(i)*0.3}
-                else if usesWalkways(i) {walkers[i].wait=2+random.unit()*7}
+                if usesWalkways(i) {walkers[i].wait=2+random.unit()*7}
             }
             placed=true
         }
@@ -418,15 +436,38 @@ public struct CrowdSimulation: Sendable {
         if id.hasPrefix("57415241-0000-4000-8000-"),let slot=UInt64(id.suffix(12),radix:16) {return slot}
         return id.utf8.reduce(UInt64(14695981039346656037)) {($0 ^ UInt64($1)) &* 1099511628211}
     }
-    private func usesWalkways(_ i:Int)->Bool {
-        guard groupsBelowIslands,i>=localCount,gatheringIslands[i]==nil else{return false}
+    private func actorPattern(_ i:Int)->UInt64 {
         var value=(actorOrdinal(i) &+ 1) &* 0x9E3779B97F4A7C15
         value=(value ^ (value >> 30)) &* 0xBF58476D1CE4E5B9
-        return (value ^ (value >> 27))%100<35
+        return value ^ (value >> 27)
+    }
+    private func usesWalkways(_ i:Int)->Bool {
+        guard groupsBelowIslands,gatheringIslands[i]==nil else{return false}
+        return actorPattern(i)%100<15
     }
     private func groupCenter(_ slot:Int)->CrowdPoint {
         let c=islands[slot]
-        return CrowdPoint(c.x+sin(Double(slot)*2.4)*0.012,min(0.90,c.y+islandBottomClearance+0.045))
+        return CrowdPoint(c.x+sin(Double(slot)*2.4)*0.012,
+                          min(groupsBelowIslands ? 0.88:0.90,c.y+islandBottomClearance+(groupsBelowIslands ? 0.035:0.045)))
+    }
+    private func groupSpread(_ slot:Int)->CrowdPoint {
+        // Slightly different silhouettes, with room for pairs and loose edges.
+        CrowdPoint(0.062+Double((slot*7)%4)*0.006,0.038+Double((slot*3)%4)*0.004)
+    }
+    private func insideGathering(_ p:CrowdPoint,slot:Int)->Bool {
+        let center=groupCenter(slot),spread=groupSpread(slot),y=(p.y-center.y)/spread.y
+        let x=(p.x-center.x-(p.y-center.y)*sin(Double(slot)*1.7)*0.3)/spread.x
+        return x*x+y*y<=1
+    }
+    private func originalGatheringPoint(_ slot:Int,node:Int,actor:Int)->CrowdPoint {
+        var p=hostPoint(originalGroups[slot].nodes[node].position)
+        guard groupsBelowIslands else{return p}
+        let ordinal=actorPattern(actor)
+        // Identity-based offsets break up the source hex grid without adding
+        // per-frame noise or changing a Mii's place on roster refresh.
+        p.x+=(Double((ordinal >> 8)%101)/100-0.5)*0.0036
+        p.y+=(Double((ordinal >> 20)%101)/100-0.5)*0.0036*aspect
+        return p
     }
     private mutating func destination(_ i:Int) -> CrowdPoint {
         let current=walkers[i].position
@@ -457,18 +498,24 @@ public struct CrowdSimulation: Sendable {
             if roaming {
                 // Open ground between gatherings, rather than another tiny
                 // app circle. Exclude group cores so the lanes remain visible.
-                p=CrowdPoint(0.07+random.unit()*0.86,0.23+random.unit()*0.69)
-                if islands.indices.contains(where:{distance(p,groupCenter($0))<0.085}) {continue}
+                if islands.count>1 {
+                    let a=Int(random.unit()*Double(islands.count))
+                    let b=(a+1+Int(random.unit()*Double(islands.count-1)))%islands.count
+                    let from=groupCenter(a),to=groupCenter(b),t=0.25+random.unit()*0.5
+                    p=CrowdPoint(from.x+(to.x-from.x)*t+(random.unit()-0.5)*0.045,
+                                 from.y+(to.y-from.y)*t+(random.unit()-0.5)*0.045)
+                } else {p=CrowdPoint(0.07+random.unit()*0.86,0.23+random.unit()*0.69)}
+                if islands.indices.contains(where:{distance(p,groupCenter($0))<0.065}) {continue}
                 if placed && distance(current,p)<0.08 {continue}
-            } else if gathering == nil && i<localCount && ((!placed && groupsBelowIslands) || random.unit()<0.75) {
-                p=groupsBelowIslands ? CrowdPoint(0.42+random.unit()*0.16,0.43+random.unit()*0.14):CrowdPoint(0.34+random.unit()*0.32,0.71+random.unit()*0.17)
+            } else if gathering == nil && i<localCount && !groupsBelowIslands && random.unit()<0.75 {
+                p=CrowdPoint(0.34+random.unit()*0.32,0.71+random.unit()*0.17)
             }
             else if !islands.isEmpty {
                 let c=islands[min(islands.count-1,slot)],theta=random.unit()*2 * .pi
                 if groupsBelowIslands {
-                    let center=groupCenter(min(islands.count-1,slot))
-                    let radius=sqrt(random.unit()),spread=0.85+Double(slot%3)*0.12
-                    p=CrowdPoint(center.x+cos(theta)*radius*0.085*spread,center.y+sin(theta)*radius*0.052)
+                    let center=groupCenter(min(islands.count-1,slot)),spread=groupSpread(slot)
+                    let radius=sqrt(random.unit()),y=sin(theta)*radius*spread.y
+                    p=CrowdPoint(center.x+cos(theta)*radius*spread.x+y*sin(Double(slot)*1.7)*0.3,center.y+y)
                 } else {
                     p=CrowdPoint(c.x+cos(theta)*(0.035+random.unit()*0.13),c.y+(c.y<0.67 ? 0.29:-0.17)+sin(theta)*(0.025+random.unit()*0.09))
                 }
@@ -642,12 +689,12 @@ public struct CrowdSimulation: Sendable {
     private func groupSlot(_ i:Int)->Int? {
         guard !islands.isEmpty else{return nil}
         if let g=gatheringIslands[i],islands.indices.contains(g) {return g}
-        return groupsBelowIslands && i>=localCount && !usesWalkways(i) ? Int(actorOrdinal(i)%UInt64(islands.count)):nil
+        return groupsBelowIslands && !usesWalkways(i) ? Int(actorOrdinal(i)%UInt64(islands.count)):nil
     }
     private func originalGroupTarget(_ i:Int)->CrowdPoint? {
         guard let g=groupSlot(i),originalGroups.indices.contains(g),let n=originalGroups[g].node(for:i) else{return nil}
-        let p=hostPoint(originalGroups[g].nodes[n].position)
-        return validGroupPoint(p) ? p:nil
+        let p=originalGatheringPoint(g,node:n,actor:i)
+        return validGroupPoint(p) && (!groupsBelowIslands || insideGathering(p,slot:g)) ? p:nil
     }
     private func validGroupPoint(_ p:CrowdPoint)->Bool {
         (0.05...0.95).contains(p.x) && (0.20...0.95).contains(p.y) && !blocked(p)
@@ -659,26 +706,33 @@ public struct CrowdSimulation: Sendable {
         guard !islands.isEmpty else{originalGroups=[];originalGroupGeometry=[];return}
         while originalGroups.count<islands.count {originalGroups.append(OriginalLoungeGroupDatabase())}
         if originalGroups.count>islands.count {originalGroups.removeLast(originalGroups.count-islands.count)}
-        let geometry=[sourceWidth,aspect,islandBottomClearance]+islands.flatMap {[$0.x,$0.y]}
+        let geometry=[sourceWidth,aspect,islandBottomClearance,groupsBelowIslands ? 1.0:0.0]+islands.flatMap {[$0.x,$0.y]}
         if geometry != originalGroupGeometry {
             originalGroupGeometry=geometry
-            for g in originalGroups.indices {originalGroups[g].setGeometry(origin:sourcePoint(groupCenter(g)))}
+            for g in originalGroups.indices {
+                // Preserve source neighbor spacing for conversations/dances;
+                // the host silhouette and stable offsets vary the gathering.
+                originalGroups[g].setGeometry(origin:sourcePoint(groupCenter(g)))
+            }
         }
         for g in originalGroups.indices {
             for n in originalGroups[g].occupied {
-                if let a=originalGroups[g].nodes[n].actor,groupSlot(a) != g || !validGroupPoint(hostPoint(originalGroups[g].nodes[n].position)) {originalGroups[g].remove(actor:a)}
+                if let a=originalGroups[g].nodes[n].actor {
+                    let point=originalGatheringPoint(g,node:n,actor:a)
+                    if groupSlot(a) != g || !validGroupPoint(point) || (groupsBelowIslands && !insideGathering(point,slot:g)) {originalGroups[g].remove(actor:a)}
+                }
             }
         }
         for i in walkers.indices {
             guard let g=groupSlot(i),originalGroups[g].node(for:i)==nil else{continue}
-            let p=sourcePoint(walkers[i].position)
+            let p=walkers[i].position
             let candidate=originalGroups[g].nodes.indices.filter {n in
                 guard originalGroups[g].nodes[n].actor==nil else{return false}
-                let point=hostPoint(originalGroups[g].nodes[n].position)
-                return validGroupPoint(point)
+                let point=originalGatheringPoint(g,node:n,actor:i)
+                return validGroupPoint(point) && (!groupsBelowIslands || insideGathering(point,slot:g))
             }.min {a,b in
-                let pa=originalGroups[g].nodes[a].position,pb=originalGroups[g].nodes[b].position
-                return hypot(pa.x-p.x,pa.z-p.z)<hypot(pb.x-p.x,pb.z-p.z)
+                let pa=originalGatheringPoint(g,node:a,actor:i),pb=originalGatheringPoint(g,node:b,actor:i)
+                return distance(pa,p)<distance(pb,p)
             }
             if let n=candidate {_=originalGroups[g].insert(actor:i,at:n)}
         }
@@ -694,8 +748,7 @@ public struct CrowdSimulation: Sendable {
         for n in originalGroups[g].occupied {
             guard let i=originalGroups[g].nodes[n].actor,walkers[i].partner==nil,
                   let previous=old.node(for:i),previous != n else{continue}
-            let goal=hostPoint(originalGroups[g].nodes[n].position)
-            if validGroupPoint(goal) {walkers[i].target=goal;walkers[i].path=route(from:walkers[i].position,to:goal)}
+            if let goal=originalGroupTarget(i) {walkers[i].target=goal;walkers[i].path=route(from:walkers[i].position,to:goal)}
         }
     }
     /// Recovered automatic dance/facing opportunity path from 0217f074.

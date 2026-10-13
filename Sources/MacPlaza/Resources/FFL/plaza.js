@@ -2,7 +2,7 @@
 'use strict';
 const send = (type, value) => window.webkit.messageHandlers.ffl.postMessage({type,value});
 const bytes = s => Uint8Array.from(atob(s), c => c.charCodeAt(0));
-let ffl, renderer, scene, camera, mode, models = new Map(), rigs = [], lastFrame;
+let ffl, renderer, scene, camera, mode, models = new Map(), rigs = [];
 let generation = 0;
 let noteTargets=[];
 function setNoteTargets(indices){noteTargets=indices.filter(i=>Number.isInteger(i)&&i>=0&&i<200).slice(0,6);if(renderer)draw();}
@@ -112,19 +112,45 @@ function makeRig(a,index) {
   return {root,body,torso,head,model,arms,elbows,hands,legs,knees,ankles,stature,maskMaterial,shadow:shadow(root),expression:-1};
 }
 function clearRigs(){clearBodies();for(const r of rigs){scene.remove(r.root);r.maskMaterial?.dispose();r.original?.dispose();}rigs=[];}
+function rosterKeys(identities){
+  const counts=new Map();return identities.map(id=>{const occurrence=counts.get(id)||0;counts.set(id,occurrence+1);return id+':'+occurrence;});
+}
+function removeRig(r){
+  scene.remove(r.root);r.maskMaterial?.dispose();r.original?.dispose();
+  // Removed fallback limbs must leave their instance batches as well. A stale
+  // member would continue drawing a ghost after its root leaves the scene.
+  for(const {members} of bodyBatches.values())for(let i=members.length-1;i>=0;i--){
+    for(let p=members[i];p;p=p.parent)if(p===r.root){members.splice(i,1);break;}
+  }
+}
 async function configure(avatars) {
   if(avatars.length>200)throw new Error('The plaza supports at most 200 characters.');
-  const epoch=++generation;clearRigs();
+  ++generation;
+  const previous=rigs,retained=new Map(previous.map(r=>[r.identity,r]));
+  const keys=rosterKeys(avatars.map((a,i)=>a.id||a.data||String(i)));
+  const wantedIdentities=new Set(keys),vacancies=previous.filter(r=>!wantedIdentities.has(r.identity));
+  rigs=avatars.map((a,i)=>{
+    const identity=keys[i],appearance=JSON.stringify([a.data,a.height,a.build,a.outfit,a.gender]);
+    const old=retained.get(identity);let r=old;
+    if(!r||r.appearance!==appearance){
+      r=makeRig(a,i);
+      // Keep an edited Mii, or a replacement in a full crowd, at the last
+      // displayed pose until its identity-tagged native snapshot arrives.
+      const poseBefore=old?.lastPose||vacancies.shift()?.lastPose;
+      if(poseBefore)pose(r,poseBefore,true);else r.root.visible=false;
+    }
+    r.identity=identity;r.appearance=appearance;
+    r.root.traverse(n=>n.userData.index=i);return r;
+  });
+  const surviving=new Set(rigs);
+  for(const r of previous)if(!surviving.has(r))removeRig(r);
   const wanted=new Set(avatars.map(a=>a.data));
   for(const [key,model] of models)if(!wanted.has(key)){model.dispose();models.delete(key);}
-  for(let i=0;i<avatars.length;i++){
-    if(epoch!==generation)return;
-    rigs.push(makeRig(avatars[i],i));
-  }
-  if(lastFrame)frame(lastFrame);else draw();send('configured',rigs.length);
+  draw();send('configured',rigs.length);
 }
 function expression(blink,mood){return blink ? (mood===3?11:5):[0,1,4,6][mood] || 0;}
 function pose(r,w,instant=false){
+  r.lastPose=w;r.root.visible=true;
   const [x,z,height=0,angle,state,phase,amount,social,blink,mood,time=0,lookYaw=0,turn=0]=w;
   if(r.original){
     r.root.position.set(x,height,z);r.root.rotation.y=angle;r.original.frame(w,instant);r.shadow.position.y=.005-height;
@@ -144,7 +170,16 @@ function pose(r,w,instant=false){
   p.legs.forEach((v,i)=>{r.legs[i].rotation.x=v[0];r.knees[i].rotation.x=v[1];r.ankles[i].rotation.x=v[2];});
   const exp=expression(blink,mood);if(exp!==r.expression){r.model.setExpression(exp);if(r.maskMaterial)r.maskMaterial.map=r.model._maskMesh.material.map;r.expression=exp;}
 }
-function frame(snapshot){lastFrame=snapshot;if(!renderer)return;rigs.forEach((r,i)=>snapshot[i]&&pose(r,snapshot[i]));draw();}
+function frame(snapshot,identities){
+  if(!renderer)return;
+  if(identities){
+    // In-flight frames can belong to a roster that has since been reordered.
+    // A Mii may only consume a pose carrying its own identity.
+    const keys=rosterKeys(identities),poses=new Map(keys.map((key,i)=>[key,snapshot[i]]));
+    rigs.forEach(r=>{const w=poses.get(r.identity);if(w)pose(r,w);});
+  }else rigs.forEach((r,i)=>snapshot[i]&&pose(r,snapshot[i]));
+  draw();
+}
 function draw(){if(renderer){scene.updateMatrixWorld(true);updateBodies();renderer.render(scene,camera);
   if(mode==='plaza'&&noteTargets.length){const anchors=[];for(const i of noteTargets){const r=rigs[i];if(!r)continue;const p=r.head.getWorldPosition(new THREE.Vector3());p.y+=.42;p.project(camera);anchors.push([i,(p.x+1)/2,(1-p.y)/2]);}send('noteAnchors',anchors);}
 }}
@@ -153,7 +188,7 @@ function resize(){if(!renderer)return;const w=Math.max(1,innerWidth),h=Math.max(
   else{camera.left=-1.38*w/h;camera.right=1.38*w/h;camera.top=1.38;camera.bottom=-1.38;camera.position.set(0,1.20,6);camera.lookAt(0,1.20,0);}
   camera.updateProjectionMatrix();draw();}
 window.addEventListener('resize',resize);
-async function preview(a,angle,state,headOnly=false){await configure([a]);const r=rigs[0];pose(r,[0,0,0,angle,state,1,state===1?1:0,false,false,state===4?1:state===5?2:0,.4],true);
+async function preview(a,angle,state,headOnly=false){await configure([a]);const r=rigs[0];r.body.visible=true;r.shadow.visible=true;pose(r,[0,0,0,angle,state,1,state===1?1:0,false,false,state===4?1:state===5?2:0,.4],true);
   if(headOnly){r.body.visible=false;r.shadow.visible=false;camera.left=-.64;camera.right=.64;camera.top=.64;camera.bottom=-.64;camera.position.set(0,r.head.position.y,6);camera.lookAt(0,r.head.position.y,0);camera.updateProjectionMatrix();}
   draw();}
 async function portrait(a,angle,state,headOnly,w,h){camera.position.set(0,1.20,6);camera.lookAt(0,1.20,0);renderer.setPixelRatio(1);renderer.setSize(w,h,false);camera.left=-1.4*w/h;camera.right=1.4*w/h;camera.top=1.4;camera.bottom=-1.4;camera.updateProjectionMatrix();await preview(a,angle,state,headOnly);return renderer.domElement.toDataURL('image/png');}
@@ -200,7 +235,7 @@ function featureIcon(a,feature,w=144,h=96){
 document.addEventListener('pointerdown',event=>{if(mode!=='plaza')return;const p=new THREE.Vector2(event.clientX/innerWidth*2-1,1-event.clientY/innerHeight*2),ray=new THREE.Raycaster();ray.setFromCamera(p,camera);const hit=ray.intersectObjects(rigs.map(r=>r.root),true)[0];if(hit)send('select',hit.object.userData.index);});
 function dispose(){++generation;clearRigs();for(const model of models.values())model.dispose();models.clear();PlazaOriginalBody.clear();ffl?.dispose();renderer?.dispose();renderer?.forceContextLoss();renderer=null;}
 function snapshot(){draw();return renderer.domElement.toDataURL('image/png');}
-function diagnostics(){return {originalBodies:PlazaOriginalBody.active,originalClips:PlazaOriginalBody.clipCount,original:rigs.slice(0,4).map(r=>r.original?.stats()||null),feet:rigs.slice(0,4).map(r=>r.ankles?.map(n=>n.getWorldPosition(new THREE.Vector3()).toArray())||[]),drawCalls:renderer.info.render.calls,rigs:rigs.length,models:models.size,bodyBatches:bodyBatches.size,bodyInstances:Array.from(bodyBatches.values()).reduce((n,b)=>n+b.batch.count,0),masks:rigs.map(r=>({material:r.maskMaterial?.uuid,texture:r.maskMaterial?.map?.uuid,expression:r.expression}))};}
+function diagnostics(){return {roster:rigs.map(r=>({id:r.identity,root:r.root.uuid,position:r.root.position.toArray(),visible:r.root.visible})),originalBodies:PlazaOriginalBody.active,originalClips:PlazaOriginalBody.clipCount,original:rigs.slice(0,4).map(r=>r.original?.stats()||null),feet:rigs.slice(0,4).map(r=>r.ankles?.map(n=>n.getWorldPosition(new THREE.Vector3()).toArray())||[]),drawCalls:renderer.info.render.calls,rigs:rigs.length,models:models.size,bodyBatches:bodyBatches.size,bodyInstances:Array.from(bodyBatches.values()).reduce((n,b)=>n+b.batch.count,0),masks:rigs.map(r=>({material:r.maskMaterial?.uuid,texture:r.maskMaterial?.map?.uuid,expression:r.expression}))};}
 async function importMenu(data){const pack=PlazaMenuAssets.read(bytes(data));clearRigs();PlazaOriginalBody.load(pack,ffl.module);return JSON.stringify(pack);}
 window.plazaFFL={setNoteTargets,importMenu,initialize,configure,frame,preview,portrait,featureIcon,dispose,diagnostics,snapshot,motion:PlazaMotion.solve};
 window.plazaFFL.dispatch=(id,method,args)=>{

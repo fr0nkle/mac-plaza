@@ -168,7 +168,7 @@ final class PlazaScene {
         }
         if !FFLResources.shared.installed { for a in catalog { for mood in [FaceMood.neutral,.happy,.surprised,.speaking] { _=AvatarArtwork.face(a,mood:mood) }; _=AvatarArtwork.face(a,blink:true) } }
         // Geometry and material objects are shared by cloned nodes throughout each character family.
-        for i in 0..<population { var a=catalog[i<avatars.count ? i:avatars.count+i%16]; if i>=avatars.count {a.id=UUID(uuidString:String(format:"57415241-0000-4000-8000-%012llx",UInt64(i-avatars.count)))!}; characters.append(a); if !FFLResources.shared.installed { let rig=CharacterRig(a);rig.root.name="character-\(i)";rigs.append(rig);world.rootNode.addChildNode(rig.root) } }
+        for i in 0..<population { var a=catalog[i<avatars.count ? i:avatars.count+(i-avatars.count)%16]; if i>=avatars.count {a.id=UUID(uuidString:String(format:"57415241-0000-4000-8000-%012llx",UInt64(i-avatars.count)))!}; characters.append(a); if !FFLResources.shared.installed { let rig=CharacterRig(a);rig.root.name="character-\(i)";rigs.append(rig);world.rootNode.addChildNode(rig.root) } }
         simulation.worldWidth=PlazaLayout.worldWidth
         simulation.minimumSpacing=0.016
         simulation.groupsBelowIslands=true
@@ -185,9 +185,9 @@ final class PlazaScene {
         if !crowdConfigured {simulation.step(0.001);crowdConfigured=true}
         fflCharacters=characters
         if fflOwner != nil {rendererReady=false}
-        // Deliver the preserved poses before a renderer reconfiguration can
-        // draw newly constructed rigs at the previous roster's indices.
-        apply();fflConfigure?(characters);fflNoteTargets?(noteIndices)
+        // Register identities before delivering this roster's poses. The bridge
+        // tags every snapshot so queued frames cannot move a different Mii.
+        fflConfigure?(characters);apply();fflNoteTargets?(noteIndices)
     }
     private func updateIslands() { simulation.islands=PlazaLayout.slots(for:islandCount).prefix(islandCount).map { CrowdPoint($0.x,$0.y) } }
     func react(to island:Int) {

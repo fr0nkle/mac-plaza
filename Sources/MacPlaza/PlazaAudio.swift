@@ -5,7 +5,7 @@ import PlazaCore
 /// Local soundtrack playback; no network or web player is needed at runtime.
 @MainActor
 final class PlazaAudio: NSObject, ObservableObject, AVAudioPlayerDelegate {
-    enum Track: String { case plaza = "warawara-home", maker = "mii-maker" }
+    enum Track: String { case plaza = "warawara-home", maker = "mii-maker", friends = "friends-menu", settings = "system-settings" }
     static let crossfadeDuration: TimeInterval = 1.2
     private final class Voice {
         let player: AVAudioPlayer

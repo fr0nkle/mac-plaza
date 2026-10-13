@@ -33,3 +33,11 @@ Server/.downloads/
 *.p8
 *.pem
 *.key
+Sources/MacPlaza/Resources/Audio/*.m4a
+Sources/MacPlaza/Resources/Audio/*.wav
+ThirdParty/DiscordSocialSDK/discord_social_sdk/
+DownloadSite/.git/
+DownloadSite/.sites-local/
+DownloadSite/.openai/local*
+
+DownloadSite/

@@ -40,6 +40,7 @@ public struct AppIsland: Codable, Identifiable, Equatable, Sendable {
     public var path: String?
     public var bookmark: Data?
     public var customIcon: Data?
+    public var steamAppID: UInt32?
     public init(label: String, bundleID: String, path: String? = nil, bookmark: Data? = nil) {
         self.label = label; self.bundleID = bundleID; self.path = path; self.bookmark = bookmark
     }
@@ -85,6 +86,8 @@ public struct Preferences: Codable, Equatable, Sendable {
     public var ambientSound: Bool?
     public var musicVolume: Double?
     public var makerMusicVolume: Double?
+    public var friendsMusicVolume: Double?
+    public var settingsMusicVolume: Double?
     public init() {}
 }
 public struct PlazaDocument: Codable, Equatable, Sendable {
@@ -107,12 +110,15 @@ public struct PlazaDocument: Codable, Equatable, Sendable {
               Preferences.populationRange.contains(preferences.population),
               preferences.musicVolume.map({ $0.isFinite && (0...0.35).contains($0) }) ?? true,
               preferences.makerMusicVolume.map({ $0.isFinite && (0...0.35).contains($0) }) ?? true,
+              preferences.friendsMusicVolume.map({ $0.isFinite && (0...0.35).contains($0) }) ?? true,
+              preferences.settingsMusicVolume.map({ $0.isFinite && (0...0.35).contains($0) }) ?? true,
               notes.reduce(0, { $0 + $1.drawing.count }) <= 4096,
               notes.reduce(0, { $0 + $1.drawing.reduce(0, { $0 + $1.points.count }) }) + (draft?.drawing.reduce(0, { $0 + $1.points.count }) ?? 0) <= 60000
         else { throw PlazaError.invalid("The plaza contains invalid or excessive records.") }
         for avatar in avatars { _ = try avatar.validated() }
         for app in apps {
             guard !app.label.isEmpty, app.label.count <= 60, app.bundleID.count <= 250,
+                  app.steamAppID.map({ $0 > 0 }) ?? true,
                   app.path.map({ $0.hasPrefix("/") && $0.hasSuffix(".app") && $0.count < 4096 }) ?? true,
                   (app.bookmark?.count ?? 0) < 65536, (app.customIcon?.count ?? 0) <= 250_000
             else { throw PlazaError.invalid("An app shortcut is invalid.") }

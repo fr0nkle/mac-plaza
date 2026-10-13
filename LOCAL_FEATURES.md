@@ -187,7 +187,7 @@ All 19 targeted custom-music, native-boundary and desktop tests passed (`.qa/mus
 
 ## Fuller icon groups — 12 October 2026
 
-New plazas default to 160 Miis, with a configurable 20–200 population and a Fill the plaza action for existing saves. Normal-density visitor spacing is now 0.012 of plaza width rather than 0.025; each group has a narrower horizontal and depth footprint. Four fifths of decorative visitors choose destinations near their home icon, keeping the groups populated over time. The remaining visitors roam; explicit friend activity assignments continue to take precedence. Local saved characters retain their central placement and movement. Low Power Mode still caps the crowd at 30.
+New plazas default to 160 Miis, with a configurable 20–200 population and a Fill the plaza action for existing saves. Normal-density visitor spacing is now 0.012 of plaza width rather than 0.025; each group has a narrower horizontal and depth footprint. Four fifths of decorative visitors choose destinations near their home icon, keeping the groups populated over time. The remaining visitors roam; explicit friend activity assignments continue to take precedence. Local saved characters retain their central placement and movement. The selected population now remains unchanged in Low Power Mode (see crowd consistency below).
 
 Model validation, simulation allocation, note target bounds and renderer capacity support 200 Miis. Authored body batches now hold 512 instances so paired limbs from 200 identical characters fit. Native tests completed with 80 passing, three optional checks skipped and zero failures (`.qa/dense-crowd-tests.log`), including actual FFL rendering of 200 identical characters, persisted population bounds, dense groups at every reference icon, and clearances across 8/10/12 shortcuts and three viewport sizes.
 
@@ -499,3 +499,169 @@ through live mouse gestures in the ordinary window. Test data uses an explicit
 shortcuts, backup, and renderer resources were preserved. A pauseMotion change
 made by the separately running regular app during verification was left intact.
 Results: .qa/drag-local-tests.log and .qa/drag-saved-*.json.
+
+
+### Restart verification — 12 October 2026
+
+Cleanly quit the regular app, confirmed the saved document was unchanged, and
+restarted Artifacts/Mac Plaza.app. The running About panel confirms version
+0.13.2 (17); wallpaper mode was restored. Change Apps and Back to Plaza both
+worked through native accessibility controls.
+
+The native wallpaper drag regression now optionally copies a local saved-document
+fixture into its temporary data directory. With the current 10-app, 4-avatar,
+1-note save as that fixture, all seven focused tests passed. The drag test exercises
+mouseDown/mouseDragged/mouseUp, forward and backward movement (including a label
+start), save persistence, Undo, outside cancellation, and cancellation when
+editing ends. It confirms the whole copied document is restored after Undo.
+Results: .qa/restart-wallpaper-tests.log.
+
+Physical pointer dragging on the actual wallpaper still cannot be replayed by
+Computer Use: it returns noWindowsAvailable before delivering input to a desktop
+level window. This is a verification limitation; the native window tests passed.
+The regular app was left running on the plaza, outside Change Apps.
+
+The real plaza.json, music configuration, and renderer assets remained byte-for-byte
+unchanged. Normal clean shutdown refreshed plaza.json.backup to the current saved
+document. A full before snapshot and comparison report are under
+.qa/restart-verification/20261012-172821/.
+
+
+## Crowd consistency — 12 October 2026
+
+The selected population is the total crowd, including local Miis, friends and
+filler visitors. A population of 60 produces exactly 60 active actors and 60
+rendered rigs; Low Power Mode no longer silently reduces it to 30. Safe mode
+continues to disable the 3D crowd.
+
+Two roster-change bugs were corrected. Filler appearance was selected using its
+absolute array index, so admitting a saved Mii or friend could change existing
+visitors' appearances. It now follows the stable visitor ordinal. Renderer frames
+previously carried only array positions, which let an in-flight old frame move
+newly reordered Miis. Frames now carry identities, the roster is identified
+before poses are sent, and the JavaScript renderer reuses surviving rigs and
+animation state by identity. Edited or newly replaced rigs start at the previous
+displayed pose; removed fallback geometry leaves its instance batches so it
+cannot draw ghost limbs. Ordinary roster updates no longer clear all rigs.
+
+Friend admission retains existing crowd members despite presence-list sorting,
+while explicit Mii assignments keep their priority. Temporary friend appearances
+survive short service gaps within the session; missing friends are still removed
+from the displayed roster immediately and sign-out clears the cache. Replacing
+one member of a full native crowd reuses the vacated position and movement state
+rather than creating an actor at a random destination. New-Mii completion retains
+its explicit center drop/wave choreography.
+
+All 46 focused regression checks completed with zero failures and one opt-in
+social visual review skipped (`.qa/crowd-consistency-regressions.log`). Tests cover
+60 unique actors, original and fallback renderer rig retention, reversed rosters
+and stale queued frames, repeated substitutions without extra instances, stable
+visitor appearances, unchanged survivor positions, one minute of continuous
+60-actor simulation, Low Power Mode, friend priority/refresh gaps, boot entrance,
+new-Mii completion, original animation playback and wallpaper lifecycle.
+
+Final slot-admission checks passed all seven tests in `.qa/crowd-consistency-final-tests.log`.
+The optimized build succeeded (`.qa/crowd-consistency-final-build.log`).
+
+The live Discord-connected restart also exercised a roster arriving during boot.
+Replacement actors now inherit both the original entrance rank and its final
+visible destination; copying only their current off-screen position could leave
+late-loaded friends outside the plaza. The added 56-friend startup regression,
+renderer/crowd checks and Mii completion checks passed all 12 tests
+(`.qa/crowd-consistency-boot-tests.log`); the final optimized build succeeded
+(`.qa/crowd-consistency-boot-build.log`).
+
+The final installed app was restarted with the live Discord roster. The full
+60-member crowd entered and settled in the plaza with motion enabled, and the
+population display remained at 60. The signed app and release/source archives
+were refreshed with this build.
+
+## Natural gatherings — 13 October 2026
+
+The crowd keeps its selected total and existing identity reconciliation. Roughly
+85% of unassigned Miis now gather by icons, including saved Miis; the smaller
+remaining cohort chooses open destinations between groups instead of across the
+whole plaza. Each icon has a slightly different skewed oval footprint. Original
+renderer targets use stable offsets derived from identity, preserving original
+neighbor spacing for conversations and dances without a rigid visible grid.
+Existing actors walk to new destinations; roster refreshes do not relocate them.
+Explicit app affinities and the center drop/wave for newly created Miis remain.
+
+All 30 focused optimized regression tests passed in
+`.qa/natural-gathering-tests.log`, including both real WebKit body renderers,
+60-member continuity, boot and arrival, original social playback, and two-minute
+natural-group simulations with original and fallback controllers. The sampled
+60-Mii layout kept more than 85% of position samples near icons while a minority
+walked at any moment. The arrival test now verifies background movement and
+individual animation clocks, allowing an idle gathering to remain stationary
+through the welcome.
+
+The optimized build completed successfully (`.qa/natural-gathering-build.log`).
+The installed app was restarted and visually checked with the live 60-Mii crowd
+and expanded icon layout: loose groups remained around icons and travelers kept
+moving between them. Code signing and both release ZIP integrity checks passed
+(`.qa/natural-gathering-package.log`).
+
+
+## Background speech listener music correction — 12 October 2026
+
+Native Settings showed automatic audio suppression despite Play music enabled, safe mode off, and the plaza volume at about 10%. Core Audio and process identity diagnostics identified macOS corespeechd (com.apple.CoreSpeech), which held both input and output streams open continuously. The activity detector now reads the owned Core Audio bundle ID property and excludes only this background speech listener. Other app output, microphone use, unknown identities, and Siri still suppress music; the existing 1.5-second quiet period and window/full-screen rules remain. No macOS speech settings are changed.
+
+All 11 automatic music, wallpaper playback, and crossfade checks passed (.qa/corespeech-music-tests.log), including background-listener exclusion with active browser/call streams and real external afplay detection. A live read using the corrected production detector confirmed that the same CoreSpeech streams no longer suppress playback.
+
+
+### Friends menu (0.13.3)
+
+A dedicated Friends icon sits between Change Apps and Settings. The searchable roster shows Discord availability, current custom statuses, recent games/app activity and shared notes. Selecting a friend shows their Mii and allows a local library Mii assignment for friends without their own shared Mii. Assignments use the existing account-scoped persistence and retain the friend identity, status and activities; their own shared Mii takes priority. Private Presentation hides roster details.
+
+In wallpaper mode Friends opens in the same resizable native panel shell as Mii Maker, retaining the wallpaper renderer and its simulation. Closing, Escape, or Back to plaza restores the original wallpaper input mode. Full-screen menus, explicit Pause Motion, Reduce Motion, safe mode and hidden renderers retain their existing suspension rules. Ordinary window mode presents Friends with the same sheet behavior as Mii Maker.
+
+The requested https://www.youtube.com/watch?v=e4y-KXu6syM Friend List recording is bundled as a separate 147-second offline AAC loop. Plaza, Friends and Mii Maker crossfade over 1.2 seconds, with rapid reversal retaining playback position. Friends has its own persisted 10% default volume, shared mute, and a separate import/preview/reset row in Settings. External audio/calls and sleep continue to suspend music. Optional friends volume decodes older saved plazas without migration.
+
+Verification includes native wallpaper hit areas and panel restoration; retained simulation eligibility; actual playback/crossfades between all three tracks; local assignment identity/status preservation; independent imported audio copies and backward-compatible volume validation.
+
+The optimized app was rebuilt and passed deep/strict signature verification (.qa/corespeech-music-release.log). After a clean native-menu restart, Settings showed Play music on, safe mode off, enabled Preview buttons, and no automatic audio mute notice. Core Audio confirmed the restarted Mac Plaza process producing output alongside the ignored CoreSpeech listener. The plaza was left open with music at about 10%.
+
+
+## Installed Steam game shortcuts — 12 October 2026
+
+The original Add App picker only browsed application bundles, making games inside Steam’s hidden Library/Application Support folder difficult to discover. Balatro was verified installed as a native Mac app with Steam ID 2379780. Change Apps now has Add Steam Game; Settings and the File menu also open the searchable multi-select picker. It reads local Steam libraryfolders.vdf and installed app manifests across the default and additional libraries, finds native Mac game bundles, and uses each game’s own icon. No Steam account or network access is needed for discovery. Missing drives, incomplete downloads, Windows-only folders, malformed manifest targets, and missing executables are excluded.
+
+Shortcuts retain a validated optional Steam app ID alongside the existing app identity/bookmark. Launch verifies the current installed manifest and opens a fixed numeric steam://rungameid/<id> URL with the Steam application, preserving Steam’s launch options. Regular app launch remains native. Existing manually selected Steam game bundles acquire the same identity, and older game shortcuts are recognized at launch. Game previews identify Steam games without displaying an engine version as the game’s version. Replacement retains position, custom label and icon; additions support duplicate detection and layout undo. Portable exports omit local paths/bookmarks and retain the public game ID; imported shortcuts still require reconnecting to a local application. The picker takes the plaza to the page containing the selected game.
+
+All 23 targeted checks passed (.qa/steam-games-tests.log): discovery across libraries, quoted names, installed-state filtering, manifest/path boundaries, numeric launch targets, actual installed Balatro and its icon, persistence, old document decoding, portable export, duplicate/replacement/undo behavior, mismatched identities, normal app picking, metadata, app arrangement and core storage regressions. No game was launched by the tests.
+
+The optimized app was rebuilt (.qa/steam-games-release.log) and passed deep/strict signature verification. Live native UI verification found Balatro in Change Apps → Add Steam Game, selected it, enabled Add to Home Screen, and added its shortcut. The resulting plaza tile and Steam game preview were verified, including Ready to open and Open Balatro; the saved document contains steamAppID 2379780. The plaza was left open with the new shortcut. No game was launched during verification.
+
+
+## Steam game artwork and descriptions — 13 October 2026
+
+Zoomed Steam previews now show game cover/header artwork and the public Steam store short description before launch. The native card keeps availability, Open, notes and shortcut settings outside its scrolling details area. Shorter windows use a compact artwork/title row; the full card uses a larger cover banner. Native Mac app previews retain installed metadata and local descriptions.
+
+SteamGameDetailsStore reads existing Steam library artwork, including hashed library_header cache folders and older cache layouts. Previewing a game fetches public basic details by numeric app ID from the Steam store; only trusted Steam/CDN HTTPS image hosts are accepted, identity is checked, descriptions are converted to bounded plain text, image downloads and dimensions are bounded, and images are normalized locally. The ephemeral session sends no login credentials or cookies. Public results are cached separately from plaza exports, refreshed after seven days, and retained through outages or unavailable store entries. Concurrent lookups for a game are shared, failures back off, and switching previews cannot show another game’s details. Launch does not wait for network results.
+
+All 11 focused Steam preview, shortcut and normal app metadata checks passed (.qa/steam-preview-tests.log), including mocked concurrent requests, cache reload without networking, stale/offline cache retention, local hashed artwork, separate game identities, HTML/entity conversion, URL/image validation, actual installed Balatro discovery and the opt-in live Steam preview. Full and compact native card captures were reviewed at .qa/steam-preview-fixture/balatro-preview-510.png and balatro-preview-340.png. No game was launched by these checks.
+
+The optimized app was rebuilt (.qa/steam-preview-release.log) and passed deep/strict signature verification. After a clean native-menu restart, the live Balatro zoom preview showed its cover art, Steam store description, attribution, Ready to open and Open Balatro. The full plaza view was visually checked with the enlarged icon and gathered Miis beside the information card. The preview was left open for inspection; no game was launched.
+
+
+## Floating Settings over the wallpaper — 13 October 2026
+
+Settings now shares the native wallpaper overlay routing used by Mii Maker and Friends. It opens as MacPlazaDesktopSettings over the existing plaza renderer, keeping the ordinary companion window hidden and the visible crowd walking. Settings has a responsive scrollable form rather than a scaled fixed-height sheet. Back to Plaza, Escape and the panel close button restore plaza interaction; switching among Settings, Mii Maker and Friends retains the renderer. Settings keeps the plaza soundtrack, respects automatic music suppression, and stops/discards an in-progress music audition/selection when closed. Turning wallpaper mode off still restores Settings in the ordinary app window.
+
+All 10 focused Settings overlay, desktop lifecycle, Friends/Mii Maker switching, wallpaper audio and custom music checks passed (.qa/settings-overlay-tests.log). Coverage includes retaining the renderer, input ownership, normal-window suppression, close/return behavior, preview cleanup, passive desktop state, and leaving wallpaper mode.
+
+The optimized app was rebuilt (.qa/settings-overlay-release.log) and passed deep/strict signature verification. Live native UI checks confirmed the Settings button and Command-comma both open the Settings dialog with MacPlazaDesktopSettings, Back to Plaza returns to MacPlazaWallpaper, the form fits the floating panel and scrolls, and music preview controls remain available when no automatic mute condition applies. Settings was left open for inspection.
+
+
+## Wii U–inspired Settings categories and original music — 13 October 2026
+
+Settings opens as a nine-category icon menu: Music & Sound, Home Screen, Screen & Startup, Miis & Motion, Friends, Mii Appearance, Data Management, System Update, and System & Recovery. Glossy white category tiles, colored feature icons, an orange wrench header, a subtle patterned background and rounded Back controls echo the original Wii U menu. Each category reveals only its existing controls; the bottom icon strip jumps between categories. Escape returns to Categories, then to the plaza. Compact layouts fit all nine tiles down to the overlay’s 640×507 minimum. Recovery sessions open directly to recovery options. All prior control bindings remain available. Leaving Music & Sound stops previews and discards unapplied imports.
+
+Settings now selects its own system-settings soundtrack, with a saved optional settingsMusicVolume (10% default, validated 0–35%). The requested video was verified in the browser as “11. System Settings | Wii U System Soundtrack” by LuisFerLCC 2. YouTube direct retrieval was blocked, so the original 117.984-second System Settings (TV) recording was obtained from the archive explicitly credited in that video, then converted to stereo AAC with original pitch/speed. Source URLs and the original MP3 checksum are recorded in Resources/Audio/SOURCE.txt.
+
+Music & Sound includes separate Settings Import, Preview/Stop, Use Music/Cancel, volume and Use Default controls alongside Plaza, Mii Maker and Friends. Existing independent imports, persistence, smooth crossfades, other-audio/call/window suppression, saved mute, sleep and safe mode policies apply. Settings refreshes audio on appearance and volume change. Closing Settings returns to the plaza soundtrack.
+
+All 25 focused Settings, audio transition, suppression, custom music, wallpaper, desktop and Friends checks passed (.qa/settings-categories-music-tests.log). New checks decode the actual bundled recording, verify legacy defaults and volume bounds, stage/apply/persist an independent replacement, preview/restore it, exercise Settings crossfades and automatic suppression, and preserve saved mute. Opt-in native captures cover the category grid at full/minimum size, Music & Sound, Screen & Startup and Recovery (.qa/settings-categories/). Browsing the captured categories leaves the saved document unchanged.
+
+The optimized app was rebuilt (.qa/settings-categories-music-release.log), includes the Settings recording, and passed deep/strict signature verification. Live native UI checks confirmed MacPlazaDesktopSettings presents the nine category buttons and a separate Miis & Motion page with the bottom category strip. Native UI inspection intermittently timed out after restart, but the running app later reconnected and the categories were verified. Active external output/input streams were present during final audio inspection, so the app correctly remained automatically muted under the existing policy. Full music controls and replacement behavior were verified by the native capture and playback/import tests above.

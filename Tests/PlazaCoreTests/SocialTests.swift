@@ -26,6 +26,8 @@ final class SocialTests: XCTestCase {
         friends[223].locallyAssignedAvatar = true
         let original = friends
         let selected = FriendMiiAssignments.plazaFriends(friends, capacity: 5)
+        XCTAssertEqual(FriendMiiAssignments.plazaFriends(Array(friends.reversed()),capacity:5,retaining:selected.map(\.avatar.id)),selected,
+                       "Presence sorting must not rotate the visible crowd or change its order")
         XCTAssertEqual(selected, [friends[160], friends[223], friends[0], friends[1], friends[2]],
                        "Assigned friends beyond the crowd cutoff must be admitted, including offline friends.")
         XCTAssertEqual(friends, original, "Priority must not mutate the underlying roster.")
@@ -211,7 +213,8 @@ final class SocialTests: XCTestCase {
         XCTAssertNotEqual(assignments.resolve(shared: [], unlinked: [profile]).first?.avatar.id, first.avatar.id)
         let renewed = assignments.resolve(shared: [], unlinked: [profile]).first?.avatar.id
         _ = assignments.resolve(shared: [], unlinked: [])
-        XCTAssertNotEqual(assignments.resolve(shared: [], unlinked: [profile]).first?.avatar.id, renewed)
+        XCTAssertEqual(assignments.resolve(shared: [], unlinked: [profile]).first?.avatar.id, renewed,
+                       "A temporary service gap must not generate a different Mii")
     }
 
     func testUnlinkedRosterValidationAndOldSnapshotCompatibility() throws {

@@ -43,6 +43,8 @@ struct PlazaView: View {
         .onChange(of:model.document.preferences.musicVolume) { _,_ in updateAudio() }
         .onChange(of:model.musicTrack) { _,_ in updateAudio() }
         .onChange(of:model.document.preferences.makerMusicVolume) { _,_ in updateAudio() }
+        .onChange(of:model.document.preferences.friendsMusicVolume) { _,_ in updateAudio() }
+        .onChange(of:model.document.preferences.settingsMusicVolume) { _,_ in updateAudio() }
         .onAppear { updateAudio() }
     }
     var body: some View {
@@ -179,7 +181,7 @@ struct PlazaView: View {
                       HStack {
                           Spacer()
                           PlazaControlSurface { PlazaHomeControls(model: model) }
-                              .frame(width: 284, height: model.editing ? 122 : 70)
+                              .frame(width: 374, height: model.editing ? 122 : 70)
                       }
                       Spacer()
                   }.padding(18).zIndex(1)
@@ -196,7 +198,7 @@ struct PlazaView: View {
               }
               if let selected {
                   Color.clear.contentShape(Rectangle()).onTapGesture { closePreview() }.accessibilityHidden(true)
-                  AppPreviewView(model: model, app: selected, close: closePreview)
+                  AppPreviewView(model: model, app: selected, close: closePreview, maximumHeight: max(240, proxy.size.height - 70))
                       .frame(width: min(360, proxy.size.width * 0.34))
                       .position(x: proxy.size.width * 0.72, y: proxy.size.height * 0.46)
                       .transition(.asymmetric(insertion: .opacity.animation(.easeOut(duration: 0.25).delay(reduceMotion ? 0 : 0.38)), removal: .opacity.animation(.easeOut(duration: 0.12))))
@@ -324,7 +326,7 @@ struct PlazaView: View {
             HStack {
                 Text(model.status).lineLimit(1)
                 Spacer()
-                Text(model.lowPower ? "Low Power Mode · 30 visitors" : model.isMoving ? "Local rendering · 30 fps" : "Local rendering · Still plaza")
+                Text(model.isMoving ? "Local rendering · 30 fps" : "Local rendering · Still plaza")
             }.font(.system(size: 10 + (model.document.preferences.largerText == true ? 2 : 0))).foregroundStyle(.secondary).padding(.horizontal, 30).padding(.top, 12).padding(.bottom, 17)
         }.background(.white.opacity(0.55))
     }

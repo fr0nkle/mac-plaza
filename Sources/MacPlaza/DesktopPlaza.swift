@@ -2,17 +2,17 @@ import AppKit
 import CoreGraphics
 import SwiftUI
 
-/// One desktop renderer. Mii Maker floats over it in a native panel; the normal
-/// window hosts other sheets without competing for PlazaScene's connection.
+/// One desktop renderer. Mii Maker, Friends and Settings float over it; the
+/// normal window hosts other sheets without competing for the scene connection.
 @MainActor
 final class DesktopPlazaController: NSObject, NSWindowDelegate {
     static let preferenceKey = "MacPlaza.WallpaperEnabled"
     private weak var model: PlazaModel?
     private let defaults: UserDefaults
     private(set) var window: DesktopPlazaWindow?
-    private(set) var makerWindow: NSPanel?
-    private var makerObservations: [NSObjectProtocol] = []
-    private var afterMakerLeavesFullScreen:(()->Void)?
+    private(set) var menuWindow: NSPanel?
+    private var menuObservations: [NSObjectProtocol] = []
+    private var afterMenuLeavesFullScreen:(()->Void)?
     private var observations: [NSObjectProtocol] = []
     private var windowObservation: NSObjectProtocol?
     private var escapeMonitor: Any?
@@ -88,7 +88,7 @@ final class DesktopPlazaController: NSObject, NSWindowDelegate {
         if model.sheet == nil && model.error == nil { model.window?.orderOut(nil) }
         else { presentCompanionIfNeeded() }
         setInteractive(interactive && model.sheet == nil && model.error == nil, activate: activate,
-                       keepAboveDesktopIcons: makerWindow != nil)
+                       keepAboveDesktopIcons: menuWindow != nil)
         window?.orderFrontRegardless()
         updateVisibility()
         model.updateAudio()
@@ -114,7 +114,7 @@ final class DesktopPlazaController: NSObject, NSWindowDelegate {
 
     func returnToDesktop(activateFinder: Bool = true) {
         guard let model, model.wallpaperEnabled else { return }
-        if makerWindow != nil {model.sheet=nil}
+        if menuWindow != nil {model.sheet=nil}
         let wasInteractive = model.desktopInteractive
         model.previewAppID = nil
         model.editing = false
@@ -132,7 +132,7 @@ final class DesktopPlazaController: NSObject, NSWindowDelegate {
         model.desktopVisible = false
         companionPresented = false
         interactionBeforeCompanion = false
-        closeMakerWindow()
+        closeMenuWindow()
         if !model.demo { defaults.set(false, forKey: Self.preferenceKey) }
         releaseWindow()
         if showWindow {
@@ -145,9 +145,9 @@ final class DesktopPlazaController: NSObject, NSWindowDelegate {
 
     func presentCompanionIfNeeded() {
         guard let model, model.wallpaperEnabled else { return }
-        if model.sheet?.id == "characters" {presentMaker();return}
-        if !companionPresented && makerWindow == nil { interactionBeforeCompanion = model.desktopInteractive }
-        closeMakerWindow()
+        if model.sheet?.isFloatingMenu == true {presentMenu();return}
+        if !companionPresented && menuWindow == nil { interactionBeforeCompanion = model.desktopInteractive }
+        closeMenuWindow()
         setInteractive(false)
         companionPresented = true
         model.window?.deminiaturize(nil)
@@ -156,77 +156,81 @@ final class DesktopPlazaController: NSObject, NSWindowDelegate {
     }
 
     func dismissCompanionIfNeeded() {
-        guard let model, model.wallpaperEnabled, (companionPresented || makerWindow != nil), model.error == nil else { return }
-        let wasMaker=makerWindow != nil
-        closeMakerWindow()
+        guard let model, model.wallpaperEnabled, (companionPresented || menuWindow != nil), model.error == nil else { return }
+        let wasMenu=menuWindow != nil
+        closeMenuWindow()
         companionPresented = false
         model.window?.orderOut(nil)
-        setInteractive(interactionBeforeCompanion, activate: wasMaker && interactionBeforeCompanion)
+        setInteractive(interactionBeforeCompanion, activate: wasMenu && interactionBeforeCompanion)
         interactionBeforeCompanion = false
     }
 
-    private func presentMaker() {
+    private func presentMenu() {
         guard let model, let wallpaper=window else{return}
-        if !companionPresented && makerWindow == nil {interactionBeforeCompanion=model.desktopInteractive}
+        if !companionPresented && menuWindow == nil {interactionBeforeCompanion=model.desktopInteractive}
         companionPresented=false
         model.window?.orderOut(nil)
         // Keep the same renderer above Finder's icons while the panel owns input.
         setInteractive(false,activate:false,keepAboveDesktopIcons:true)
-        if makerWindow == nil {
+        let friends = model.sheet?.id == "friends"
+        let settings = model.sheet?.id == "preferences"
+        let identifier = settings ? "MacPlazaDesktopSettings" : friends ? "MacPlazaDesktopFriends" : "MacPlazaDesktopMiiMaker"
+        if let panel = menuWindow, panel.identifier?.rawValue != identifier { closeMenuWindow() }
+        if menuWindow == nil {
             let area=(wallpaper.screen ?? Self.targetScreen)?.visibleFrame ?? wallpaper.frame
-            let size=NSSize(width:min(960,area.width-40),height:min(760,area.height-48))
+            let size=NSSize(width:min(settings ? 760 : 960,area.width-40),height:min(settings ? 820 : 760,area.height-48))
             let panel=NSPanel(contentRect:NSRect(origin:.zero,size:size),
                               styleMask:[.titled,.closable,.resizable,.fullSizeContentView],backing:.buffered,defer:false)
-            panel.title="Mii Maker"
-            panel.identifier=NSUserInterfaceItemIdentifier("MacPlazaDesktopMiiMaker")
+            panel.title = settings ? "Settings" : friends ? "Friends" : "Mii Maker"
+            panel.identifier=NSUserInterfaceItemIdentifier(identifier)
             panel.titleVisibility = .hidden;panel.titlebarAppearsTransparent=true
             panel.isReleasedWhenClosed=false;panel.hidesOnDeactivate=false
             panel.isMovableByWindowBackground=false
             panel.collectionBehavior=[.moveToActiveSpace,.fullScreenPrimary]
             panel.contentMinSize=NSSize(width:640,height:507)
             panel.delegate=self
-            panel.contentView=NSHostingView(rootView:DesktopMiiMakerRoot(model:model))
+            panel.contentView=NSHostingView(rootView:DesktopMenuRoot(model:model))
             panel.setFrameOrigin(NSPoint(x:area.midX-panel.frame.width/2,y:area.midY-panel.frame.height/2))
-            makerWindow=panel
+            menuWindow=panel
             for name in [NSWindow.didChangeOcclusionStateNotification,NSWindow.didMiniaturizeNotification,NSWindow.didDeminiaturizeNotification] {
-                makerObservations.append(NotificationCenter.default.addObserver(forName:name,object:panel,queue:.main) { [weak self] _ in
-                    Task { @MainActor in self?.updateMakerVisibility() }
+                menuObservations.append(NotificationCenter.default.addObserver(forName:name,object:panel,queue:.main) { [weak self] _ in
+                    Task { @MainActor in self?.updateMenuVisibility() }
                 })
             }
         }
-        makerWindow?.makeKeyAndOrderFront(nil)
+        menuWindow?.makeKeyAndOrderFront(nil)
         NSApp.activate(ignoringOtherApps:true)
-        updateMakerVisibility()
+        updateMenuVisibility()
     }
 
-    private func updateMakerVisibility() {
-        model?.desktopMakerVisible=makerWindow.map {$0.isVisible && !$0.isMiniaturized && $0.occlusionState.contains(.visible)} ?? false
+    private func updateMenuVisibility() {
+        model?.desktopMenuVisible=menuWindow.map {$0.isVisible && !$0.isMiniaturized && $0.occlusionState.contains(.visible)} ?? false
     }
 
-    private func closeMakerWindow() {
-        makerObservations.forEach(NotificationCenter.default.removeObserver);makerObservations=[]
-        if let panel=makerWindow {panel.delegate=nil;panel.orderOut(nil);panel.contentView=nil;panel.close()}
-        makerWindow=nil;model?.desktopMakerVisible=false;model?.makerFullScreen=false
-        afterMakerLeavesFullScreen=nil
+    private func closeMenuWindow() {
+        menuObservations.forEach(NotificationCenter.default.removeObserver);menuObservations=[]
+        if let panel=menuWindow {panel.delegate=nil;panel.orderOut(nil);panel.contentView=nil;panel.close()}
+        menuWindow=nil;model?.desktopMenuVisible=false;model?.menuFullScreen=false
+        afterMenuLeavesFullScreen=nil
     }
 
     func closeMakerForArrival(_ reveal:@escaping ()->Void) {
-        if let panel=makerWindow,panel.styleMask.contains(.fullScreen) {
-            afterMakerLeavesFullScreen=reveal
+        if let panel=menuWindow,panel.styleMask.contains(.fullScreen) {
+            afterMenuLeavesFullScreen=reveal
             panel.toggleFullScreen(nil)
         } else {reveal()}
     }
 
     func windowWillEnterFullScreen(_ notification:Notification) {
-        if notification.object as? NSWindow === makerWindow {model?.makerFullScreen=true}
+        if notification.object as? NSWindow === menuWindow {model?.menuFullScreen=true}
     }
     func windowDidExitFullScreen(_ notification:Notification) {
-        guard notification.object as? NSWindow === makerWindow else{return}
-        model?.makerFullScreen=false
-        let reveal=afterMakerLeavesFullScreen;afterMakerLeavesFullScreen=nil;reveal?()
+        guard notification.object as? NSWindow === menuWindow else{return}
+        model?.menuFullScreen=false
+        let reveal=afterMenuLeavesFullScreen;afterMenuLeavesFullScreen=nil;reveal?()
     }
     func windowDidFailToEnterFullScreen(_ window:NSWindow) {
-        if window === makerWindow {model?.makerFullScreen=false}
+        if window === menuWindow {model?.menuFullScreen=false}
     }
 
     private func setInteractive(_ interactive: Bool, activate: Bool = true, keepAboveDesktopIcons:Bool=false) {
@@ -273,14 +277,14 @@ final class DesktopPlazaController: NSObject, NSWindowDelegate {
     }
 
     func windowShouldClose(_ sender: NSWindow) -> Bool {
-        if sender === makerWindow {model?.sheet=nil;return false}
+        if sender === menuWindow {model?.sheet=nil;return false}
         returnToDesktop()
         return false
     }
 
     func shutdown() {
         // Keep the saved preference so the next launch can restore wallpaper mode.
-        closeMakerWindow();releaseWindow()
+        closeMenuWindow();releaseWindow()
         observations.forEach(NotificationCenter.default.removeObserver)
         observations.removeAll()
     }
@@ -298,13 +302,24 @@ final class DesktopPlazaController: NSObject, NSWindowDelegate {
     }
 }
 
-private struct DesktopMiiMakerRoot:View {
+private struct DesktopMenuRoot:View {
     @ObservedObject var model:PlazaModel
     var body:some View {
         GeometryReader { proxy in
             let scale=min(1,proxy.size.width/960,proxy.size.height/760)
-            MiiMakerView(model:model,onClose:{model.sheet=nil})
-                .scaleEffect(scale)
+            Group {
+                if model.sheet?.id == "preferences" {
+                    PreferencesView(model: model, fillsOverlay: true)
+                } else {
+                    Group {
+                        if model.sheet?.id == "friends" {
+                            FriendsMenuView(model: model, social: model.social, onClose: { model.sheet = nil })
+                        } else {
+                            MiiMakerView(model:model,onClose:{model.sheet=nil})
+                        }
+                    }.scaleEffect(scale)
+                }
+            }
                 .frame(width:proxy.size.width,height:proxy.size.height)
         }
         .background(MakerBackground())
@@ -353,19 +368,20 @@ struct WallpaperCompanionView: View {
     }
 }
 
-/// Wallpaper Mii Maker uses its own panel; other sheets use the normal window.
+/// Mii Maker, Friends and Settings share a native panel shell above the wallpaper.
 struct PlazaPanels: ViewModifier {
     @ObservedObject var model: PlazaModel
     func body(content: Content) -> some View {
-        content.sheet(item: Binding(get:{model.wallpaperEnabled && model.sheet?.id == "characters" ? nil:model.sheet},set:{value in
-            // Dismissing a previous companion sheet must not close the maker
+        content.sheet(item: Binding(get:{model.wallpaperEnabled && model.sheet?.isFloatingMenu == true ? nil:model.sheet},set:{value in
+            // Dismissing a previous companion sheet must not close the menu
             // panel that has just replaced it.
-            if model.wallpaperEnabled && model.sheet?.id == "characters" {return}
+            if model.wallpaperEnabled && model.sheet?.isFloatingMenu == true {return}
             model.sheet=value
         })) { sheet in
             Group {
                 switch sheet {
                 case .characters: MiiMakerView(model: model)
+                case .friends: FriendsMenuView(model: model, social: model.social)
                 case .profile(let avatar): CharacterProfileView(model: model, avatar: avatar)
                 case .friend(let friend): FriendProfileView(model: model, social: model.social, initial: friend)
                 case .social: SocialSettingsView(model: model, social: model.social)
@@ -373,6 +389,7 @@ struct PlazaPanels: ViewModifier {
                 case .feed: FeedView(model: model)
                 case .preferences: PreferencesView(model: model)
                 case .app(let app): AppDetailsView(model: model, appID: app.id)
+                case .steamGames(let app): SteamGamePicker(model: model, replacing: app)
                 }
             }
             .preferredColorScheme(.light)

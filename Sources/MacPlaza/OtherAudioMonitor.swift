@@ -7,10 +7,15 @@ enum AudioProcessActivity {
         let pid: pid_t
         let output: Bool
         let input: Bool
+        var bundleID: String? = nil
     }
 
     static func hasOtherActivity(_ processes: [ProcessState], ownPID: pid_t) -> Bool {
-        processes.contains { $0.pid > 0 && $0.pid != ownPID && ($0.output || $0.input) }
+        processes.contains {
+            // CoreSpeech keeps silent input/output streams open for background
+            // speech detection. Those streams are not app playback or a call.
+            $0.pid > 0 && $0.pid != ownPID && $0.bundleID != "com.apple.CoreSpeech" && ($0.output || $0.input)
+        }
     }
 
     static func snapshot() -> [ProcessState]? {
@@ -29,13 +34,23 @@ enum AudioProcessActivity {
             guard let pid = value(object, kAudioProcessPropertyPID), pid > 0 else { return nil }
             return ProcessState(pid: pid_t(bitPattern: pid),
                                 output: value(object, kAudioProcessPropertyIsRunningOutput).map { $0 != 0 } ?? false,
-                                input: value(object, kAudioProcessPropertyIsRunningInput).map { $0 != 0 } ?? false)
+                                input: value(object, kAudioProcessPropertyIsRunningInput).map { $0 != 0 } ?? false,
+                                bundleID: bundleID(object))
         }
     }
 
     private static func property(_ selector: AudioObjectPropertySelector) -> AudioObjectPropertyAddress {
         AudioObjectPropertyAddress(mSelector: selector, mScope: kAudioObjectPropertyScopeGlobal,
                                    mElement: kAudioObjectPropertyElementMain)
+    }
+    private static func bundleID(_ object: AudioObjectID) -> String? {
+        var address = property(kAudioProcessPropertyBundleID)
+        var size = UInt32(MemoryLayout<Unmanaged<CFString>?>.size)
+        var result: Unmanaged<CFString>?
+        guard AudioObjectGetPropertyData(object, &address, 0, nil, &size, &result) == noErr,
+              let result else { return nil }
+        // Core Audio transfers ownership of this property to the caller.
+        return result.takeRetainedValue() as String
     }
     private static func value(_ object: AudioObjectID, _ selector: AudioObjectPropertySelector) -> UInt32? {
         var address = property(selector), size = UInt32(MemoryLayout<UInt32>.size), result: UInt32 = 0

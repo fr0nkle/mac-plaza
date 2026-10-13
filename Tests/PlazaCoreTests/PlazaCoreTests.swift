@@ -49,6 +49,22 @@ final class PlazaCoreTests: XCTestCase {
         doc.avatars = []
         XCTAssertThrowsError(try doc.validated())
     }
+    func testOneHundredCustomMiisRoundTripAndExcessIsRejected() async throws {
+        var doc = PlazaDocument()
+        doc.avatars = (0..<100).map { Avatar(name: "Mii \($0)", outfit: $0 % 12) }
+        doc.primaryAvatarID = doc.avatars.last?.id
+        doc.notes = [LocalNote(authorID: doc.avatars[99].id, author: "Mii 99", appID: nil, text: "Hello")]
+        XCTAssertEqual(try DocumentStorage.decode(JSONEncoder().encode(doc)), doc)
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let storage = DocumentStorage(url: directory.appendingPathComponent("plaza.json"))
+        try await storage.save(doc, revision: 1)
+        let saved = try await storage.load()
+        XCTAssertEqual(saved, doc)
+        doc.avatars.append(Avatar(name: "One too many", outfit: 0))
+        XCTAssertThrowsError(try doc.validated())
+        XCTAssertThrowsError(try DocumentStorage.decode(JSONEncoder().encode(doc)))
+    }
     func testTextLimitCountsUserPerceivedCharacters() throws {
         var doc = PlazaDocument()
         let text = String(repeating: "👨‍👩‍👧‍👦", count: 280)

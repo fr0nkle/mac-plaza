@@ -62,6 +62,9 @@ final class FriendNotesView: NSView {
     private let owner = UUID()
     private weak var scene: PlazaScene?
     private var friends: [SharedMii] = []
+    private var friendPostVariations: [String: Int] = [:]
+    private var selectedVariations: [String: Int] = [:]
+    private var variationRotation: Int?
     private var candidates: [PlazaSpeechPost] = []
     private var journalPost: PlazaSpeechPost?
     private var activePostID: String?
@@ -111,7 +114,19 @@ final class FriendNotesView: NSView {
             candidates = rendered.contains(journalPost.speaker.id) ? [journalPost] : []
         } else {
             let visible = showPosts ? friends.filter { rendered.contains($0.avatar.id) } : []
-            candidates = visible.isEmpty ? [] : (0..<min(6, visible.count)).map { PlazaSpeechPost.friend(visible[(rotation + $0) % visible.count]) }
+            let selected = visible.isEmpty ? [] : (0..<min(6, visible.count)).map { visible[(rotation + $0) % visible.count] }
+            if !selected.isEmpty, variationRotation != rotation {
+                let ids = Set(friends.map(\.id))
+                friendPostVariations = friendPostVariations.filter { ids.contains($0.key) }
+                selectedVariations = [:]
+                for friend in selected {
+                    let variation = friendPostVariations[friend.id, default: 0]
+                    selectedVariations[friend.id] = variation
+                    friendPostVariations[friend.id] = variation + 1
+                }
+                variationRotation = rotation
+            }
+            candidates = selected.map { PlazaSpeechPost.friend($0, variation: selectedVariations[$0.id, default: 0]) }
         }
         if let activePostID, !candidates.contains(where: { $0.id == activePostID }) { self.activePostID = nil }
         scene?.attachNotes(owner: owner, targets: candidates.map { $0.speaker.id }) { [weak self] positions in

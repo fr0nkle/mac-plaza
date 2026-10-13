@@ -126,7 +126,11 @@ To choose a custom stand-in, click the friend’s Mii or friends-list entry and 
 
 The snapshot adds an optional `unlinkedFriends` array containing only accepted friends without published Miis, with consent-filtered presence and activity. Existing `friends` records retain their required avatars, so older clients keep working. New clients also accept snapshots from older services, without fallback records.
 
-Overhead cards follow animated heads in both renderers. A current visible custom Discord status takes priority, followed by a current Discord game, a shared authored note, and available app activity. Generic online/idle/do-not-disturb/offline and In Plaza bubbles are hidden. At most two friend cards appear alongside the existing journal card; cards avoid launch controls, the journal card, and one another. Cycling pauses on hover or Pause Posts. Private presentation, safe mode, and app previews hide them. The native accessible list exposes friend names, availability, notes, and profiles without relying on the 3D scene.
+Discord games observed through the shared-server bot are remembered on the viewer's Mac for two hours after a confirmed stop. Friends do not need a Plaza account or linked Mii: assigned and random stand-ins retain the activity and gather around the matching visible app. A new game replaces the previous game. The local history survives relaunches, is scoped to the viewer's Discord account and service, and is excluded from portable exports. A relaunch or connection gap uses the last known observation conservatively and never renews the two-hour window. Fresh loss of shared-server coverage, friend removal, hiding/blocking, disabling game display, and unlinking clear the applicable history. Only previously observed games can be remembered; hidden Discord activity and unobserved play sessions are not inferred.
+
+Clicking an app shows **Friends around this app**, with each rendered friend's Mii, name, and **Playing now**, **Using now**, **Recently played**, or **Recently used** plus elapsed time. This list uses the same app matching and expiry as crowd gathering, includes offline friends with remembered games, and hides friend details in Private Presentation. Recently played games also remain eligible for the rotating homescreen's installed-game selection during the two-hour window.
+
+Overhead cards follow animated heads in both renderers. A current visible custom Discord status takes priority, followed by a current Discord game, a shared authored note, and available app activity. Remembered Discord games alternate with the primary text on successive friend-post intervals, using text such as “Exotic_Panda was recently playing Great Game.” Generic online/idle/do-not-disturb/offline and In Plaza bubbles are hidden. Cards avoid launch controls and reserved UI. Cycling pauses on hover or Pause Posts. Private presentation, safe mode, and app previews hide them. The native accessible list exposes friend names, availability, notes, and profiles without relying on the 3D scene.
 
 ## Remote pilot deployment
 
@@ -156,3 +160,17 @@ cd Server
 ```
 
 These cover shared guild membership, exclusion of other servers/listening/offline observations, stop/disconnect clearing, authenticated viewer identity, blocked profiles, request limits, and activity lookup without invitations.
+
+
+## Shared journal notes (0.15)
+
+Authenticated `PUT /v1/notes` atomically replaces only the caller’s public notes (up to 200, 60,000 drawing points total). Empty replacements retract all notes. `GET /v1/notes` returns up to 300 recent notes from the existing authorized friend audience, honoring blocks and expired/revoked Discord grants. Drawings and author appearances are validated; author/note UUIDs are scoped to the authenticated publisher. The service stores only the public projection, with no private replies, drafts, bookmarks or launch paths. Journal requests allow up to 4 MB; other endpoints retain their existing request limits. A failed validation leaves the previous publication intact. Existing databases gain a journal_notes table at startup.
+
+Public-note audiences are independent of profile sharing. Publishing any public notes enables that account’s journal audience; retracting all notes clears journal-only grants. Saving a private profile does not revoke public notes. No existing private journal is uploaded until its owner marks notes public.
+
+
+## Shared interactions (0.16)
+
+`GET /v1/notes/threads` includes the caller’s own public notes as well as friend notes, with validated `sourceID`, `likeCount`, viewer-specific `liked`, and shared `replies`. The legacy `GET /v1/notes` continues to exclude own notes for older clients. Authenticated `PUT /v1/notes/<note UUID>/like` sets an explicit boolean `liked` (one row per account). `PUT /v1/notes/<note UUID>/replies/<reply UUID>` creates or edits an idempotent text/Mii reply; `DELETE` removes it. Authors may edit/delete their own replies, and note publishers may delete replies on their own notes. Every operation checks the current publisher-granted audience and blocks. Request-supplied owner IDs and dates cannot override the authenticated actor or server timestamp.
+
+Journal publication now upserts retained note rows and deletes only retracted notes, preserving likes/replies during edits and reconnects. Retraction/account deletion cascades related data. Replies are capped at 50 per note and 2,000 per author; likes at 10,000 per note. Snapshot totals remain bounded at 300 notes, 2,000 replies, 60,000 drawing points and 3.5 MB. No private local replies are uploaded.

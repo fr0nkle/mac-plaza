@@ -12,6 +12,7 @@ final class AppReorderingTests: XCTestCase {
         defer { try? FileManager.default.removeItem(at: directory) }
         for _ in 0..<200 where !model.loaded { try await Task.sleep(for: .milliseconds(10)) }
         XCTAssertTrue(model.loaded)
+        model.mutate { $0.preferences.rotatingHomeScreen = false }
         let apps = (0..<14).map { AppIsland(label: "App \($0)", bundleID: "test.app\($0)") }
         model.mutate { $0.apps = apps }
         let original = model.document
@@ -46,6 +47,7 @@ final class AppReorderingTests: XCTestCase {
         defer { try? FileManager.default.removeItem(at: directory) }
         for _ in 0..<200 where !model.loaded { try await Task.sleep(for: .milliseconds(10)) }
         XCTAssertTrue(model.loaded)
+        model.mutate { $0.preferences.rotatingHomeScreen = false }
         let apps = (0..<3).map { AppIsland(label: "App \($0)", bundleID: "test.app\($0)") }
         model.mutate { $0.apps = apps }
         let original = model.document

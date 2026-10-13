@@ -116,7 +116,7 @@ struct CharacterEditor: View {
                     Button("Reset") {let id=avatar.id;avatar=Avatar(name:avatar.name);avatar.id=id}
                     Divider()
                     Menu("Saved Miis") {ForEach(model.document.avatars) {saved in Button(saved.name) {suppressHistory=true;avatar=saved;isNew=false;history.removeAll();message="";page=0}}}
-                    Button("New Mii") {suppressHistory=true;avatar=Avatar(name:"New Mii",outfit:0);isNew=true;history.removeAll()}.disabled(model.document.avatars.count>=12)
+                    Button("New Mii") {suppressHistory=true;avatar=Avatar(name:"New Mii",outfit:0);isNew=true;history.removeAll()}.disabled(model.document.avatars.count>=PlazaDocument.maximumCustomMiis)
                 }.menuStyle(.borderlessButton).frame(width:80)
             }.font(.system(size:12))
         }
@@ -329,7 +329,7 @@ struct CharacterEditor: View {
     }
     @discardableResult private func save() -> Bool {
         do { _=try avatar.validated() } catch { message=error.localizedDescription; return false }
-        guard model.document.avatars.contains(where:{$0.id==avatar.id}) || model.document.avatars.count<12 else { message="Your library is full. Choose a saved character to edit."; return false }
+        guard model.document.avatars.contains(where:{$0.id==avatar.id}) || model.document.avatars.count<PlazaDocument.maximumCustomMiis else { message="Your library is full. Choose a saved character to edit."; return false }
         let result=model.saveMii(avatar)
         if result { isNew=false; message="\(avatar.name) is saved in the plaza." }; return result
     }

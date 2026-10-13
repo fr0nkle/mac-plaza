@@ -130,6 +130,86 @@ class ServiceTests(unittest.TestCase):
         aid = self.snapshot(self.a)["account"]["id"]
         self.call(self.b, "POST", "friends/accept", id=aid)
 
+    def journal_note(self, **overrides):
+        import uuid
+        result = dict(id=str(uuid.uuid4()), author=avatar(), text="Hello Bloons!", drawing=[],
+                      drawingDescription="", created=self.clock,
+                      topic=dict(label="Bloons TD6", bundleID="com.plaza.steam.960090", steamAppID=960090))
+        result["author"]["id"] = str(uuid.uuid4())
+        result.update(overrides)
+        return result
+
+    def test_shared_notes_matchable_topics_plaza_and_owner_identity(self):
+        self.befriend()
+        note = self.journal_note()
+        plaza = self.journal_note(text="Hello plaza", topic=None)
+        self.call(self.a, "PUT", "notes", notes=[note, plaza])
+        received = self.call(self.b, "GET", "notes")["notes"]
+        self.assertEqual({n["text"] for n in received}, {"Hello Bloons!", "Hello plaza"})
+        game = next(n for n in received if n["topic"])
+        self.assertEqual(game["topic"]["steamAppID"], 960090)
+        self.assertEqual(game["ownerID"], self.snapshot(self.a)["account"]["id"])
+        self.assertNotEqual(game["id"], note["id"])
+        self.assertNotEqual(game["author"]["id"], note["author"]["id"])
+        self.assertEqual(game["author"]["features"]["creator"], "")
+        self.assertEqual(self.call(self.c, "GET", "notes")["notes"], [])
+
+    def test_shared_notes_edit_delete_and_private_replacement(self):
+        self.befriend()
+        note = self.journal_note()
+        self.call(self.a, "PUT", "notes", notes=[note])
+        first = self.call(self.b, "GET", "notes")["notes"][0]
+        note["text"] = "Edited"
+        self.call(self.a, "PUT", "notes", notes=[note])
+        edited = self.call(self.b, "GET", "notes")["notes"][0]
+        self.assertEqual(edited["id"], first["id"])
+        self.assertEqual(edited["author"]["id"], first["author"]["id"])
+        self.assertEqual(edited["text"], "Edited")
+        self.call(self.a, "PUT", "notes", notes=[])
+        self.assertEqual(self.call(self.b, "GET", "notes")["notes"], [])
+
+    def test_shared_notes_discord_grants_blocking_and_revocation(self):
+        self.publish(self.a, shareDiscordFriends=True)
+        self.call(self.a, "PUT", "discord/recipients", discordIDs=["200"])
+        self.call(self.a, "PUT", "notes", notes=[self.journal_note()])
+        self.assertEqual(len(self.call(self.b, "GET", "notes")["notes"]), 1)
+        aid = self.snapshot(self.a)["account"]["id"]
+        self.call(self.b, "POST", "friends/block", id=aid)
+        self.assertEqual(self.call(self.b, "GET", "notes")["notes"], [])
+        self.call(self.b, "POST", "friends/unblock", id=aid)
+        self.assertEqual(len(self.call(self.b, "GET", "notes")["notes"]), 1)
+        self.call(self.a, "PUT", "discord/recipients", discordIDs=[])
+        self.assertEqual(self.call(self.b, "GET", "notes")["notes"], [])
+        self.call(self.c, "PUT", "notes", notes=[self.journal_note(ownerID=aid)])
+        self.assertEqual(self.call(self.b, "GET", "notes")["notes"], [])
+
+    def test_shared_notes_invalid_batch_preserves_existing_and_is_bounded(self):
+        self.befriend()
+        note = self.journal_note()
+        self.call(self.a, "PUT", "notes", notes=[note])
+        expected = self.call(self.b, "GET", "notes")
+        for bad in ([note, note], [self.journal_note(text="x" * 281)],
+                    [self.journal_note(topic=dict(label="Bad", bundleID="bad", steamAppID=0))],
+                    [self.journal_note(drawing=[dict(points=[dict(x=2, y=0)], eraser=False)], drawingDescription="Bad")],
+                    [self.journal_note() for _ in range(201)]):
+            with self.assertRaises(APIError):
+                self.call(self.a, "PUT", "notes", notes=bad)
+            self.assertEqual(self.call(self.b, "GET", "notes"), expected)
+
+    def test_shared_drawings_strip_unrelated_fields_and_account_delete_cascades(self):
+        self.befriend()
+        note = self.journal_note(text="", drawing=[dict(points=[dict(x=0.5,y=0.5)], eraser=False)],
+                                 drawingDescription="A dot", replies=[dict(text="Private reply")],
+                                 bookmark="private", path="/Users/private")
+        self.call(self.a, "PUT", "notes", notes=[note])
+        received = self.call(self.b, "GET", "notes")["notes"][0]
+        self.assertEqual(received["drawing"], note["drawing"])
+        self.assertEqual(received["replies"], [])  # Private local replies were not uploaded.
+        for key in ("bookmark", "path"):
+            self.assertNotIn(key, received)
+        self.call(self.a, "DELETE", "account")
+        self.assertEqual(self.service.db.execute("SELECT count(*) FROM journal_notes").fetchone()[0], 0)
+
     def test_oauth_bound_to_verifier_and_single_use(self):
         verifier = "a" * 43
         start = self.service.start_login(challenge(verifier))
@@ -358,6 +438,167 @@ class ServiceTests(unittest.TestCase):
             self.publish(self.a, note="x" * 281)
         with self.assertRaises(APIError):
             self.publish(self.a, sharePresence="yes")
+
+    def published_thread(self):
+        self.befriend()
+        note = self.journal_note()
+        self.call(self.a,"PUT","notes",notes=[note])
+        return note, self.call(self.b,"GET","notes")["notes"][0]["id"]
+
+    def thread_reply(self, token, note_id, reply_id, body="A shared reply", **extra):
+        import uuid
+        appearance=avatar();appearance["id"]=str(uuid.uuid4())
+        return self.call(token,"PUT","notes/"+note_id+"/replies/"+reply_id,author=appearance,text=body,**extra)
+
+    def test_shared_likes_are_per_account_idempotent_and_visible_to_author(self):
+        _,nid=self.published_thread()
+        for _ in range(2):self.call(self.b,"PUT","notes/"+nid+"/like",liked=True)
+        self.assertEqual(self.call(self.a,"GET","notes/threads")["notes"][0]["likeCount"],1)
+        self.assertFalse(self.call(self.a,"GET","notes/threads")["notes"][0]["liked"])
+        self.assertTrue(self.call(self.b,"GET","notes")["notes"][0]["liked"])
+        self.call(self.a,"PUT","notes/"+nid+"/like",liked=True)
+        self.assertEqual(self.call(self.b,"GET","notes")["notes"][0]["likeCount"],2)
+        self.call(self.b,"PUT","notes/"+nid+"/like",liked=False)
+        self.assertEqual(self.call(self.a,"GET","notes/threads")["notes"][0]["likeCount"],1)
+        with self.assertRaises(APIError):self.call(self.c,"PUT","notes/"+nid+"/like",liked=True)
+
+    def test_shared_replies_retry_edit_permissions_and_author_moderation(self):
+        import uuid
+        _,nid=self.published_thread();rid=str(uuid.uuid4())
+        first=self.thread_reply(self.b,nid,rid)["replies"][0]
+        self.thread_reply(self.b,nid,rid,"Edited reply",ownerID=self.snapshot(self.a)["account"]["id"])
+        replies=self.call(self.a,"GET","notes/threads")["notes"][0]["replies"]
+        self.assertEqual(len(replies),1)
+        self.assertEqual(replies[0]["ownerID"],self.snapshot(self.b)["account"]["id"])
+        self.assertEqual(replies[0]["created"],first["created"])
+        self.assertEqual(replies[0]["text"],"Edited reply")
+        self.assertEqual(replies[0]["author"]["features"]["creator"],"")
+        with self.assertRaises(APIError):self.thread_reply(self.a,nid,rid,"Cannot edit someone else")
+        with self.assertRaises(APIError):self.thread_reply(self.c,nid,str(uuid.uuid4()))
+        self.call(self.a,"DELETE","notes/"+nid+"/replies/"+rid)
+        self.assertEqual(self.call(self.b,"GET","notes")["notes"][0]["replies"],[])
+
+    def test_republishing_and_editing_notes_preserves_interactions_and_retraction_cascades(self):
+        import uuid
+        note,nid=self.published_thread()
+        self.call(self.b,"PUT","notes/"+nid+"/like",liked=True)
+        self.thread_reply(self.b,nid,str(uuid.uuid4()))
+        note["text"]="Edited note"
+        self.call(self.a,"PUT","notes",notes=[note])
+        thread=self.call(self.a,"GET","notes/threads")["notes"][0]
+        self.assertEqual(thread["likeCount"],1);self.assertEqual(len(thread["replies"]),1)
+        self.assertEqual(thread["sourceID"],note["id"])
+        self.call(self.a,"PUT","notes",notes=[])
+        self.assertEqual(self.service.db.execute("SELECT count(*) FROM journal_likes").fetchone()[0],0)
+        self.assertEqual(self.service.db.execute("SELECT count(*) FROM journal_replies").fetchone()[0],0)
+        with self.assertRaises(APIError):self.call(self.b,"PUT","notes/"+nid+"/like",liked=True)
+
+    def test_blocked_or_revoked_friends_cannot_interact_or_leave_visible_interactions(self):
+        import uuid
+        _,nid=self.published_thread()
+        self.thread_reply(self.b,nid,str(uuid.uuid4()))
+        self.call(self.b,"PUT","notes/"+nid+"/like",liked=True)
+        bid=self.snapshot(self.b)["account"]["id"]
+        self.call(self.a,"POST","friends/block",id=bid)
+        thread=self.call(self.a,"GET","notes/threads")["notes"][0]
+        self.assertEqual(thread["replies"],[]);self.assertEqual(thread["likeCount"],0)
+        with self.assertRaises(APIError):self.thread_reply(self.b,nid,str(uuid.uuid4()))
+        self.call(self.a,"POST","friends/unblock",id=bid)
+        self.assertEqual(len(self.call(self.a,"GET","notes/threads")["notes"][0]["replies"]),1)
+        self.befriend()
+        self.call(self.a,"POST","friends/remove",id=bid)
+        with self.assertRaises(APIError):self.call(self.b,"PUT","notes/"+nid+"/like",liked=False)
+
+    def test_shared_reply_validation_and_capacity_keep_existing_thread(self):
+        import uuid
+        _,nid=self.published_thread()
+        for content in ("", " ", "a"*281):
+            with self.assertRaises(APIError):self.thread_reply(self.b,nid,str(uuid.uuid4()),content)
+        with self.assertRaises(APIError):self.call(self.b,"PUT","notes/"+nid+"/like",liked="true")
+        for i in range(50):self.thread_reply(self.b,nid,str(uuid.uuid4()),"Reply "+str(i))
+        with self.assertRaises(APIError):self.thread_reply(self.b,nid,str(uuid.uuid4()),"Too many")
+        self.assertEqual(len(self.call(self.a,"GET","notes/threads")["notes"][0]["replies"]),50)
+
+    def test_shared_interactions_survive_service_restart_and_commenter_account_deletion(self):
+        import uuid, tempfile, sqlite3
+        from pathlib import Path
+        _,nid=self.published_thread();rid=str(uuid.uuid4())
+        self.thread_reply(self.b,nid,rid)
+        self.call(self.b,"PUT","notes/"+nid+"/like",liked=True)
+        with tempfile.TemporaryDirectory() as directory:
+            database=Path(directory)/"plaza.sqlite3"
+            with sqlite3.connect(database) as saved:self.service.db.backup(saved)
+            restarted=PlazaService(str(database),"http://127.0.0.1:8787",now=lambda:self.clock)
+            try:
+                thread=restarted.handle("GET","/v1/notes/threads",{},self.a)["notes"][0]
+                self.assertEqual(thread["likeCount"],1);self.assertEqual(thread["replies"][0]["id"],rid)
+            finally:restarted.db.close()
+        self.call(self.b,"DELETE","account")
+        thread=self.call(self.a,"GET","notes/threads")["notes"][0]
+        self.assertEqual(thread["likeCount"],0);self.assertEqual(thread["replies"],[])
+
+    def test_shared_interaction_http_and_two_simultaneous_likes(self):
+        import uuid, concurrent.futures
+        _,nid=self.published_thread()
+        with concurrent.futures.ThreadPoolExecutor(max_workers=2) as pool:
+            list(pool.map(lambda token:self.call(token,"PUT","notes/"+nid+"/like",liked=True),[self.a,self.b]))
+        self.assertEqual(self.call(self.a,"GET","notes/threads")["notes"][0]["likeCount"],2)
+        server=make_server(self.service,port=0)
+        thread=threading.Thread(target=server.serve_forever,daemon=True);thread.start()
+        rid=str(uuid.uuid4());appearance=avatar();appearance["id"]=str(uuid.uuid4())
+        try:
+            request=urllib.request.Request("http://127.0.0.1:"+str(server.server_port)+"/v1/notes/"+nid+"/replies/"+rid,
+                method="PUT",data=json.dumps(dict(author=appearance,text="HTTP reply")).encode(),
+                headers={"Authorization":"Bearer "+self.b,"Content-Type":"application/json"})
+            with urllib.request.urlopen(request) as response:
+                self.assertEqual(json.load(response)["replies"][0]["text"],"HTTP reply")
+            self.call(self.b,"DELETE","notes/"+nid+"/replies/"+rid)
+            self.assertEqual(self.call(self.a,"GET","notes/threads")["notes"][0]["replies"],[])
+        finally:server.shutdown();server.server_close();thread.join()
+
+    def test_legacy_note_feed_excludes_own_posts_and_thread_feed_includes_them(self):
+        _,nid=self.published_thread()
+        self.assertEqual(self.call(self.a,"GET","notes")["notes"],[])
+        self.assertEqual(self.call(self.a,"GET","notes/threads")["notes"][0]["id"],nid)
+        self.assertEqual(self.call(self.b,"GET","notes")["notes"][0]["id"],nid)
+
+    def test_public_notes_share_independently_of_private_profile_settings(self):
+        self.call(self.a, "PUT", "notes", notes=[self.journal_note()])
+        self.call(self.a, "PUT", "discord/recipients", discordIDs=["200"])
+        self.assertEqual(len(self.call(self.b, "GET", "notes")["notes"]), 1)
+        self.assertEqual(self.snapshot(self.b)["friends"], [])
+        self.publish(self.a, sharing=False, sharePresence=False, shareActivity=False)
+        self.assertEqual(len(self.call(self.b, "GET", "notes")["notes"]), 1)
+        self.call(self.a, "PUT", "notes", notes=[])
+        self.assertEqual(self.call(self.b, "GET", "notes")["notes"], [])
+        self.assertEqual(self.service.db.execute("SELECT count(*) FROM discord_recipients").fetchone()[0], 0)
+
+    def test_shared_notes_http_two_instances_and_large_drawing(self):
+        self.befriend()
+        server = make_server(self.service, port=0)
+        thread = threading.Thread(target=server.serve_forever, daemon=True); thread.start()
+        origin = "http://127.0.0.1:" + str(server.server_port)
+        def exchange(token, method, notes=None):
+            body = json.dumps(dict(notes=notes)).encode() if notes is not None else None
+            request = urllib.request.Request(origin + "/v1/notes", method=method, data=body,
+                headers={"Authorization": "Bearer " + token, "Content-Type": "application/json"})
+            with urllib.request.urlopen(request) as response:
+                return json.load(response)
+        try:
+            drawing = [dict(points=[dict(x=0.123456789, y=0.987654321)] * 3000, eraser=False)]
+            note = self.journal_note(drawing=drawing, drawingDescription="A large drawing")
+            self.assertGreater(len(json.dumps(dict(notes=[note]))), 65536)
+            self.assertEqual(exchange(self.a, "PUT", [note])["saved"], 1)
+            received = exchange(self.b, "GET")["notes"]
+            self.assertEqual(received[0]["drawing"], drawing)
+            self.assertEqual(exchange(self.c, "GET")["notes"], [])
+            note["text"] = "Edited while friend was offline"
+            exchange(self.a, "PUT", [note])
+            self.assertEqual(exchange(self.b, "GET")["notes"][0]["text"], note["text"])
+            exchange(self.a, "PUT", [])
+            self.assertEqual(exchange(self.b, "GET")["notes"], [])
+        finally:
+            server.shutdown(); server.server_close(); thread.join()
 
     def test_http_transport_rejects_browser_origins_and_bad_sessions(self):
         server = make_server(self.service, port=0)

@@ -33,8 +33,19 @@ public struct SharedMii: Codable, Identifiable, Equatable, Sendable {
         if let activity = activities.filter({ $0.isRecent() }).sorted(by: {
             if $0.active != $1.active { return $0.active }
             return $0.observedAt > $1.observedAt
-        }).first { return activity.label }
+        }).first {
+            if activity.source == "discord", !activity.active { return "\(displayName) was recently playing \(activity.name)" }
+            return activity.label
+        }
         return ""
+    }
+    public var overheadTexts: [String] {
+        var texts = overheadText.isEmpty ? [] : [overheadText]
+        if let game = activities.first(where: { $0.source == "discord" && !$0.active && $0.isRecent() }) {
+            let recent = "\(displayName) was recently playing \(game.name)"
+            if !texts.contains(recent) { texts.append(recent) }
+        }
+        return texts
     }
     public func validate() throws {
         guard UUID(uuidString: id) != nil, !displayName.isEmpty, displayName.count <= 80,
@@ -79,20 +90,23 @@ public struct SharedAppActivity: Codable, Equatable, Sendable {
     public var label: String { (active ? (source == "discord" ? "Playing " : "Using ") : (source == "discord" ? "Recently played " : "Recently used ")) + name }
     public func isRecent(at date: Date = Date()) -> Bool {
         let age = date.timeIntervalSince1970 - observedAt
-        return age >= -60 && age < 1800
+        return age >= -60 && age < (source == "discord" && !active ? 7200 : 1800)
     }
 }
 
 public enum FriendActivityMatcher {
     public static func island(for activities: [SharedAppActivity], apps: [AppIsland], at date: Date = Date()) -> UUID? {
+        match(for: activities, apps: apps, at: date)?.appID
+    }
+    public static func match(for activities: [SharedAppActivity], apps: [AppIsland], at date: Date = Date()) -> (appID: UUID, activity: SharedAppActivity)? {
         let current = activities.filter { $0.isRecent(at: date) }.sorted {
             if $0.active != $1.active { return $0.active }
             return $0.observedAt > $1.observedAt
         }
         for activity in current {
-            if let bundleID = activity.bundleID, let app = apps.first(where: { $0.bundleID == bundleID }) { return app.id }
+            if let bundleID = activity.bundleID, let app = apps.first(where: { $0.bundleID == bundleID }) { return (app.id, activity) }
             let matches = apps.filter { normalized($0.label) == normalized(activity.name) }
-            if matches.count == 1 { return matches[0].id }
+            if matches.count == 1 { return (matches[0].id, activity) }
         }
         return nil
     }
@@ -147,11 +161,20 @@ public struct DiscordGameRecord: Codable, Equatable, Sendable {
     public var discordID: String
     public var name: String
     public var observedAt: Double
-    public init(discordID: String, name: String, observedAt: Double) {
-        self.discordID = discordID; self.name = name; self.observedAt = observedAt
+    public var active: Bool
+    public init(discordID: String, name: String, observedAt: Double, active: Bool = true) {
+        self.discordID = discordID; self.name = name; self.observedAt = observedAt; self.active = active
+    }
+    enum CodingKeys: String, CodingKey { case discordID, name, observedAt, active }
+    public init(from decoder: Decoder) throws {
+        let values = try decoder.container(keyedBy: CodingKeys.self)
+        discordID = try values.decode(String.self, forKey: .discordID)
+        name = try values.decode(String.self, forKey: .name)
+        observedAt = try values.decode(Double.self, forKey: .observedAt)
+        active = try values.decodeIfPresent(Bool.self, forKey: .active) ?? true
     }
     public var activity: SharedAppActivity {
-        SharedAppActivity(name: name, bundleID: nil, source: "discord", active: true, observedAt: observedAt)
+        SharedAppActivity(name: name, bundleID: nil, source: "discord", active: active, observedAt: observedAt)
     }
 }
 
@@ -224,8 +247,8 @@ public enum DiscordFriendRoster {
             record.presence == .offline || record.presence == .unknown ? nil : statuses[record.discordID]
         }
         func activities(_ existing: [SharedAppActivity], for record: DiscordFriendRecord) -> [SharedAppActivity] {
-            guard record.presence != .offline, record.presence != .unknown,
-                  let game = currentGames[record.discordID] else { return existing }
+            guard let game = currentGames[record.discordID],
+                  !game.active || (record.presence != .offline && record.presence != .unknown) else { return existing }
             return [game] + existing.filter { $0.source != "discord" }.prefix(1)
         }
         var chosen: [SharedMii] = [], temporary: [UnlinkedFriend] = []

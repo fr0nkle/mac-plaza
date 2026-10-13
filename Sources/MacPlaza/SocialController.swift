@@ -43,6 +43,18 @@ private enum SocialKeychain {
 final class SocialController: NSObject, ObservableObject, ASWebAuthenticationPresentationContextProviding {
     @Published private(set) var snapshot: SocialSnapshot?
     @Published private(set) var friends: [SharedMii] = []
+    @Published private(set) var sharedJournal: [SharedJournalNote] = []
+    var visibleSharedJournal: [SharedJournalNote] { sharedJournal.filter { !hiddenIDs.contains($0.ownerID ?? "") } }
+    @Published private(set) var journalSyncMessage = "Public notes will sync when connected to Plaza."
+    @Published private(set) var interactingNotes = Set<UUID>()
+    @Published private(set) var journalInteractionMessage: String?
+    private var journalFetchSequence = 0
+    private var journalAppliedSequence = 0
+    private var localJournal: [SharedJournalNote] = []
+    private var journalReady = false
+    private var uploadedJournal: [SharedJournalNote]?
+    private var syncingJournal = false
+    private var journalSyncTask: Task<Void, Never>?
     @Published private(set) var busy = false
     @Published private(set) var connected = false
     @Published private(set) var previewing = false
@@ -84,6 +96,8 @@ final class SocialController: NSObject, ObservableObject, ASWebAuthenticationPre
     private var hiddenIDs = Set<String>()
     private var miiAssignments = FriendMiiAssignments()
     private let localMiiChoices: LocalFriendMiiChoices
+    private let gameHistory: DiscordGameHistoryStore
+    private var gameExpiryTimer: Timer?
     private var localMiis: [Avatar] = []
     private var hiddenKey: String { "social.hidden." + (endpoint?.absoluteString ?? "") }
     var contacts: [FriendRequest] { snapshot?.contacts ?? [] }
@@ -102,6 +116,7 @@ final class SocialController: NSObject, ObservableObject, ASWebAuthenticationPre
     init(isolated: Bool = false) {
         self.isolated = isolated
         localMiiChoices = LocalFriendMiiChoices(defaults: isolated ? nil : .standard)
+        gameHistory = DiscordGameHistoryStore(defaults: isolated ? nil : .standard)
         serverAddress = isolated ? "" : SocialEndpoint.initialAddress(
             saved: UserDefaults.standard.string(forKey: "social.service"),
             bundled: Bundle.main.object(forInfoDictionaryKey: "PlazaServiceURL") as? String,
@@ -111,11 +126,17 @@ final class SocialController: NSObject, ObservableObject, ASWebAuthenticationPre
         config.httpCookieStorage = nil; config.urlCredentialStorage = nil
         network = URLSession(configuration: config, delegate: SocialRedirectBlocker(), delegateQueue: nil)
         super.init()
+        if !isolated {
+            gameExpiryTimer = Timer.scheduledTimer(withTimeInterval: 30, repeats: true) { [weak self] _ in
+                Task { @MainActor in self?.expireRememberedGames() }
+            }
+        }
         discordClient.onUpdate = { [weak self] records, status, ready in
             guard let self, self.hasDiscordFriendsAuthorization else { return }
             self.discordRecords = records; self.discordFriendsMessage = status; self.discordReady = ready
             let ids = Set(records.map(\.discordID))
-            self.discordGames = ready ? self.discordGames.filter { ids.contains($0.discordID) } : []
+            if ready { self.gameHistory.retain(friendIDs: ids) }
+            self.discordGames = self.showDiscordGames ? (ready ? self.gameHistory.records() : self.gameHistory.suspend()) : []
             self.discordCustomStatuses = ready ? self.discordCustomStatuses.filter { ids.contains($0.discordID) } : []
             self.rebuildFriends()
             if ready { Task { await self.syncDiscordRecipients(); await self.refreshDiscordGames() } }
@@ -148,6 +169,8 @@ final class SocialController: NSObject, ObservableObject, ASWebAuthenticationPre
                    let data = stored.data(using: .utf8), let credentials = try? JSONDecoder().decode(DiscordSDKCredentials.self, from: data).validated() {
                     discordCredentials = credentials; hasDiscordFriendsAuthorization = true
                     localMiiChoices.useAccount(credentials.discordID)
+                    gameHistory.useAccount(credentials.discordID, service: url.absoluteString)
+                    if !showDiscordGames { gameHistory.clear() }
                     if credentials.expiresAt > Date().timeIntervalSince1970 + 120 { try discordClient.start(credentials) }
                 }
                 startPolling()
@@ -163,10 +186,13 @@ final class SocialController: NSObject, ObservableObject, ASWebAuthenticationPre
         discordGamesMessage = "Custom statuses and games are available for friends in a shared bot server."
         discordRefreshing = false; discordFriendsMessage = "Load your Discord friends to see their Miis automatically."
         token = nil; connected = false; snapshot = nil; friends = []; blocks = []
+        sharedJournal = []; uploadedJournal = nil; journalSyncTask?.cancel(); journalSyncTask = nil
+        interactingNotes = []; journalInteractionMessage = nil; journalFetchSequence = 0; journalAppliedSequence = 0
         audienceRefreshedAt = nil; audienceRefreshing = false; lastAudience = []
         if !isolated { PlazaUpdater.shared.configure(endpoint: nil, token: nil) }
         miiAssignments.reset()
         localMiiChoices.useAccount(nil)
+        gameHistory.useAccount(nil, service: nil)
         previewing = false; busy = false; refreshing = false; inviteCode = ""; refreshedAt = nil
         onRosterChanged?()
     }
@@ -274,6 +300,8 @@ final class SocialController: NSObject, ObservableObject, ASWebAuthenticationPre
         }
         discordCredentials = credentials; hasDiscordFriendsAuthorization = true
         localMiiChoices.useAccount(credentials.discordID)
+        gameHistory.useAccount(credentials.discordID, service: endpoint?.absoluteString)
+        if !showDiscordGames { gameHistory.clear() }
         try discordClient.start(credentials)
     }
 
@@ -299,6 +327,7 @@ final class SocialController: NSObject, ObservableObject, ASWebAuthenticationPre
 
     func setDiscordGamesEnabled(_ enabled: Bool) {
         showDiscordGames = enabled
+        if !enabled { gameHistory.clear() }
         if !isolated, let endpoint { UserDefaults.standard.set(enabled, forKey: "social.discord-games." + endpoint.absoluteString) }
         discordGames = []; discordCustomStatuses = []; gamesRefreshedAt = nil; rebuildFriends()
         if enabled { Task { await refreshDiscordGames() } }
@@ -306,8 +335,9 @@ final class SocialController: NSObject, ObservableObject, ASWebAuthenticationPre
     }
 
     private func syncDiscordRecipients() async {
-        guard discordReady, hasDiscordFriendsAuthorization, account?.sharing == true,
-              account?.shareDiscordFriends == true, !audienceRefreshing, !busy else { return }
+        guard discordReady, hasDiscordFriendsAuthorization,
+              (!localJournal.isEmpty || (account?.sharing == true && account?.shareDiscordFriends == true)),
+              !audienceRefreshing, !busy else { return }
         let recipients = Set(discordRecords.map(\.discordID))
         if recipients == lastAudience, let date = audienceRefreshedAt, Date().timeIntervalSince(date) < 300 { return }
         audienceRefreshing = true; let generation = epoch
@@ -316,7 +346,7 @@ final class SocialController: NSObject, ObservableObject, ASWebAuthenticationPre
             _ = try await request("PUT", "v1/discord/recipients", body: ["discordIDs": Array(recipients)])
             guard generation == epoch else { return }
             lastAudience = recipients; audienceRefreshedAt = Date()
-            discordSharingMessage = "Your linked Mii is shared with \(recipients.count) Discord friends. No Plaza invitations needed."
+            discordSharingMessage = "Your public notes and enabled profile sharing use \(recipients.count) authorized Discord friends. No Plaza invitations needed."
         } catch {
             guard generation == epoch else { return }
             discordSharingMessage = "Mii sharing could not sync. Check the service connection and try Refresh."
@@ -327,29 +357,144 @@ final class SocialController: NSObject, ObservableObject, ASWebAuthenticationPre
         guard showDiscordGames, discordReady, hasDiscordFriendsAuthorization, token != nil,
               !gamesRefreshing, !previewing, !busy else { return }
         if let date = gamesRefreshedAt, Date().timeIntervalSince(date) < 5 { return }
-        let records = discordRecords
+        let records = gameFriendRecords
         let ids = Set(records.map(\.discordID))
-        guard !ids.isEmpty else { discordGames = []; discordCustomStatuses = []; return }
+        guard !ids.isEmpty else { gameHistory.clear(); discordGames = []; discordCustomStatuses = []; return }
         gamesRefreshing = true; let generation = epoch
         defer { if epoch == generation { gamesRefreshing = false } }
         do {
             let data = try await request("POST", "v1/discord/games", body: ["discordIDs": records.map(\.discordID)])
             let result = try JSONDecoder().decode(DiscordGameSnapshot.self, from: data).validated(friends: records)
-            guard generation == epoch, showDiscordGames, ids == Set(discordRecords.map(\.discordID)) else { return }
-            discordGames = result.games; gamesRefreshedAt = Date()
+            guard generation == epoch, showDiscordGames, ids == Set(gameFriendRecords.map(\.discordID)) else { return }
+            discordGames = try gameHistory.update(result, friends: records); gamesRefreshedAt = Date()
             discordCustomStatuses = result.customStatuses
             if result.state == "ready" {
-                discordGamesMessage = "\(result.customStatuses.count) custom statuses · \(result.games.count) playing · \(result.coveredDiscordIDs.count) friends visible in shared bot servers."
+                let playing = discordGames.filter(\.active).count
+                let recent = discordGames.count - playing
+                discordGamesMessage = "\(result.customStatuses.count) custom statuses · \(playing) playing · \(recent) recently played · \(result.coveredDiscordIDs.count) friends visible in shared bot servers."
             } else {
-                discordGamesMessage = result.state == "not-configured" ? "Install the Plaza bot in a shared server to see custom statuses and games." : "The Discord presence bot is offline."
+                discordGamesMessage = result.state == "not-configured" ? "Install the Plaza bot in a shared server to see custom statuses and games." : "The Discord presence bot is offline; remembered games remain for up to two hours."
             }
             rebuildFriends()
         } catch {
             guard generation == epoch else { return }
-            discordGames = []; discordCustomStatuses = []; gamesRefreshedAt = Date()
-            discordGamesMessage = "Custom statuses and game activity are unavailable. Check the Plaza service and bot."
+            discordGames = showDiscordGames ? gameHistory.suspend() : []; discordCustomStatuses = []; gamesRefreshedAt = Date()
+            discordGamesMessage = "Live Discord activity is unavailable. Remembered games remain for up to two hours."
             rebuildFriends()
         }
+    }
+
+    private var gameFriendRecords: [DiscordFriendRecord] {
+        discordRecords.filter { record in
+            let fallbackID = try? record.plazaProfile().id
+            let sharedID = snapshot?.friends.first { $0.discordID == record.discordID }?.id
+            let unlinkedID = snapshot?.unlinkedFriends?.first { $0.discordID == record.discordID }?.id
+            return ![fallbackID, sharedID, unlinkedID].compactMap { $0 }.contains { hiddenIDs.contains($0) }
+        }
+    }
+
+    private func expireRememberedGames() {
+        guard showDiscordGames, hasDiscordFriendsAuthorization, !previewing else { return }
+        let recent = gameHistory.records()
+        guard recent != discordGames else { return }
+        discordGames = recent
+        rebuildFriends()
+    }
+
+    func setJournal(notes: [LocalNote], apps: [AppIsland], avatars: [Avatar]) {
+        let next = notes.filter { $0.shared == true }.compactMap { note -> SharedJournalNote? in
+            let app = note.appID.flatMap { id in apps.first { $0.id == id } }
+            // A removed shortcut is not silently republished as a plaza post.
+            guard note.appID == nil || app != nil else { return nil }
+            var author = avatars.first { $0.id == note.authorID } ?? Avatar(name: note.author)
+            author.id = note.authorID
+            return SharedJournalNote(note: note, author: author, app: app)
+        }.sorted { $0.id.uuidString < $1.id.uuidString }
+        guard next != localJournal || !journalReady else { return }
+        journalReady = true; localJournal = next
+        journalSyncMessage = "Public notes are queued for sync."
+        journalSyncTask?.cancel()
+        journalSyncTask = Task { [weak self] in
+            do { try await Task.sleep(for: .milliseconds(500)) } catch { return }
+            await self?.syncJournal()
+        }
+    }
+
+    private func syncJournal() async {
+        guard journalReady, connected, token != nil, !previewing, !syncingJournal else { return }
+        syncingJournal = true
+        let generation = epoch
+        defer { syncingJournal = false }
+        do {
+            // Serialize replacements so a late response cannot restore a deleted
+            // note. Changes made during an upload are sent in the same loop.
+            while uploadedJournal != localJournal {
+                let notes = localJournal
+                let object = try JSONSerialization.jsonObject(with: JSONEncoder().encode(notes))
+                _ = try await request("PUT", "v1/notes", body: ["notes": object])
+                guard generation == epoch else { return }
+                uploadedJournal = notes
+            }
+            await syncDiscordRecipients()
+            try await reloadJournal()
+            journalSyncMessage = "Public notes are shared with your Plaza friends."
+        } catch {
+            guard generation == epoch else { return }
+            sharedJournal = []
+            journalSyncMessage = "Notes are saved on this Mac; sharing is pending. " + error.localizedDescription
+            onRosterChanged?()
+        }
+    }
+
+    private func reloadJournal() async throws {
+        journalFetchSequence += 1
+        let sequence = journalFetchSequence, generation = epoch
+        let data = try await request("GET", "v1/notes/threads")
+        let next = try JSONDecoder().decode(SharedJournalSnapshot.self, from: data).validated().notes
+        guard generation == epoch, sequence >= journalAppliedSequence else { return }
+        journalAppliedSequence = sequence
+        if sharedJournal != next { sharedJournal = next; onRosterChanged?() }
+    }
+
+    private func interact(noteID: UUID, method: String, action: String, body: Any? = nil) async -> Bool {
+        guard connected, token != nil, !previewing else {
+            journalInteractionMessage = "Connect to Plaza to share a reply or like."; return false
+        }
+        guard interactingNotes.insert(noteID).inserted else { return false }
+        let generation = epoch
+        journalInteractionMessage = nil
+        defer { if generation == epoch { interactingNotes.remove(noteID) } }
+        do {
+            _ = try await request(method, "v1/notes/" + noteID.uuidString + "/" + action, body: body)
+            // A committed mutation is successful even if the subsequent read
+            // fails. Do not encourage duplicate replies after a lost refresh.
+            do { try await reloadJournal() }
+            catch { journalSyncMessage = "Your interaction was saved. Refreshing the thread is pending." }
+            return generation == epoch
+        } catch {
+            if generation == epoch { journalInteractionMessage = error.localizedDescription }
+            return false
+        }
+    }
+
+    func like(noteID: UUID, liked: Bool) async -> Bool {
+        await interact(noteID: noteID, method: "PUT", action: "like", body: ["liked": liked])
+    }
+    func reply(noteID: UUID, replyID: UUID, author: Avatar, text: String) async -> Bool {
+        do {
+            _ = try author.validated()
+            guard !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty, text.count <= 280 else {
+                throw PlazaError.invalid("Write a reply of up to 280 characters.")
+            }
+            var appearance = author
+            appearance.features.creator = ""; appearance.features.birthDay = 0; appearance.features.birthMonth = 0
+            let object = try JSONSerialization.jsonObject(with: JSONEncoder().encode(appearance))
+            return await interact(noteID: noteID, method: "PUT", action: "replies/" + replyID.uuidString,
+                                  body: ["author": object, "text": text.trimmingCharacters(in: .whitespacesAndNewlines)])
+        } catch { journalInteractionMessage = error.localizedDescription; return false }
+    }
+    func deleteReply(noteID: UUID, replyID: UUID) async -> Bool {
+        await interact(noteID: noteID, method: "DELETE", action: "replies/" + replyID.uuidString)
     }
 
     func setLocalMiis(_ avatars: [Avatar]) {
@@ -374,7 +519,8 @@ final class SocialController: NSObject, ObservableObject, ASWebAuthenticationPre
 
     private func rebuildFriends(notify: Bool = true) {
         // Discord availability is independent of the sharing service. If that
-        // service fails, stop displaying its cached private profiles and activity.
+        // service fails, stop displaying its cached private profiles and Plaza
+        // activity. Viewer-local Discord history remains explicitly recent.
         let shared = connected ? snapshot?.friends ?? [] : []
         let unlinked = connected ? snapshot?.unlinkedFriends ?? [] : []
         let appearances = localMiiChoices.choices.compactMapValues { id in localMiis.first { $0.id == id } }
@@ -425,13 +571,15 @@ final class SocialController: NSObject, ObservableObject, ASWebAuthenticationPre
             if revision == mutationRevision { try apply(data) }
             await syncDiscordRecipients()
             await refreshDiscordGames()
+            await syncJournal()
         } catch is CancellationError { }
         catch {
             guard generation == epoch, revision == mutationRevision else { return }
             connected = false; message = error.localizedDescription
-            discordGames = []
+            sharedJournal = []
+            discordGames = showDiscordGames ? gameHistory.suspend() : []
             discordCustomStatuses = []
-            discordGamesMessage = "Custom statuses and game activity are unavailable while the Plaza service is disconnected."
+            discordGamesMessage = "Live Discord activity is unavailable. Remembered games remain for up to two hours."
             // Never present an old observation as live availability after a failure.
             if hasDiscordFriendsAuthorization { rebuildFriends() }
             else { friends = friends.map {
@@ -488,7 +636,16 @@ final class SocialController: NSObject, ObservableObject, ASWebAuthenticationPre
     }
     func requestFriend(_ code: String) { mutate("POST", "v1/friends/request", body: ["code": code.trimmingCharacters(in: .whitespacesAndNewlines)]) }
     func accept(_ id: String) { mutate("POST", "v1/friends/accept", body: ["id": id]) }
-    func remove(_ id: String, block: Bool = false) { mutate("POST", block ? "v1/friends/block" : "v1/friends/remove", body: ["id": id]) }
+    func remove(_ id: String, block: Bool = false) {
+        let discordID = friends.first(where: { $0.id == id })?.discordID
+        mutate("POST", block ? "v1/friends/block" : "v1/friends/remove", body: ["id": id]) { _ in
+            if let discordID {
+                self.gameHistory.forget(discordID)
+                self.discordGames.removeAll { $0.discordID == discordID }
+                self.rebuildFriends()
+            }
+        }
+    }
     func loadBlocks() {
         mutate("GET", "v1/blocks", snapshotResponse: false) { data in
             struct Result: Decodable { var blocks: [FriendRequest] }
@@ -499,6 +656,10 @@ final class SocialController: NSObject, ObservableObject, ASWebAuthenticationPre
         mutate("POST", "v1/friends/unblock", body: ["id": id], snapshotResponse: false) { _ in self.blocks.removeAll { $0.id == id } }
     }
     func hide(_ id: String) {
+        if let discordID = friends.first(where: { $0.id == id })?.discordID {
+            gameHistory.forget(discordID)
+            discordGames.removeAll { $0.discordID == discordID }
+        }
         hiddenIDs.insert(id); friends.removeAll { $0.id == id }
         if !isolated { UserDefaults.standard.set(Array(hiddenIDs), forKey: hiddenKey) }
         onRosterChanged?()
@@ -510,6 +671,7 @@ final class SocialController: NSObject, ObservableObject, ASWebAuthenticationPre
     func unlink() {
         mutate("DELETE", "v1/account", snapshotResponse: false) { _ in
             if let endpoint = self.endpoint { SocialKeychain.remove(endpoint); SocialKeychain.remove(endpoint, purpose: "discord-friends") }
+            self.gameHistory.clear()
             self.reset(); self.message = "Discord unlinked. Your shared account and friendships were deleted."
         }
     }

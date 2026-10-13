@@ -92,6 +92,50 @@ def validated_avatar(value, avatar_id):
     return result
 
 
+def validated_journal_note(value, owner):
+    if not isinstance(value, dict):
+        raise APIError("Invalid shared note.")
+    try:
+        local_id = str(uuid.UUID(value.get("id", "")))
+        author_id = str(uuid.UUID(value["author"]["id"]))
+    except (ValueError, TypeError, KeyError, AttributeError):
+        raise APIError("Invalid shared note identity.")
+    author = validated_avatar(value["author"], str(uuid.uuid5(uuid.UUID(owner), "author:" + author_id)))
+    body = text(value.get("text"), 280).strip()
+    description = text(value.get("drawingDescription"), 160).strip()
+    drawing = value.get("drawing")
+    if not isinstance(drawing, list) or len(drawing) > 512:
+        raise APIError("Invalid shared drawing.")
+    strokes, points = [], 0
+    for stroke in drawing:
+        if not isinstance(stroke, dict) or not isinstance(stroke.get("points"), list):
+            raise APIError("Invalid shared drawing stroke.")
+        points += len(stroke["points"])
+        if points > 20000:
+            raise APIError("Shared drawing exceeds its limit.")
+        clean = []
+        for point in stroke["points"]:
+            if not isinstance(point, dict):
+                raise APIError("Invalid shared drawing point.")
+            clean.append(dict(x=bounded(point.get("x"), 1), y=bounded(point.get("y"), 1)))
+        strokes.append(dict(points=clean, eraser=boolean(stroke.get("eraser"))))
+    if (not body and not drawing) or (drawing and not description):
+        raise APIError("A shared note needs text or a described drawing.")
+    created = bounded(value.get("created"), 100000000000)
+    topic = value.get("topic")
+    if topic is not None:
+        if not isinstance(topic, dict):
+            raise APIError("Invalid shared game topic.")
+        topic = dict(label=text(topic.get("label"), 60, 1), bundleID=text(topic.get("bundleID"), 250, 1),
+                     steamAppID=topic.get("steamAppID"))
+        if topic["steamAppID"] is not None:
+            if bounded(topic["steamAppID"], 2**32 - 1, integer=True) < 1:
+                raise APIError("Invalid Steam game.")
+    return dict(id=str(uuid.uuid5(uuid.UUID(owner), "note:" + local_id)), ownerID=owner, sourceID=local_id,
+                author=author, text=body, drawing=strokes, drawingDescription=description,
+                created=created, topic=topic)
+
+
 class PlazaService:
     def __init__(self, database, public_url, client_id="", client_secret="", now=time.time):
         parsed = urllib.parse.urlsplit(public_url)
@@ -133,6 +177,24 @@ class PlazaService:
           owner TEXT NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
           target TEXT NOT NULL REFERENCES accounts(id) ON DELETE CASCADE, PRIMARY KEY(owner,target)
         );
+        CREATE TABLE IF NOT EXISTS journal_notes (
+          owner TEXT NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
+          id TEXT NOT NULL, payload TEXT NOT NULL, created REAL NOT NULL, PRIMARY KEY(owner,id)
+        );
+        CREATE TABLE IF NOT EXISTS journal_likes (
+          note_owner TEXT NOT NULL, note_id TEXT NOT NULL,
+          actor TEXT NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
+          PRIMARY KEY(note_owner,note_id,actor),
+          FOREIGN KEY(note_owner,note_id) REFERENCES journal_notes(owner,id) ON DELETE CASCADE
+        );
+        CREATE TABLE IF NOT EXISTS journal_replies (
+          note_owner TEXT NOT NULL, note_id TEXT NOT NULL, id TEXT NOT NULL,
+          actor TEXT NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
+          payload TEXT NOT NULL, created REAL NOT NULL,
+          PRIMARY KEY(note_owner,note_id,id),
+          FOREIGN KEY(note_owner,note_id) REFERENCES journal_notes(owner,id) ON DELETE CASCADE
+        );
+        CREATE INDEX IF NOT EXISTS journal_reply_actor ON journal_replies(actor);
         CREATE TABLE IF NOT EXISTS discord_recipients (
           owner TEXT NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
           discord_id TEXT NOT NULL, PRIMARY KEY(owner,discord_id)
@@ -148,7 +210,8 @@ class PlazaService:
                                  "activity_bundle": "TEXT", "activity_at": "REAL NOT NULL DEFAULT 0",
                                  "activity_active": "INTEGER NOT NULL DEFAULT 0",
                                  "share_discord_friends": "INTEGER NOT NULL DEFAULT 0",
-                                 "audience_seen": "REAL NOT NULL DEFAULT 0"}.items():
+                                 "audience_seen": "REAL NOT NULL DEFAULT 0",
+                                 "share_notes": "INTEGER NOT NULL DEFAULT 0"}.items():
             if name not in columns:
                 self.db.execute("ALTER TABLE accounts ADD COLUMN " + name + " " + definition)
         self.db.commit()
@@ -348,6 +411,101 @@ class PlazaService:
                 plazaOnline=bool(row["share_presence"] and row["seen"] > self.now() - 75), activities=self.shared_activities(row)))
         return dict(account=me, friends=friends, unlinkedFriends=unlinked, contacts=contacts, incoming=incoming, outgoing=outgoing)
 
+    def journal_owners(self, account):
+        allowed = {account["id"]}
+        rows = self.db.execute("""SELECT CASE WHEN sender=? THEN recipient ELSE sender END AS id
+            FROM friendships WHERE accepted=1 AND (sender=? OR recipient=?)""",
+            (account["id"], account["id"], account["id"])).fetchall()
+        allowed.update(row["id"] for row in rows if not self.blocked(account["id"], row["id"]))
+        rows = self.db.execute("""SELECT a.id FROM accounts a JOIN discord_recipients r ON r.owner=a.id
+            WHERE r.discord_id=? AND a.share_notes=1 AND a.audience_seen>?""",
+            (account["discord_id"], self.now() - 7 * 86400)).fetchall()
+        allowed.update(row["id"] for row in rows if not self.blocked(account["id"], row["id"]))
+        return allowed
+
+    def journal_interactions(self, owner, note_id, viewer):
+        # Filter both the viewer's and publisher's blocks, even for previously
+        # authored replies/likes. Actor identity always comes from the session.
+        exclusion = """ AND NOT EXISTS (SELECT 1 FROM blocks b WHERE
+          (b.owner=actor AND b.target IN (?,?)) OR (b.target=actor AND b.owner IN (?,?)))"""
+        args = (owner, note_id, viewer, owner, viewer, owner)
+        likes = self.db.execute("SELECT count(*),coalesce(max(actor=?),0) FROM journal_likes WHERE note_owner=? AND note_id=?" + exclusion,
+            (viewer,) + args).fetchone()
+        rows = self.db.execute("SELECT payload FROM journal_replies WHERE note_owner=? AND note_id=?" + exclusion +
+            " ORDER BY created,id LIMIT 50", args).fetchall()
+        return dict(likeCount=likes[0], liked=bool(likes[1]), replies=[json.loads(row["payload"]) for row in rows])
+
+    def journal_snapshot(self, account, include_own=False):
+        allowed = self.journal_owners(account)
+        if not include_own:
+            allowed.discard(account["id"])
+        if not allowed:
+            return dict(notes=[])
+        notes, points, byte_count, replies = [], 0, 0, 0
+        placeholders = ",".join("?" for _ in allowed)
+        rows = self.db.execute("SELECT owner,id,payload FROM journal_notes WHERE owner IN (" + placeholders +
+            ") ORDER BY CASE WHEN owner=? THEN 0 ELSE 1 END,created DESC,id LIMIT 300",
+            tuple(sorted(allowed)) + (account["id"],)).fetchall()
+        for row in rows:
+            note = json.loads(row["payload"])
+            note.update(self.journal_interactions(row["owner"], row["id"], account["id"]))
+            count = sum(len(stroke["points"]) for stroke in note["drawing"])
+            size = len(json.dumps(note).encode("utf-8"))
+            if points + count <= 60000 and byte_count + size < 3_500_000 and replies + len(note["replies"]) <= 2000:
+                notes.append(note); points += count; byte_count += size; replies += len(note["replies"])
+        return dict(notes=notes)
+
+    def journal_action(self, method, parts, data, account):
+        try:
+            note_id = str(uuid.UUID(parts[0]))
+        except (ValueError, TypeError):
+            raise APIError("Note unavailable.", 404)
+        row = self.db.execute("SELECT * FROM journal_notes WHERE id=?", (note_id,)).fetchone()
+        if not row or row["owner"] not in self.journal_owners(account):
+            raise APIError("Note unavailable.", 404)
+        owner, actor = row["owner"], account["id"]
+        if len(parts) == 2 and parts[1] == "like" and method == "PUT":
+            if boolean(data.get("liked")):
+                count = self.db.execute("SELECT count(*) FROM journal_likes WHERE note_owner=? AND note_id=?", (owner,note_id)).fetchone()[0]
+                existing = self.db.execute("SELECT 1 FROM journal_likes WHERE note_owner=? AND note_id=? AND actor=?", (owner,note_id,actor)).fetchone()
+                if count >= 10000 and not existing:
+                    raise APIError("This note has reached its like limit.")
+                self.db.execute("INSERT OR IGNORE INTO journal_likes VALUES (?,?,?)", (owner,note_id,actor))
+            else:
+                self.db.execute("DELETE FROM journal_likes WHERE note_owner=? AND note_id=? AND actor=?", (owner,note_id,actor))
+            return self.journal_interactions(owner,note_id,actor)
+        if len(parts) == 3 and parts[1] == "replies" and method in ("PUT", "DELETE"):
+            try:
+                reply_id = str(uuid.UUID(parts[2]))
+            except (ValueError,TypeError):
+                raise APIError("Invalid reply identity.")
+            existing = self.db.execute("SELECT * FROM journal_replies WHERE note_owner=? AND note_id=? AND id=?", (owner,note_id,reply_id)).fetchone()
+            if existing and existing["actor"] != actor and not (method == "DELETE" and actor == owner):
+                raise APIError("Only the reply's author may edit it.",403)
+            if method == "DELETE":
+                self.db.execute("DELETE FROM journal_replies WHERE note_owner=? AND note_id=? AND id=?", (owner,note_id,reply_id))
+            else:
+                content = text(data.get("text"),280,1).strip()
+                if not content:
+                    raise APIError("Write a reply first.")
+                try:
+                    author_id = str(uuid.UUID(data["author"]["id"]))
+                except (KeyError,ValueError,TypeError,AttributeError):
+                    raise APIError("Choose a reply Mii.")
+                author = validated_avatar(data["author"],str(uuid.uuid5(uuid.UUID(actor),"author:"+author_id)))
+                if not existing:
+                    total = self.db.execute("SELECT count(*) FROM journal_replies WHERE note_owner=? AND note_id=?",(owner,note_id)).fetchone()[0]
+                    own = self.db.execute("SELECT count(*) FROM journal_replies WHERE actor=?",(actor,)).fetchone()[0]
+                    if total >= 50 or own >= 2000:
+                        raise APIError("The shared reply limit has been reached.")
+                created = existing["created"] if existing else self.now()
+                payload = dict(id=reply_id,ownerID=actor,author=author,text=content,created=created)
+                self.db.execute("""INSERT INTO journal_replies VALUES (?,?,?,?,?,?)
+                    ON CONFLICT(note_owner,note_id,id) DO UPDATE SET payload=excluded.payload""",
+                    (owner,note_id,reply_id,actor,json.dumps(payload),created))
+            return self.journal_interactions(owner,note_id,actor)
+        raise APIError("Unknown note action.",404)
+
     def handle(self, method, path, data, token):
         if method == "POST" and path == "/v1/auth/start":
             return self.start_login(data.get("challenge"), boolean(data.get("friendDiscovery", False)))
@@ -391,6 +549,33 @@ class PlazaService:
                 if user["id"] != me["discord_id"]:
                     raise APIError("Discord friends must belong to the linked account.", 403)
                 return self.sdk_credentials(tokens, user)
+            if method == "PUT" and path == "/v1/notes":
+                items = data.get("notes")
+                if not isinstance(items, list) or len(items) > 200:
+                    raise APIError("Share at most 200 notes.")
+                notes = [validated_journal_note(item, aid) for item in items]
+                if len({note["id"] for note in notes}) != len(notes) or sum(
+                        len(stroke["points"]) for note in notes for stroke in note["drawing"]) > 60000:
+                    raise APIError("Duplicate notes or excessive drawing data.")
+                # Validate the entire replacement before deleting anything. A
+                # single transaction carries edits, private changes and deletions.
+                existing = {r[0] for r in self.db.execute("SELECT id FROM journal_notes WHERE owner=?",(aid,))}
+                removed = existing - {note["id"] for note in notes}
+                self.db.executemany("DELETE FROM journal_notes WHERE owner=? AND id=?",[(aid,value) for value in removed])
+                self.db.executemany("""INSERT INTO journal_notes VALUES (?,?,?,?)
+                    ON CONFLICT(owner,id) DO UPDATE SET payload=excluded.payload,created=excluded.created""", [
+                    (aid, note["id"], json.dumps(note), note["created"]) for note in notes])
+                self.db.execute("UPDATE accounts SET share_notes=? WHERE id=?", (bool(notes), aid))
+                if not notes and not (me["sharing"] and me["share_discord_friends"]):
+                    self.db.execute("DELETE FROM discord_recipients WHERE owner=?", (aid,))
+                    self.db.execute("UPDATE accounts SET audience_seen=0 WHERE id=?", (aid,))
+                return dict(saved=len(notes))
+            if method == "GET" and path == "/v1/notes/threads":
+                return self.journal_snapshot(me,include_own=True)
+            if path.startswith("/v1/notes/"):
+                return self.journal_action(method,path[len("/v1/notes/"):].split("/"),data,me)
+            if method == "GET" and path == "/v1/notes":
+                return self.journal_snapshot(me)
             if method == "GET" and path == "/v1/snapshot":
                 return self.snapshot(me)
             if method == "PUT" and path == "/v1/discord/recipients":
@@ -399,8 +584,8 @@ class PlazaService:
                     not isinstance(value, str) or not value.isascii() or not value.isdigit()
                     or not 0 < int(value) < 2**64 for value in targets):
                     raise APIError("Choose at most 1,000 Discord recipients.")
-                if not me["share_discord_friends"] or not me["sharing"]:
-                    raise APIError("Enable sharing with Discord friends first.", 403)
+                if not me["share_notes"] and not (me["share_discord_friends"] and me["sharing"]):
+                    raise APIError("Publish public notes or enable profile sharing first.", 403)
                 targets = set(targets) - {me["discord_id"]}
                 current = {r[0] for r in self.db.execute("SELECT discord_id FROM discord_recipients WHERE owner=?", (aid,))}
                 if current != targets:
@@ -417,7 +602,7 @@ class PlazaService:
                 share_discord = boolean(data.get("shareDiscordFriends", False))
                 self.db.execute("UPDATE accounts SET avatar=?,note=?,sharing=?,share_presence=?,share_activity=?,share_discord_friends=? WHERE id=?",
                                 (json.dumps(avatar) if avatar else None, text(data.get("note"), 280).strip(), sharing, share_presence, share_activity, share_discord, aid))
-                if not share_discord or not sharing:
+                if (not share_discord or not sharing) and not me["share_notes"]:
                     self.db.execute("DELETE FROM discord_recipients WHERE owner=?", (aid,))
                     self.db.execute("UPDATE accounts SET audience_seen=0 WHERE id=?", (aid,))
                 if not share_presence and not share_activity:
@@ -598,7 +783,7 @@ class Handler(BaseHTTPRequestHandler):
             if self.command in ("GET", "HEAD") and path.startswith("/download/"):
                 return self.download(path)
             length = int(self.headers.get("Content-Length", "0"))
-            if length < 0 or length > 65536 or self.headers.get("Transfer-Encoding"):
+            if length < 0 or length > (4_000_000 if path == "/v1/notes" else 65536) or self.headers.get("Transfer-Encoding"):
                 raise APIError("Request exceeds the 64 KB limit.", 413)
             data = {}
             if self.command in ("POST", "PUT", "DELETE"):

@@ -8,7 +8,7 @@ struct PlazaHomeControls: View {
     var body: some View {
         VStack(spacing: 10) {
             HStack(spacing: 12) {
-                control(model.editing ? "Back to Plaza" : "Change Apps",
+                control(model.editing ? "Back to Plaza" : model.rotatingHomeEnabled ? "Edit Pins" : "Change Apps",
                         icon: model.editing ? "checkmark" : "square.grid.2x2", width: 104) {
                     if model.editing { model.editing = false }
                     else { model.beginChangingApps() }

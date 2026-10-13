@@ -25,6 +25,7 @@ final class DesktopPlazaTests: XCTestCase {
         }
         for _ in 0..<200 where !model.loaded { try await Task.sleep(for: .milliseconds(10)) }
         XCTAssertTrue(model.loaded)
+        model.mutate { $0.preferences.rotatingHomeScreen = false }
         model.document.preferences.pauseMotion = true
         controller.enable(activate: false)
         let host = try XCTUnwrap(controller.window?.contentView)
@@ -136,6 +137,7 @@ final class DesktopPlazaTests: XCTestCase {
         }
         for _ in 0..<200 where !model.loaded { try await Task.sleep(for: .milliseconds(10)) }
         XCTAssertTrue(model.loaded)
+        model.mutate { $0.preferences.rotatingHomeScreen = false }
         model.document.preferences.pauseMotion = true
         controller.enable(activate: false); model.beginChangingApps(); model.scene.finishEntrance()
         try await Task.sleep(for: .milliseconds(150))
@@ -227,6 +229,7 @@ final class DesktopPlazaTests: XCTestCase {
         }
         for _ in 0..<200 where !model.loaded { try await Task.sleep(for: .milliseconds(10)) }
         XCTAssertTrue(model.loaded)
+        model.mutate { $0.preferences.rotatingHomeScreen = false }
         model.loginEnabled = false // Isolate this test from this Mac's login registration.
         model.document.preferences.musicVolume = 0
         model.document.preferences.makerMusicVolume = 0

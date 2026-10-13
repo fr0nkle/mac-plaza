@@ -57,12 +57,12 @@ struct PlazaView: View {
         .onChange(of: model.page) { _, _ in model.previewAppID = nil }
         .onChange(of: model.search) { _, _ in model.previewAppID = nil }
         .onChange(of: model.sheet?.id) { _, value in if value != nil { model.previewAppID = nil } }
-        .onChange(of: model.document.apps) { _, apps in
+        .onChange(of: model.homeApps) { _, apps in
             if let id = model.previewAppID, !apps.contains(where: { $0.id == id }) { model.previewAppID = nil }
         }
         .onChange(of: model.search) { _, _ in model.page = 0; model.updateVisibleIslands() }
         .onChange(of: model.page) { _, _ in model.updateVisibleIslands() }
-        .onChange(of: model.document.apps) { _, _ in model.updateVisibleIslands() }
+        .onChange(of: model.homeApps) { _, _ in model.updateVisibleIslands() }
         .onChange(of: model.loaded) { _, _ in model.updateVisibleIslands() }
     }
     private func updateAudio() { model.updateAudio() }
@@ -189,7 +189,7 @@ struct PlazaView: View {
               if model.editing {
                   VStack {
                       Spacer()
-                      Text("Drag apps to reorder · Click an app to replace, rename or remove it · Drop apps from Finder to add")
+                      Text(model.rotatingHomeEnabled ? "Editing saved pins · Rotation returns when you finish · Turn off rotation in Settings to show these pins" : "Drag apps to reorder · Click an app to replace, rename or remove it · Drop apps from Finder to add")
                           .font(.system(size: 12, weight: .medium))
                           .multilineTextAlignment(.center).padding(12)
                           .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 14))
@@ -484,40 +484,6 @@ struct BubbleView: View {
     }
 }
 
-struct PlazaGround: View {
-    var viewportSize: CGSize? = nil
-    var body: some View {
-        Canvas { context, canvasSize in
-            let size = viewportSize ?? canvasSize
-            let margin = CGSize(width: (canvasSize.width-size.width)/2, height: (canvasSize.height-size.height)/2)
-            context.translateBy(x: margin.width, y: margin.height)
-            let bounds = CGRect(x: -margin.width, y: -margin.height, width: canvasSize.width, height: canvasSize.height)
-            context.fill(Path(bounds), with: .linearGradient(Gradient(colors: [Color(red: 0.98, green: 0.99, blue: 1), Color(red: 0.88, green: 0.94, blue: 0.95)]), startPoint: .zero, endPoint: CGPoint(x: 0, y: size.height)))
-            // A pale diamond mosaic stretches away into the plaza's white horizon.
-            for row in Int(bounds.minY / 12)-2..<Int(bounds.maxY / 12) + 2 {
-                let y = CGFloat(row) * 12
-                for col in Int(bounds.minX / 32)-2..<Int(bounds.maxX / 32) + 2 where (row + col) % 2 == 0 {
-                    let x = CGFloat(col) * 32 + (row % 2 == 0 ? 0 : 16)
-                    var diamond = Path()
-                    diamond.move(to: CGPoint(x: x, y: y - 12))
-                    diamond.addLine(to: CGPoint(x: x + 32, y: y))
-                    diamond.addLine(to: CGPoint(x: x, y: y + 12))
-                    diamond.addLine(to: CGPoint(x: x - 32, y: y))
-                    diamond.closeSubpath()
-                    context.fill(diamond, with: .color(.white.opacity(0.32)))
-                }
-            }
-            for (x, y, width) in [(0.12, 0.28, 0.09), (0.39, 0.19, 0.08), (0.68, 0.24, 0.10), (0.87, 0.36, 0.07), (0.24, 0.57, 0.12), (0.53, 0.53, 0.11), (0.76, 0.73, 0.14), (0.4, 0.84, 0.13)] {
-                let ring = CGRect(x: size.width * (x - width / 2), y: size.height * y, width: size.width * width, height: size.width * width * 0.27)
-                context.stroke(Path(ellipseIn: ring), with: .color(PlazaStyle.ink.opacity(0.09)), lineWidth: 2)
-                context.stroke(Path(ellipseIn: ring.offsetBy(dx: 0, dy: -2)), with: .color(.white.opacity(0.8)), lineWidth: 2)
-            }
-            context.fill(Path(bounds), with: .linearGradient(Gradient(stops: [.init(color: .white.opacity(0.92), location: 0), .init(color: .white.opacity(0.15), location: 0.4), .init(color: .clear, location: 0.7)]), startPoint: .zero, endPoint: CGPoint(x: 0, y: size.height)))
-            let glow = CGRect(x: size.width * 0.2, y: size.height * 0.25, width: size.width * 0.6, height: size.height * 0.6)
-            context.fill(Path(ellipseIn: glow), with: .radialGradient(Gradient(colors: [.white.opacity(0.65), .clear]), center: CGPoint(x: size.width / 2, y: size.height * 0.55), startRadius: 0, endRadius: size.width * 0.3))
-        }
-    }
-}
 
 struct ToolbarButtonStyle: ButtonStyle {
     var prominent = false
@@ -548,11 +514,11 @@ struct AppListView: View {
                     }.padding(14).background(.white, in: RoundedRectangle(cornerRadius: 12)).accessibilityElement(children: .contain)
                 }
             SocialFriendList(model: model, social: model.social)
-            Text("LOCAL JOURNAL · \(model.visibleNotes.count)").font(.caption).foregroundStyle(.secondary).padding(.top, 10)
+            Text("PLAZA JOURNAL · \(model.visibleNotes.count)").font(.caption).foregroundStyle(.secondary).padding(.top, 10)
                 ForEach(model.visibleNotes) { note in
                     Button { model.openJournal(note: note.id) } label: {
                         VStack(alignment: .leading, spacing: 4) {
-                            Text("\(note.author) · Local note").font(.caption).foregroundStyle(PlazaStyle.teal)
+                            Text("\(note.author) · \(model.isOwnNote(note) ? (note.shared == true ? "Public note" : "Private note") : "Friend’s note")").font(.caption).foregroundStyle(PlazaStyle.teal)
                             Text(note.drawing.isEmpty ? note.text : note.drawingDescription).lineLimit(3)
                         }.padding(.vertical, 4)
                     }.buttonStyle(.plain)

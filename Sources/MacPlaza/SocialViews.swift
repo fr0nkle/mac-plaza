@@ -125,15 +125,15 @@ struct SocialSettingsView: View {
                         Text("With automatic sharing on, this Mac sends your current Discord friend IDs as the allowed audience for your Mii and note. It updates while connected; friends do not need a Plaza invitation. Turn sharing off and save to revoke access.").font(.caption).foregroundStyle(.secondary)
                         Toggle("Share my Discord availability and whether I’m in Plaza", isOn: $sharePresence)
                         Toggle("Share my current and recently used apps & games", isOn: $shareActivity)
-                        Text("Friends without a shared Mii receive a random temporary Mii for each sign-in or app session. Available custom status text appears periodically overhead; a game or shared note can appear when no custom status is available.").font(.caption).foregroundStyle(.secondary)
-                        Text("Optional activity sharing sends foreground application names and bundle IDs while this Mac is awake, including when Plaza is in the background. Friends gather around matching app islands. Recent activity expires after 30 minutes; window titles, documents, and app contents are never shared.").font(.caption).foregroundStyle(.secondary)
+                        Text("Friends without a shared Mii receive a random temporary Mii for each sign-in or app session. Custom status text appears periodically overhead. Remembered Discord games can alternate with it, and shared notes can appear too.").font(.caption).foregroundStyle(.secondary)
+                        Text("Optional activity sharing sends foreground application names and bundle IDs while this Mac is awake, including when Plaza is in the background. Friends gather around matching app islands. Shared Plaza app activity expires after 30 minutes; window titles, documents, and app contents are never shared.").font(.caption).foregroundStyle(.secondary)
                         Button("Save Shared Profile") {
                             if let avatar = model.document.avatars.first(where: { $0.id == selected }) {
                                 social.publish(avatar: avatar, note: note, sharing: sharing, sharePresence: sharePresence, shareActivity: shareActivity, shareDiscordFriends: shareDiscordFriends)
                             }
                         }.disabled(social.busy || selected == nil || note.count > 280)
                         Text(social.discordSharingMessage).font(.caption).foregroundStyle(.secondary)
-                        Text("Saving publishes this Mii’s appearance and note. Birthdays, creator details, local journals, drawings, app paths, and renderer resources stay on your Mac. Discord friends’ availability comes directly from Discord. Custom status text and other games use the optional bot and respect Discord’s server visibility and profile privacy settings.")
+                        Text("Saving publishes this Mii’s appearance and note. Birthdays, creator details, private notes, drafts, local replies, app paths and renderer resources stay on your Mac. Public journal notes and their author Miis/drawings share independently with your Discord friends. Discord friends’ availability comes directly from Discord. Custom status text and other games use the optional bot and respect Discord’s server visibility and profile privacy settings.")
                             .font(.caption).foregroundStyle(.secondary)
                     }
                     Section("Discord custom statuses & games") {
@@ -144,7 +144,7 @@ struct SocialSettingsView: View {
                             Text("A server administrator only needs to do this once. If the bot is already installed in a shared server, you’re ready.").font(.caption).foregroundStyle(.secondary)
                         }
                         Text("Friends’ custom Discord status text appears overhead when visible to the Plaza bot in a server you both share. Discord may hide it based on their profile privacy settings. Generic online, away, busy and offline bubbles are hidden. Game activity still gathers Miis around matching homescreen apps; add the game with the same name Discord displays. No Plaza invitation or linked Mii is needed.").font(.caption).foregroundStyle(.secondary)
-                        Text("Only your Discord friend IDs are sent to your Plaza service for this lookup. It returns current server-visible custom statuses and Playing activity; no messages are read. These observations are not saved to the service database and clear when removed, hidden, disconnected, or this switch is off.").font(.caption).foregroundStyle(.secondary)
+                        Text("Only your Discord friend IDs are sent to your Plaza service for this lookup. It returns current server-visible custom statuses and Playing activity; no messages are read. This Mac remembers each friend’s last visible game for up to two hours after play stops, including across relaunches. Friends do not need Plaza. Click an app to see who played recently, or watch for recent-game bubbles alongside custom statuses. History stays on this Mac and clears when you hide or remove a friend, lose shared-server coverage, unlink Discord, or turn this switch off. During connection gaps, remembered games are marked as recent. Hidden or unobserved activity cannot be recovered.").font(.caption).foregroundStyle(.secondary)
                     }
                     Section("Discord friends") {
                         Text(social.discordFriendsMessage).font(.callout)
@@ -164,7 +164,7 @@ struct SocialSettingsView: View {
                         Button("Show All Hidden Miis") { social.showAll() }
                     }
                     DisclosureGroup("Optional shared Mii profiles & Plaza invitations") {
-                    Text("Invitations are only needed to exchange chosen Mii appearances, authored notes, and shared app activity. Automatic Discord friends do not need them.").font(.caption).foregroundStyle(.secondary)
+                    Text("Optional invitations connect Plaza accounts directly. Public journal notes can also reach authorized Discord friends automatically.").font(.caption).foregroundStyle(.secondary)
                     Section("Invite a friend") {
                         HStack {
                             Button("Create Invitation") { social.createInvite() }.disabled(social.busy)

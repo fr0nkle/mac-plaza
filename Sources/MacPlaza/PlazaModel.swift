@@ -8,6 +8,7 @@ import PlazaCore
 final class PlazaModel: ObservableObject {
     @Published var document = PlazaDocument()
     @Published var loaded = false
+    @Published var journalRevision = 0
     @Published var recoveryRequired = false
     @Published var error: String? { didSet { if error != nil { desktop.presentCompanionIfNeeded() } } }
     @Published var status = "Your own little corner of the Mac."
@@ -16,6 +17,15 @@ final class PlazaModel: ObservableObject {
     @Published var listMode = false
     @Published var editing = false
     @Published var page = 0
+    @Published var rotatingApps: [AppIsland] = []
+    @Published var preparingRotatingHome = false
+    @Published var rotationReady = false
+    let recentApps: RecentAppHistory
+    let observesSystemAppLaunches: Bool
+    var installedRotationApps: [AppIsland] = []
+    var rotationScanTask: Task<Void, Never>?
+    var rotationNeedsRefresh = false
+    var rotationAwaitingFriends = true
     @Published var sheet: PlazaSheet? {
         didSet {
             if oldValue?.id == "characters", sheet?.id != "characters" { makerEditorVisible = false }
@@ -106,17 +116,53 @@ final class PlazaModel: ObservableObject {
         audio.update(enabled: (document.preferences.ambientSound ?? true) && audioEligible, volume: volume, track: musicTrack, customURL: music.url(for: musicTrack), allowPreview: sessionActive && automaticMusicMuteReason == nil && (windowVisible || desktopMenuVisible) && !document.preferences.safeMode)
     }
     var filteredApps: [AppIsland] {
-        document.apps.filter { search.isEmpty || $0.label.localizedCaseInsensitiveContains(search) }
+        homeApps.filter { search.isEmpty || $0.label.localizedCaseInsensitiveContains(search) }
     }
     var visibleApps: [AppIsland] { Array(filteredApps.dropFirst(page * 12).prefix(12)) }
     var pageCount: Int { max(1, (filteredApps.count + 11) / 12) }
+    var receivedNotes: [SharedJournalNote] {
+        guard social.connected else { return [] }
+        return social.visibleSharedJournal.filter { $0.ownerID != social.account?.id && ($0.topic == nil || $0.topic?.match(in: topicApps) != nil) }
+    }
+    var homeSharedNotes: [SharedJournalNote] {
+        receivedNotes.filter { $0.topic == nil || $0.topic?.match(in: visibleApps) != nil }
+    }
+    var allJournalNotes: [LocalNote] {
+        (document.notes + receivedNotes.map { $0.localNote(apps: topicApps) }).sorted { $0.created > $1.created }
+    }
+    func notes(for app: AppIsland) -> [LocalNote] {
+        let own = document.notes.filter { note in
+            guard let id = note.appID else { return false }
+            if id == app.id { return true }
+            return topicApps.first { $0.id == id }.map { SharedNoteTopic($0).match(in: [app]) != nil } ?? false
+        }
+        let shared = receivedNotes.filter { $0.topic?.match(in: [app]) != nil }.map { $0.localNote(apps: [app]) }
+        return (own + shared).sorted { $0.created > $1.created }
+    }
+    func sharedThread(for note: LocalNote) -> SharedJournalNote? {
+        guard note.shared == true, social.connected else { return nil }
+        return social.visibleSharedJournal.first {
+            isOwnNote(note) ? ($0.ownerID == social.account?.id && $0.sourceID == note.id) : $0.id == note.id
+        }
+    }
+    func isOwnNote(_ note: LocalNote) -> Bool { document.notes.contains { $0.id == note.id } }
+    func noteAvatar(_ note: LocalNote) -> Avatar {
+        document.avatars.first { $0.id == note.authorID } ?? receivedNotes.first { $0.id == note.id }?.author ?? Avatar(name: note.author)
+    }
+    func updateSharedJournal() {
+        guard loaded, !recoveryRequired else { return }
+        social.setJournal(notes: document.notes, apps: topicApps, avatars: document.avatars)
+    }
+
     var visibleNotes: [LocalNote] {
-        document.notes.filter { search.isEmpty || $0.text.localizedCaseInsensitiveContains(search) || $0.author.localizedCaseInsensitiveContains(search) || $0.drawingDescription.localizedCaseInsensitiveContains(search) }
+        allJournalNotes.filter { search.isEmpty || $0.text.localizedCaseInsensitiveContains(search) || $0.author.localizedCaseInsensitiveContains(search) || $0.drawingDescription.localizedCaseInsensitiveContains(search) }
     }
 
     init(directory: URL? = nil) {
+        observesSystemAppLaunches = directory == nil && !CommandLine.arguments.contains("--demo")
         social = SocialController(isolated: directory != nil || CommandLine.arguments.contains("--demo"))
         let base = directory ?? PlazaDataLocation.root
+        recentApps = RecentAppHistory(url: base.appendingPathComponent("recent-apps.json"))
         storage = DocumentStorage(url: base.appendingPathComponent("plaza.json"))
         music = PlazaMusicLibrary(directory: base.appendingPathComponent("Music"))
         music.onChange = { [weak self] in self?.updateAudio() }
@@ -125,7 +171,7 @@ final class PlazaModel: ObservableObject {
             self.audio.playArrivalEffect(cue,volume:self.document.preferences.musicVolume ?? 0.12)
         }
         scene.onArrivalStopped = { [weak self] in self?.audio.stopArrivalEffects() }
-        social.onRosterChanged = { [weak self] in self?.rebuildScene() }
+        social.onRosterChanged = { [weak self] in self?.journalRevision &+= 1; self?.refreshHomeForFriendActivity(); self?.rebuildScene() }
         observeLifecycle()
         if directory == nil {
             fullScreenAudioMonitor = FullScreenAudioMonitor(plazaScreen: { [weak self] in
@@ -146,6 +192,7 @@ final class PlazaModel: ObservableObject {
             lastPostTick = now
             Task { @MainActor in
                 self?.advanceBubblePresentation(by: elapsed)
+                self?.applyPendingHomeRotation()
             }
         }
         Task {
@@ -158,6 +205,7 @@ final class PlazaModel: ObservableObject {
             }
             do { if try await storage.beginSession() { document.preferences.safeMode=true; status="The previous session ended unexpectedly. Safe mode is on; resume in Preferences." } } catch { self.error=error.localizedDescription }
             loaded = true
+            if rotatingHomeEnabled { prepareRotatingHome() }
             rebuildScene()
             scene.beginEntrance(enabled: !document.preferences.safeMode && !document.preferences.pauseMotion && !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion)
         }
@@ -167,9 +215,17 @@ final class PlazaModel: ObservableObject {
         guard !recoveryRequired else { error = "Restore a backup or import a plaza before making changes."; return false }
         var next = document; action(&next)
         let wasSafe=document.preferences.safeMode, previousAvatars=document.avatars
+        let wasRotating = rotatingHomeEnabled
         do { document = try next.validated() }
         catch { self.error = error.localizedDescription; return false }
         if wasSafe != document.preferences.safeMode || previousAvatars != document.avatars { rebuildScene() }
+        if wasRotating != rotatingHomeEnabled {
+            page = 0; previewAppID = nil
+            if rotatingHomeEnabled { editing = false; prepareRotatingHome() }
+            else { rotationScanTask?.cancel(); preparingRotatingHome = false; rotationNeedsRefresh = false }
+            updateVisibleIslands()
+        }
+        updateSharedJournal()
         revision += 1
         let snapshot = document, number = revision
         Task { do { try await storage.save(snapshot, revision: number) } catch { self.error = "Could not save the plaza: \(error.localizedDescription)" } }
@@ -182,12 +238,18 @@ final class PlazaModel: ObservableObject {
         catch { self.error = "Could not save: \(error.localizedDescription)" }
     }
     func rebuildScene() {
+        updateSharedJournal()
         social.setLocalMiis(document.avatars)
         updateVisibleIslands()
         let population = document.preferences.safeMode ? 0 : document.preferences.population
         let room = max(0, population - document.avatars.count)
         let plazaFriends = FriendMiiAssignments.plazaFriends(social.friends, capacity: room, retaining: scene.fflCharacters.map(\.id))
-        scene.configure(avatars: document.avatars + plazaFriends.map(\.avatar), population: population, localCount: document.avatars.count)
+        var seen = Set(document.avatars.map(\.id))
+        let noteAuthors = homeSharedNotes.map(\.author).filter { seen.insert($0.id).inserted }
+        // Preserve note authors even when they use a different Mii from their profile.
+        var unique = Set(document.avatars.map(\.id))
+        let roster = (noteAuthors + plazaFriends.map(\.avatar)).filter { unique.insert($0.id).inserted }
+        scene.configure(avatars: document.avatars + roster.prefix(room), population: population, localCount: document.avatars.count)
         updateVisibleIslands()
     }
     @discardableResult
@@ -215,9 +277,13 @@ final class PlazaModel: ObservableObject {
                 assignments[friend.avatar.id] = app
             }
         }
+        for note in homeSharedNotes.reversed() {
+            if let app = note.topic?.match(in: visibleApps) { assignments[note.author.id] = app.id }
+        }
         scene.setGathering(assignments, apps: visibleApps.map(\.id))
     }
     func openCharacter(_ avatar: Avatar) {
+        if let note = receivedNotes.first(where: { $0.author.id == avatar.id }) { openJournal(note: note.id); return }
         if let friend = social.friends.first(where: { $0.avatar.id == avatar.id }) { sheet = .friend(friend) }
         else { sheet = .profile(avatar) }
     }
@@ -271,7 +337,12 @@ final class PlazaModel: ObservableObject {
     }
     func launch(_ app: AppIsland) {
         guard !launching.contains(app.id) else { return }
-        guard let url = resolvedURL(app) else { sheet = .app(app); status = "Locate \(app.label) to reconnect this shortcut."; return }
+        guard let url = resolvedURL(app) else {
+            if document.apps.contains(where: { $0.id == app.id }) {
+                sheet = .app(app); status = "Locate \(app.label) to reconnect this shortcut."
+            } else { error = "\(app.label) is no longer installed. Shuffle the home screen in Settings to refresh its apps." }
+            return
+        }
         // Refresh moved/stale bookmark references only after identity validation.
         if let fresh = try? Self.island(at: url), fresh.path != app.path || fresh.bookmark != app.bookmark {
             mutate { doc in if let i = doc.apps.firstIndex(where: { $0.id == app.id }) { doc.apps[i].path = fresh.path; doc.apps[i].bookmark = fresh.bookmark } }
@@ -285,7 +356,7 @@ final class PlazaModel: ObservableObject {
                 guard let self else { return }
                 self.launching.remove(app.id)
                 if let error { self.error = "Could not open \(app.label): \(error.localizedDescription)" }
-                else { self.status = game == nil ? "\(app.label) opened. Welcome back whenever you like." : "Steam is opening \(app.label)."; if let i=self.visibleApps.firstIndex(where:{$0.id==app.id}) {self.scene.react(to:i)} }
+                else { self.recordRecentLaunch(app); self.status = game == nil ? "\(app.label) opened. Welcome back whenever you like." : "Steam is opening \(app.label)."; if let i=self.visibleApps.firstIndex(where:{$0.id==app.id}) {self.scene.react(to:i)} }
             }
         }
         launching.insert(app.id); status = "Opening \(app.label)…"
@@ -306,6 +377,7 @@ final class PlazaModel: ObservableObject {
         search = ""
         page = 0
         editing = true
+        if rotatingHomeEnabled { status = "Editing your pinned layout. Turn off Rotate Home Screen in Settings to use it." }
     }
     func returnToPlaza() {
         sheet = nil
@@ -429,13 +501,13 @@ final class PlazaModel: ObservableObject {
             guard (values.fileSize ?? Int.max) <= 12_000_000 else { throw PlazaError.invalid("Plaza files must be smaller than 12 MB.") }
             let imported = try DocumentStorage.decode(Data(contentsOf: url)).portable()
             // Imported data can never introduce a launchable local path or bookmark.
-            recoveryRequired = false; document = imported; iconCache.removeAll(); page = 0; rebuildScene()
+            recoveryRequired = false; document = imported; iconCache.removeAll(); page = 0; if rotatingHomeEnabled { prepareRotatingHome() }; rebuildScene()
             Task { await flush() }; status = "Plaza imported. Use Locate App to reconnect shortcuts."
         } catch { self.error = error.localizedDescription }
     }
     func recoverBackup() {
         Task {
-            do { document = try await storage.recoverBackup(); recoveryRequired = false; rebuildScene(); await flush(); status = "Backup restored." }
+            do { document = try await storage.recoverBackup(); recoveryRequired = false; if rotatingHomeEnabled { prepareRotatingHome() }; rebuildScene(); await flush(); status = "Backup restored." }
             catch { self.error = "Backup could not be restored: \(error.localizedDescription)" }
         }
     }
@@ -449,6 +521,16 @@ final class PlazaModel: ObservableObject {
     }
     private func observeLifecycle() {
         let workspace = NSWorkspace.shared.notificationCenter
+        if observesSystemAppLaunches {
+            observations.append(workspace.addObserver(forName: NSWorkspace.didLaunchApplicationNotification, object: nil, queue: .main) { [weak self] notification in
+                let app = notification.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication
+                Task { @MainActor in
+                    guard let self, self.rotatingHomeEnabled, let app, app.activationPolicy == .regular,
+                          let url = app.bundleURL, let island = try? Self.island(at: url) else { return }
+                    self.recordRecentLaunch(island)
+                }
+            })
+        }
         for name in [NSWorkspace.willSleepNotification, NSWorkspace.sessionDidResignActiveNotification, NSWorkspace.screensDidSleepNotification] {
             observations.append(workspace.addObserver(forName: name, object: nil, queue: .main) { [weak self] _ in Task { @MainActor in self?.sessionActive = false } })
         }

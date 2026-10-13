@@ -17,16 +17,17 @@ struct NoteComposer: View {
     @State private var saveError: String?
     @State private var ready=false
     @State private var committed=false
+    @State private var shared = true
     var body: some View {
         VStack(spacing: 0) {
-            SheetHeader(title: existing == nil ? "Leave a little something" : "Edit your note", subtitle: "Saved only on this Mac. No account needed.") { dismiss() }
+            SheetHeader(title: existing == nil ? "Leave a little something" : "Edit your note", subtitle: "Public notes are shared with your Plaza friends.") { dismiss() }
             VStack(alignment: .leading, spacing: 16) {
                 HStack {
                     Picker("Character", selection: $authorID) { ForEach(model.document.avatars) { avatar in Text(avatar.name).tag(avatar.id) } }.frame(width: 220)
                     Spacer()
                     Picker("Topic", selection: $topicID) {
                         Text("The plaza").tag(nil as UUID?)
-                        ForEach(model.document.apps) { app in Text(app.label).tag(Optional(app.id)) }
+                        ForEach(model.topicApps) { app in Text(app.label).tag(Optional(app.id)) }
                     }.frame(width: 240)
                 }
                 if let saveError { Text(saveError).font(.caption).foregroundStyle(.red) }
@@ -56,7 +57,7 @@ struct NoteComposer: View {
                     }
                 }
                 HStack {
-                    Label("Only you · Local note", systemImage: "lock").font(.caption).foregroundStyle(PlazaStyle.teal)
+                    Toggle("Public · Plaza friends", isOn: $shared).toggleStyle(.checkbox).font(.caption).help("Share this note and its author Mii with your authorized Plaza friends. Uncheck to keep it on this Mac.")
                     Spacer()
                     Button("Keep Draft & Close") { dismiss() }
                     Button(existing == nil ? "Save Note" : "Save Changes") { save() }
@@ -72,7 +73,7 @@ struct NoteComposer: View {
                     if let id=draft.authorID, model.document.avatars.contains(where:{$0.id==id}) { authorID=id }
                 }
                 ready=true
-                if let existing { text = existing.text; strokes = existing.drawing; description = existing.drawingDescription; drawing = !strokes.isEmpty }
+                if let existing { shared = existing.shared == true; text = existing.text; strokes = existing.drawing; description = existing.drawingDescription; drawing = !strokes.isEmpty }
             }
             .onChange(of:draft) { _,value in if ready && !committed && existing == nil { model.storeDraft(value) } }
     }
@@ -85,6 +86,7 @@ struct NoteComposer: View {
     private func save() {
         guard let author = model.document.avatars.first(where: { $0.id == authorID }) else { return }
         var note = LocalNote(authorID: author.id, author: author.name, appID: topicID, text: text.trimmingCharacters(in: .whitespacesAndNewlines), drawing: drawing ? strokes : [], drawingDescription: description.trimmingCharacters(in: .whitespacesAndNewlines))
+        note.shared = shared
         if let existing { note.id = existing.id; note.created = existing.created; note.acknowledged = existing.acknowledged; note.replies=existing.replies; note.read=existing.read }
         let saved = model.mutate { doc in
             if let index = doc.notes.firstIndex(where: { $0.id == note.id }) { doc.notes[index] = note }
@@ -140,10 +142,10 @@ struct FeedView: View {
     @State private var editing: LocalNote?
     @State private var deleted: LocalNote?
     @State private var replyTo: LocalNote?
-    var notes: [LocalNote] { model.document.notes.filter { (authorID == nil || $0.authorID == authorID) && (query.isEmpty || $0.text.localizedCaseInsensitiveContains(query) || $0.author.localizedCaseInsensitiveContains(query) || $0.drawingDescription.localizedCaseInsensitiveContains(query)) } }
+    var notes: [LocalNote] { model.allJournalNotes.filter { (authorID == nil || $0.authorID == authorID) && (query.isEmpty || $0.text.localizedCaseInsensitiveContains(query) || $0.author.localizedCaseInsensitiveContains(query) || $0.drawingDescription.localizedCaseInsensitiveContains(query)) } }
     var body: some View {
         VStack(spacing: 0) {
-            SheetHeader(title: "Plaza journal", subtitle: "Thoughts and sketches from your local characters.") { dismiss() }
+            SheetHeader(title: "Plaza journal", subtitle: "Your notes and public notes from Plaza friends.") { dismiss() }
             HStack {
                 TextField("Search your journal", text: $query).textFieldStyle(.roundedBorder)
                 Button { composing = true } label: { Label("New Note", systemImage: "plus") }.buttonStyle(.borderedProminent).tint(PlazaStyle.teal).disabled(model.document.notes.count >= 200)
@@ -155,33 +157,42 @@ struct FeedView: View {
                         VStack(spacing: 12) {
                             Image(systemName: "text.bubble").font(.system(size: 35)).foregroundStyle(PlazaStyle.teal)
                             Text(query.isEmpty ? "A little room for your thoughts." : "No notes found.").font(.title3)
-                            Text("Write a reminder, celebrate a finished project, or leave a sketch. Everything stays on this Mac.").font(.callout).foregroundStyle(.secondary).multilineTextAlignment(.center)
+                            Text("Write a reminder, celebrate a finished project, or leave a sketch. Choose Public to share a note with your Plaza friends.").font(.callout).foregroundStyle(.secondary).multilineTextAlignment(.center)
                         }.frame(maxWidth: .infinity).padding(36)
                     }
                     ForEach(notes) { note in
                         VStack(alignment: .leading, spacing: 12) {
                             HStack(spacing: 10) {
-                                MiiHeadIcon(avatar: model.document.avatars.first(where: { $0.id == note.authorID }) ?? Avatar(name: note.author)).frame(width: 42, height: 42)
+                                MiiHeadIcon(avatar: model.noteAvatar(note)).frame(width: 42, height: 42)
                                 VStack(alignment: .leading, spacing: 3) {
-                                    Text("Local character · \(note.created.formatted(date: .abbreviated, time: .shortened))").font(.system(size: 10)).foregroundStyle(.secondary)
+                                    Text("\(model.isOwnNote(note) ? (note.shared == true ? "Public · Plaza friends" : "Private · This Mac") : "Friend’s public note") · \(note.created.formatted(date: .abbreviated, time: .shortened))").font(.system(size: 10)).foregroundStyle(.secondary)
                                 }
                                 Spacer()
-                                Text(note.appID.flatMap { id in model.document.apps.first(where: { $0.id == id })?.label } ?? "The plaza").font(.caption).padding(7).background(PlazaStyle.teal.opacity(0.06), in: Capsule())
+                                Text(note.appID.flatMap { id in model.topicApps.first(where: { $0.id == id })?.label } ?? "The plaza").font(.caption).padding(7).background(PlazaStyle.teal.opacity(0.06), in: Capsule())
                             }
                             if !note.text.isEmpty { Text(note.text).font(.system(size: 14, design: .rounded)).foregroundStyle(PlazaPostStyle.text).lineSpacing(4).textSelection(.enabled).fixedSize(horizontal: false, vertical: true) }
                             if !note.drawing.isEmpty {
                                 InkCanvas(strokes: note.drawing).frame(width: 280, height: 280).border(.black.opacity(0.06)).accessibilityLabel(note.drawingDescription)
                                 Text(note.drawingDescription).font(.caption).foregroundStyle(.secondary)
                             }
+                            if note.shared == true { SharedNoteInteractions(model: model, social: model.social, note: note) }
                             HStack {
+                                if model.isOwnNote(note) {
+                                if note.shared != true {
                                 Button {
                                     model.mutate { doc in if let i = doc.notes.firstIndex(where: { $0.id == note.id }) { doc.notes[i].acknowledged.toggle() } }
                                 } label: { Label(note.acknowledged ? "Appreciated" : "Appreciate", systemImage: note.acknowledged ? "heart.fill" : "heart") }.foregroundStyle(note.acknowledged ? Color.pink : PlazaStyle.teal)
                                 Button("Reply (\((note.replies ?? []).count))") { replyTo=note }
+                                }
                                 Spacer()
                                 if !note.drawing.isEmpty { Button("Export Drawing") { exportDrawing(note) } }
                                 Button("Edit") { editing = note }
                                 Button("Delete", role: .destructive) { deleted = note; model.mutate { $0.notes.removeAll { $0.id == note.id } } }
+                                } else {
+                                    Label("Shared by a Plaza friend", systemImage: "person.2")
+                                    Spacer()
+                                    if !note.drawing.isEmpty { Button("Export Drawing") { exportDrawing(note) } }
+                                }
                             }.font(.caption).buttonStyle(.borderless)
                             ForEach(note.replies ?? []) { reply in
                                 HStack(alignment:.top) {
@@ -197,7 +208,8 @@ struct FeedView: View {
                     }
                     VStack(alignment: .leading, spacing: 7) {
                         Label("Plaza Guide", systemImage: "sparkle").font(.caption).foregroundStyle(PlazaStyle.teal)
-                        Text("This is your offline plaza. The visitors are decorative local characters, and your journal is private to this Mac.").font(.callout).foregroundStyle(.secondary)
+                        Text(model.social.journalSyncMessage).font(.caption).foregroundStyle(.secondary)
+                        Text("Public notes sync with your authorized Plaza friends. Public replies and likes sync too. Private notes, drafts and earlier local replies stay on this Mac. Edits and deletions sync when connected.").font(.callout).foregroundStyle(.secondary)
                     }.padding(18)
                 }.padding(.horizontal, 18).padding(.bottom, 18)
               }.background(PlazaStyle.paper)
@@ -247,21 +259,58 @@ enum InkRasterizer {
 struct ReplyComposer: View {
     @ObservedObject var model: PlazaModel
     let noteID: UUID
+    var existingSharedReply: SharedJournalReply? = nil
     @Environment(\.dismiss) private var dismiss
-    @State private var text=""
-    @State private var authorID=UUID()
+    @State private var text = ""
+    @State private var authorID = UUID()
+    @State private var replyID = UUID()
+    @State private var publicReply = false
+    @State private var saving = false
+    @State private var saveError: String?
     var body: some View {
-        VStack(spacing:0) {
-            SheetHeader(title:"A local reply",subtitle:"A conversation between your characters, saved on this Mac.") { dismiss() }
-            VStack(alignment:.leading,spacing:15) {
-                Picker("Character",selection:$authorID) { ForEach(model.document.avatars) { Text($0.name).tag($0.id) } }
-                TextEditor(text:$text).font(.body).scrollContentBackground(.hidden).frame(height:130).padding(14).modifier(PlazaPostSurface()).accessibilityLabel("Reply text").onChange(of:text) { _,s in if s.count>280 { text=String(s.prefix(280)) } }
-                HStack { Text("\(text.count) / 280").font(.caption).foregroundStyle(.secondary); Spacer(); Button("Save Reply") {
-                    guard let a=model.document.avatars.first(where:{$0.id==authorID}) else { return }
-                    if model.mutate({ doc in if let i=doc.notes.firstIndex(where:{$0.id==noteID}) { if doc.notes[i].replies == nil { doc.notes[i].replies=[] }; doc.notes[i].replies?.append(LocalReply(authorID:a.id,author:a.name,text:text.trimmingCharacters(in:.whitespacesAndNewlines))) } }) { dismiss() }
-                }.buttonStyle(.borderedProminent).tint(PlazaStyle.teal).keyboardShortcut(.defaultAction).disabled(text.trimmingCharacters(in:.whitespacesAndNewlines).isEmpty || (model.document.notes.first(where:{$0.id==noteID})?.replies?.count ?? 0)>=50) }
-            }.padding(20)
-        }.frame(width:540).onAppear { authorID=model.document.primaryAvatar.id }
+        VStack(spacing: 0) {
+            SheetHeader(title: publicReply ? "A shared reply" : "A local reply",
+                subtitle: publicReply ? "Visible to the note’s Plaza friends." : "Saved only on this Mac.") { if !saving { dismiss() } }
+            VStack(alignment: .leading, spacing: 15) {
+                Picker("Character", selection: $authorID) { ForEach(model.document.avatars) { Text($0.name).tag($0.id) } }
+                TextEditor(text: $text).font(.body).scrollContentBackground(.hidden).frame(height: 130)
+                    .padding(14).modifier(PlazaPostSurface()).accessibilityLabel("Reply text")
+                    .onChange(of: text) { _, value in if value.count > 280 { text = String(value.prefix(280)) } }
+                if let saveError { Text(saveError).font(.caption).foregroundStyle(.red) }
+                HStack {
+                    Text("\(text.count) / 280").font(.caption).foregroundStyle(.secondary)
+                    Spacer()
+                    Button(saving ? "Sending…" : (publicReply ? "Share Reply" : "Save Reply")) { Task { await save() } }
+                        .buttonStyle(.borderedProminent).tint(PlazaStyle.teal).keyboardShortcut(.defaultAction)
+                        .disabled(saving || text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                }
+            }.padding(20).disabled(saving)
+        }.frame(width: 540).interactiveDismissDisabled(saving)
+        .onAppear {
+            publicReply = existingSharedReply != nil || model.allJournalNotes.first { $0.id == noteID }?.shared == true
+            authorID = existingSharedReply.flatMap { reply in model.document.avatars.first { $0.name == reply.author.name }?.id } ?? model.document.primaryAvatar.id
+            if let existingSharedReply { text = existingSharedReply.text; replyID = existingSharedReply.id }
+        }
+    }
+    @MainActor private func save() async {
+        guard !saving, let author = model.document.avatars.first(where: { $0.id == authorID }),
+              let note = model.allJournalNotes.first(where: { $0.id == noteID }) else {
+            saveError = "This note is no longer available."; return
+        }
+        saving = true; defer { saving = false }
+        if publicReply {
+            guard let thread = model.sharedThread(for: note) else { saveError = "Connect to Plaza and wait for this public note to sync."; return }
+            if await model.social.reply(noteID: thread.id, replyID: replyID, author: author, text: text) { dismiss() }
+            else { saveError = model.social.journalInteractionMessage ?? "The reply could not be shared. Your text is still here." }
+        } else {
+            let reply = LocalReply(authorID: author.id, author: author.name, text: text.trimmingCharacters(in: .whitespacesAndNewlines))
+            if model.mutate({ doc in
+                if let index = doc.notes.firstIndex(where: { $0.id == noteID }) {
+                    if doc.notes[index].replies == nil { doc.notes[index].replies = [] }
+                    doc.notes[index].replies?.append(reply)
+                }
+            }) { dismiss() } else { saveError = model.error }
+        }
     }
 }
 

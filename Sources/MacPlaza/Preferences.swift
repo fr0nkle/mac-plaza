@@ -136,7 +136,16 @@ struct PreferencesView: View {
                 if selectedCategory == .updates { UpdateSettingsView() }
                 if selectedCategory == .apps {
                     Section("Home screen apps") {
-                        Button { model.beginChangingApps() } label: { Label("Change Apps", systemImage: "square.grid.2x2") }
+                        Toggle("Rotate home screen at startup", isOn: Binding(get: { model.rotatingHomeEnabled }, set: { enabled in
+                            model.mutate { $0.preferences.rotatingHomeScreen = enabled }
+                        }))
+                        Text("Mix recently launched apps with games your friends are currently playing on Discord, when installed on this Mac. A new mix appears each time Mac Plaza starts; the layout stays steady while you use it. Turn this off to restore your pinned apps and their order.").font(.caption).foregroundStyle(.secondary)
+                        if model.rotatingHomeEnabled {
+                            Button(model.preparingRotatingHome ? "Finding installed apps…" : "Shuffle Home Screen Now") { model.prepareRotatingHome() }
+                                .disabled(model.preparingRotatingHome)
+                            Text("Recent launches are remembered locally while rotation is on. The first mix also uses currently running apps. Discord games need visible game activity; unavailable or uninstalled games are skipped. Empty slots use your installed pinned apps.").font(.caption).foregroundStyle(.secondary)
+                        }
+                        Button { model.beginChangingApps() } label: { Label(model.rotatingHomeEnabled ? "Edit Pinned Apps" : "Change Apps", systemImage: "square.grid.2x2") }
                         Button { model.pickSteamGame() } label: { Label("Add Steam Game", systemImage: "gamecontroller") }
                         Text("Add installed apps, drag icons to change their positions, or click an app to replace or remove its shortcut. Changes save automatically on this Mac.").font(.caption).foregroundStyle(.secondary)
                     }
@@ -296,7 +305,8 @@ struct AppDetailsView: View {
     let appID: UUID
     @Environment(\.dismiss) private var dismiss
     @State private var label = ""
-    private var app: AppIsland? { model.document.apps.first { $0.id == appID } }
+    private var app: AppIsland? { model.topicApps.first { $0.id == appID } }
+    private var isPinned: Bool { model.document.apps.contains { $0.id == appID } }
     var body: some View {
         VStack(spacing: 0) {
             SheetHeader(title: "An island of your own", subtitle: "A shortcut to an installed Mac app or Steam game.", backToPlaza: model.returnToPlaza) { model.returnToPlaza() }
@@ -305,13 +315,13 @@ struct AppDetailsView: View {
                     HStack(spacing: 18) {
                         Image(nsImage: model.icon(app)).resizable().frame(width: 80, height: 80)
                         VStack(alignment: .leading, spacing: 8) {
-                            TextField("Plaza label", text: $label).textFieldStyle(.roundedBorder)
+                            TextField("Plaza label", text: $label).textFieldStyle(.roundedBorder).disabled(!isPinned)
                             Text(model.resolvedURL(app) == nil ? "Unavailable. Locate the app to reconnect this shortcut." : "Ready to open").font(.caption).foregroundStyle(.secondary)
                         }
                     }
                     LabeledContent("Bundle identity", value: app.bundleID).font(.caption).textSelection(.enabled)
                     if let url = model.resolvedURL(app) { Text(url.path).font(.caption).foregroundStyle(.secondary).textSelection(.enabled).lineLimit(3) }
-                    HStack {
+                    if isPinned { HStack {
                         Button(model.resolvedURL(app) == nil ? "Locate App…" : "Change App…") { model.pickApp(replacing: app) }
                             .help("Choose the app for this shortcut. Its position, label and custom icon are kept.")
                         Button("Steam Game…") { model.pickSteamGame(replacing: app) }
@@ -321,17 +331,20 @@ struct AppDetailsView: View {
                         if app.customIcon != nil { Button("Use App Icon") { model.setCustomIcon(app, reset:true) } }
                         Button("Move Earlier") { model.move(app.id, delta: -1) }
                         Button("Move Later") { model.move(app.id, delta: 1) }
+                    } } else {
+                        Text("This app is part of your rotating home screen. Pin it to your saved layout to customize its label or icon.").font(.callout).foregroundStyle(.secondary)
+                        Button("Pin to Saved Layout") { model.pinHomeApp(app) }.disabled(model.resolvedURL(app) == nil)
                     }
                     HStack {
-                        Button("Remove Shortcut", role: .destructive) { model.removeApp(app); dismiss() }
+                        if isPinned { Button("Remove Shortcut", role: .destructive) { model.removeApp(app); dismiss() } }
                         Spacer()
                         Button("Open") { model.launch(app) }
-                        Button("Save Label") {
+                        if isPinned { Button("Save Label") {
                             let value = label.trimmingCharacters(in: .whitespacesAndNewlines)
                             model.rememberLayout()
                             model.mutate { doc in if let i = doc.apps.firstIndex(where: { $0.id == appID }) { doc.apps[i].label = value } }
                             dismiss()
-                        }.buttonStyle(.borderedProminent).tint(PlazaStyle.teal).keyboardShortcut(.defaultAction).disabled(label.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || label.count > 60)
+                        }.buttonStyle(.borderedProminent).tint(PlazaStyle.teal).keyboardShortcut(.defaultAction).disabled(label.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || label.count > 60) }
                     }
                 }.padding(24)
             }

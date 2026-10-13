@@ -27,7 +27,7 @@ struct MiiMakerView: View {
                         Image(systemName: "person.crop.square.fill").font(.system(size: 30)).foregroundStyle(Color(red: 0.40, green: 0.64, blue: 0.28))
                         Text("Mii Maker").font(.system(size: 30, weight: .medium, design: .rounded))
                         Spacer()
-                        Text("\(model.document.avatars.count) / 12 Miis").font(.system(size: 13, weight: .medium)).foregroundStyle(.secondary)
+                        Text("\(model.document.avatars.count) / \(PlazaDocument.maximumCustomMiis) Miis").font(.system(size: 13, weight: .medium)).foregroundStyle(.secondary)
                     }.padding(.horizontal, 38).padding(.top, 28)
                     Spacer(minLength: 20)
                     switch screen {
@@ -73,7 +73,7 @@ struct MiiMakerView: View {
                         Text("Create Mii").font(.system(size: 28, weight: .medium, design: .rounded))
                     }.frame(width: 242, height: 214)
                         .background(LinearGradient(colors: [.white.opacity(0.6), Color(red: 0.75, green: 0.91, blue: 0.49).opacity(0.6)], startPoint: .top, endPoint: .bottom), in: RoundedRectangle(cornerRadius: 26))
-                }.buttonStyle(MakerTileStyle()).disabled(model.document.avatars.count >= 12)
+                }.buttonStyle(MakerTileStyle()).disabled(model.document.avatars.count >= PlazaDocument.maximumCustomMiis)
                 Button { fileOptions = false; navigate(.library) } label: {
                     VStack(spacing: 17) {
                         HStack(spacing: -14) {
@@ -86,9 +86,9 @@ struct MiiMakerView: View {
                         .background(LinearGradient(colors: [.white.opacity(0.6), Color(red: 0.97, green: 0.82, blue: 0.60).opacity(0.5)], startPoint: .top, endPoint: .bottom), in: RoundedRectangle(cornerRadius: 26))
                 }.buttonStyle(MakerTileStyle())
             }
-            Button(action: importMii) { Label("Import Mii from File…", systemImage: "square.and.arrow.down").frame(width: 474) }.buttonStyle(MakerPillStyle()).disabled(model.document.avatars.count >= 12)
+            Button(action: importMii) { Label("Import Mii from File…", systemImage: "square.and.arrow.down").frame(width: 474) }.buttonStyle(MakerPillStyle()).disabled(model.document.avatars.count >= PlazaDocument.maximumCustomMiis)
             Button { fileOptions = true; navigate(.library) } label: { Label("Mii Files & Portraits", systemImage: "photo.on.rectangle.angled").frame(width: 474) }.buttonStyle(MakerPillStyle())
-            Text(model.document.avatars.count >= 12 ? "Your Mii library is full. Select a Mii to edit it." : "Your creations will join you in the middle of the plaza.")
+            Text(model.document.avatars.count >= PlazaDocument.maximumCustomMiis ? "Your Mii library is full. Select a Mii to edit it." : "Your creations will join you in the middle of the plaza.")
                 .font(.system(size: 13)).foregroundStyle(.secondary).padding(.top, 4)
         }
     }

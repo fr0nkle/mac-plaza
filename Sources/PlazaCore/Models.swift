@@ -57,6 +57,8 @@ public struct InkStroke: Codable, Equatable, Sendable {
     public init(points: [InkPoint], eraser: Bool = false) { self.points = points; self.eraser = eraser }
 }
 public struct LocalNote: Codable, Identifiable, Equatable, Sendable {
+    /// Missing on older saves: keep private until the owner chooses to share.
+    public var shared: Bool?
     public var id = UUID()
     public var authorID: UUID
     public var author: String
@@ -69,6 +71,7 @@ public struct LocalNote: Codable, Identifiable, Equatable, Sendable {
     public var replies: [LocalReply]?
     public var read: Bool?
     public init(authorID: UUID, author: String, appID: UUID?, text: String, drawing: [InkStroke] = [], drawingDescription: String = "") {
+        self.shared = true
         self.authorID = authorID; self.author = author; self.appID = appID; self.text = text
         self.drawing = drawing; self.drawingDescription = drawingDescription
     }
@@ -88,9 +91,11 @@ public struct Preferences: Codable, Equatable, Sendable {
     public var makerMusicVolume: Double?
     public var friendsMusicVolume: Double?
     public var settingsMusicVolume: Double?
+    public var rotatingHomeScreen: Bool?
     public init() {}
 }
 public struct PlazaDocument: Codable, Equatable, Sendable {
+    public static let maximumCustomMiis = 100
     public var version = 2
     public var apps: [AppIsland] = []
     public var avatars: [Avatar] = [Avatar()]
@@ -102,7 +107,7 @@ public struct PlazaDocument: Codable, Equatable, Sendable {
     public var primaryAvatar: Avatar { avatars.first(where: { $0.id == primaryAvatarID }) ?? avatars[0] }
     public func validated() throws -> PlazaDocument {
         guard version == 2 else { throw PlazaError.invalid("This plaza uses an unsupported file version. Your current plaza was preserved.") }
-        guard apps.count <= 120, (1...12).contains(avatars.count), notes.count <= 200, notes.reduce(0, { $0 + ($1.replies?.count ?? 0) }) <= 2000,
+        guard apps.count <= 120, (1...Self.maximumCustomMiis).contains(avatars.count), notes.count <= 200, notes.reduce(0, { $0 + ($1.replies?.count ?? 0) }) <= 2000,
               Set(apps.map(\.id)).count == apps.count,
               Set(avatars.map(\.id)).count == avatars.count,
               Set(notes.map(\.id)).count == notes.count,

@@ -665,3 +665,95 @@ Music & Sound includes separate Settings Import, Preview/Stop, Use Music/Cancel,
 All 25 focused Settings, audio transition, suppression, custom music, wallpaper, desktop and Friends checks passed (.qa/settings-categories-music-tests.log). New checks decode the actual bundled recording, verify legacy defaults and volume bounds, stage/apply/persist an independent replacement, preview/restore it, exercise Settings crossfades and automatic suppression, and preserve saved mute. Opt-in native captures cover the category grid at full/minimum size, Music & Sound, Screen & Startup and Recovery (.qa/settings-categories/). Browsing the captured categories leaves the saved document unchanged.
 
 The optimized app was rebuilt (.qa/settings-categories-music-release.log), includes the Settings recording, and passed deep/strict signature verification. Live native UI checks confirmed MacPlazaDesktopSettings presents the nine category buttons and a separate Miis & Motion page with the bottom category strip. Native UI inspection intermittently timed out after restart, but the running app later reconnected and the categories were verified. Active external output/input streams were present during final audio inspection, so the app correctly remained automatically muted under the existing policy. Full music controls and replacement behavior were verified by the native capture and playback/import tests above.
+
+
+## Wii U–style plaza floor — 13 October 2026
+
+Replaced the oversized diamond mosaic and eight decorative ground rings with a continuous fine white-and-gray checker plane. Perspective makes the tiles smaller and flatter toward a bright white horizon, following the original WaraWara Plaza reference at https://www.nintendo.co.jp/hardware/wiiu/miiverse/img/img_warawara.jpg. The floor is a shared native Canvas backdrop for both character renderers, retaining the existing camera coordinates and enlarged background coverage. Mii and app shadows remain.
+
+Standalone native captures at 1280×720 and 1512×982, plus 75% and 210% zoom, are saved in .qa/plaza-floor/. Normal, zoomed and zoomed-out captures were visually reviewed for continuous coverage, checker scale, horizon fade and removal of decorative rings. This is a visual-only change; no functional tests were added.
+
+
+### Rotating home screen (0.14.0)
+
+Settings → Home Screen includes a persistent, optional “Rotate home screen at startup” toggle (rotation defaults on when no explicit choice is saved; explicit off remains pinned), plus Shuffle Home Screen Now. A balanced page alternates randomly chosen recent apps and current installed Discord games, deduplicates bundle/Steam identities, fills spare slots from installed pins and avoids repeating the previous icon order when at least two choices exist. Selection is capped at 12; recent candidates come from the latest 24 validated local entries. No periodic icon shuffle interrupts the user. A late-arriving first Discord game roster can complete the startup mix, deferred while editing, previewing, launching or in unrelated menus.
+
+A bounded installed-app scan covers /Applications, /System/Applications, ~/Applications and native Mac games in local Steam libraries. Launch identities and bookmarks are validated locally. Discord supplies only match metadata, never launch URLs or filesystem paths. Missing/ambiguous apps and inactive, stale or offline game observations are omitted. Generated shortcuts receive stable identity-derived UUIDs; saved pin UUIDs/custom labels/artwork take precedence. Normal app previews, launching, notes, friend gatherings, wallpaper and accessible list views consume the same displayed layout. Generated previews offer Pin to saved layout. Edit Pins shows the original saved layout without overwriting it with generated apps.
+
+Recent-app metadata lives separately in recent-apps.json under Application Support/MacPlaza. macOS app-launch notifications and successful Plaza launches are recorded only while rotation is enabled. Currently running regular apps seed the first mix, ordered by their launch dates. History retains at most 60 identities and expires entries after 90 days. It is absent from shareable exports and is never uploaded. Previous selection keys persist locally so subsequent boots vary even with unchanged input. Apps launched while Plaza is quit are observable only if still running on the next start.
+
+Focused tests cover balanced selection, fallback/empty pools, duplicate and Steam identities, stale/ambiguous/uninstalled Discord games, stable local history, backwards compatibility, defer-while-previewing behavior, restoring/editing pins and removal of uninstalled shortcuts. Existing native app reorder, crowd continuity, boundary and wallpaper regression checks are included.
+
+The optimized app rebuilt successfully in 33.21 seconds (.qa/plaza-floor-release.log) and passed deep/strict signature verification. After a clean native-menu restart, the live wallpaper plaza was visually checked: the fine checker floor fills the viewport, fades toward the horizon, and has no decorative ground rings. The plaza was left open at 100% zoom.
+
+
+## Custom Mii library capacity — 13 October 2026
+
+Raised the saved custom Mii limit from 12 to 100. A shared PlazaDocument constant
+now drives document validation, the maker counter, creation/import availability,
+and the editor save guard. The library remains scrollable and existing Miis can
+still be edited at capacity. No save schema migration or saved-data changes are
+needed.
+
+All 16 focused core/library tests passed, including a 100-Mii document round trip
+through JSON and disk storage, creation of the 100th Mii, editing at capacity,
+and rejection of a 101st without modifying the full library.
+Results: .qa/mii-library-100-tests.log.
+
+The optimized local app was rebuilt, signed, and restarted. Native UI verification
+confirmed “Mii Maker 5 / 100 Miis”, with Create and Import available. Returned to
+the wallpaper plaza; the real saved document remained unchanged.
+
+
+## Friend-shared journal — 13 October 2026
+
+Public text/drawing notes and their author Miis now sync through the authenticated
+Plaza service. Game topics carry Steam App IDs or Mac bundle IDs, matching across
+shortcut UUIDs, renamed labels, and rotating home-screen slots. Plaza posts need
+no game match. Friend posts enter the home-screen speech rotation, author Miis
+gather beneath matching visible games, and shared notes are readable in app
+previews and the journal. Received posts are read-only; private notes, replies,
+drafts, paths and bookmarks stay local. Public-note recipients sync independently
+of private profile/presence/activity settings. Blocks, hidden friends, revoked
+and expired grants are honored. Edits, deletion and switching back to private
+use serialized atomic replacements, retried on the normal 15-second service poll.
+
+The owner explicitly requested migrating this Mac’s existing notes: two notes
+were marked public, with a full pre-migration plaza and service backup under
+.qa/shared-notes-migration. Other plaza content was preserved. Live verification
+confirmed two service publications and 225 authorized friend grants; the existing
+private profile, presence and activity settings remained off. Native UI showed
+both notes as Public and confirmed successful synchronization. Other users’ old
+private journals retain their visibility until they choose to publish.
+
+All 38 service tests passed, including authenticated HTTP exchange between two
+accounts, large drawings, independent journal audiences, stable scoped IDs,
+validation rollback, edits/deletion, blocks/revocation and unrelated endpoint
+regressions. The focused Swift suite executed 28 tests with no failures and one
+optional live speech fixture skipped. Logs: .qa/shared-notes-server-tests.log,
+.qa/shared-notes-final-tests.log.
+
+
+Rotation is the default. Existing explicit pinned-mode choices remain respected; a missing preference uses rotation. The current user plaza has rotation enabled in Settings.
+
+
+## Shared replies and likes — 13 October 2026
+
+Public notes now expose shared likes and Mii-authored text replies in the journal
+and matching game previews. Likes are idempotent per-account settings. Reply
+creation/retry/editing reuses a stable UUID; only its author can edit it. Both
+the reply author and note owner can delete it. Public-note edits/republication
+now preserve existing interaction rows; retraction cascades them. Friend grants
+and blocks are checked for every write/read. Existing local replies and private
+appreciation stay local. Replies require a connection; failed sends retain text.
+
+The service stores shared interactions in new indexed SQLite tables and keeps the
+legacy note feed compatible. The new thread feed includes own-note interaction
+metadata without duplicating notes in the local journal. Ordered snapshot reads
+prevent a late earlier poll from replacing newer interaction state.
+
+All 46 service tests passed, including HTTP actions, simultaneous likes, replay,
+reply ownership/moderation, revocation, limits, account deletion and service
+restart persistence. The focused Swift suite ran 13 tests with no failures and
+one optional live tracking fixture skipped. Backups are under
+.qa/shared-interactions-migration; logs are .qa/shared-interactions-*-tests.log.

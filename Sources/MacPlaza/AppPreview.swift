@@ -46,16 +46,14 @@ struct AppPreviewView: View {
     @State private var steamDetails: SteamGameDetails?
     @State private var detailsLoading = false
     private var url: URL? { model.resolvedURL(app) }
-    private var notes: [LocalNote] { model.document.notes.filter { $0.appID == app.id }.sorted { $0.created > $1.created } }
+    private var notes: [LocalNote] { model.notes(for: app) }
 
     var body: some View {
         let info = AppPreviewInfo(app: app, url: url)
         VStack(alignment: .leading, spacing: 14) {
-            if app.steamAppID != nil {
-                ScrollView {
-                    description(info: info)
-                }.scrollIndicators(.hidden)
-            } else { description(info: info) }
+            ScrollView {
+                description(info: info)
+            }.scrollIndicators(.hidden)
             HStack(spacing: 9) {
                 Label(url == nil ? "Needs reconnecting" : "Ready to open", systemImage: url == nil ? "link.badge.plus" : "checkmark.circle")
                 if let version = info.version { Text("v\(version)").lineLimit(1) }
@@ -69,20 +67,20 @@ struct AppPreviewView: View {
             }.buttonStyle(.borderedProminent).tint(PlazaStyle.teal).keyboardShortcut(.defaultAction)
                 .disabled(model.launching.contains(app.id))
             Divider().opacity(0.5)
-            if let note = notes.first {
-                Text(note.drawing.isEmpty ? note.text : note.drawingDescription).font(.system(size: 12)).foregroundStyle(.secondary).lineLimit(2)
-            }
             HStack {
                 Button(notes.isEmpty ? "Leave a note" : "Read notes") {
                     if let note = notes.first { model.openJournal(note: note.id) }
                     else { model.sheet = .compose(app.id) }
                 }
                 Spacer()
-                Button("Shortcut settings…") { model.sheet = .app(app) }
+                Button(model.document.apps.contains(where: { $0.id == app.id }) ? "Shortcut settings…" : "Pin to saved layout") {
+                    if model.document.apps.contains(where: { $0.id == app.id }) { model.sheet = .app(app) }
+                    else { model.pinHomeApp(app) }
+                }
             }.font(.system(size: 11)).buttonStyle(.plain).foregroundStyle(PlazaStyle.teal)
         }
         .padding(23)
-        .frame(height: app.steamAppID != nil ? min(510, maximumHeight) : nil)
+        .frame(height: min(app.steamAppID != nil ? 510 : 400, maximumHeight))
         .background(.white.opacity(0.96), in: RoundedRectangle(cornerRadius: 22))
         .overlay(alignment: .leading) {
             PlazaInfoTail().fill(.white.opacity(0.96)).frame(width: 18, height: 30).offset(x: -16)
@@ -120,6 +118,7 @@ struct AppPreviewView: View {
                     title(info: info)
                 }
             } else { title(info: info) }
+            AppFriendsView(model: model, social: model.social, app: app, close: close)
             let summary = steamDetails?.appID == app.steamAppID ? steamDetails?.summary : nil
             Text(summary ?? info.summary).font(.system(size: 13)).lineSpacing(3).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
             if summary != nil { Text("From the Steam store").font(.system(size: 10)).foregroundStyle(.secondary) }

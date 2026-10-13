@@ -1,5 +1,11 @@
 # Mac Plaza licensing
 
+Plaza for Windows: original client code is MIT licensed. Its bundled Three.js
+renderer is MIT licensed; the complete notice is in the Windows source archive.
+Electron distributions include their Chromium, Node and other dependency notices.
+The Windows client does not bundle FFL, Discord Social SDK or Nintendo resources.
+The following renderer/SDK terms describe the native Mac distribution.
+
 Original Mac Plaza source code and documentation are licensed under the MIT
 license in LICENSE. Copyright 2026 fr0nkle / Squid Productions.
 

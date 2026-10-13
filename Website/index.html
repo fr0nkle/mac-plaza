@@ -3,25 +3,34 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
-  <meta name="description" content="A little plaza for your Mac. Make Miis, connect Discord, and bring your friends to your desktop.">
+  <meta name="description" content="A little plaza for Mac and Windows. Make Miis, connect friends, and share notes across computers.">
   <meta name="theme-color" content="#191419">
   <meta name="referrer" content="no-referrer">
-  <title>Mac Plaza</title>
+  <title>Plaza for Mac &amp; Windows</title>
   <link rel="canonical" href="https://plaza.squidproductions.org/">
   <link rel="icon" href="icon.png">
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
   <main>
-    <h1>Mac Plaza</h1>
-    <p>Make Miis, connect Discord, and bring your friends to your desktop. Watch everyone gather around your favorite apps and games.</p>
+    <h1>Plaza for Mac &amp; Windows</h1>
+    <p>Make Miis, connect friends, and bring a little plaza to your desktop. Leave notes and drawings for each other, whether your friends use Mac or Windows.</p>
+    <h2>Mac</h2>
     <div class="downloads">
       <a class="button download" href="https://github.com/fr0nkle/mac-plaza/releases/download/v0.16.0/Mac-Plaza-0.16.0.dmg">Download for Mac</a>
     </div>
     <p class="requirements">Apple silicon · macOS 15 or later</p>
     <p id="release-status" class="requirements">Version 0.16.0 · 82 MB</p>
+    <h2 class="windows-heading">Windows</h2>
+    <div class="downloads">
+      <a class="button windows-download" href="https://github.com/fr0nkle/mac-plaza/releases/download/windows-v0.1.0/Plaza-Windows-0.1.0-Setup-x64.exe">Download for Windows</a>
+      <a class="windows-portable" href="https://github.com/fr0nkle/mac-plaza/releases/download/windows-v0.1.0/Plaza-Windows-0.1.0-x64.zip">Portable ZIP</a>
+    </div>
+    <p class="requirements">Windows 10 / 11 · 64-bit (x64)</p>
+    <p id="windows-release-status" class="requirements">Version 0.1.0 · 106 MB · Testing preview</p>
+    <p class="windows-details">The first Windows companion includes an animated plaza, character customization, notes, drawings, likes and replies. Connect Discord, then exchange a Plaza invitation with your Mac or Windows friend. Native wallpaper mode and automatic Discord friend discovery are currently Mac features.</p>
     <details>
-      <summary>Installation help</summary>
+      <summary>Mac installation help</summary>
       <ol>
         <li>Open the downloaded disk image and run <strong>Install Mac Plaza.pkg</strong>, or drag the app to Applications.</li>
         <li>Quit any older copy, then open Mac Plaza from Applications.</li>
@@ -30,10 +39,24 @@
       <p>This testing preview isn’t Apple notarized. If macOS blocks it and you trust the download, try opening it, then choose <strong>Open Anyway</strong> in System Settings → Privacy &amp; Security.</p>
       <p>The local plaza works offline. Discord sharing and in-app updates need the test service online.</p>
     </details>
+    <details>
+      <summary>Windows installation &amp; sharing</summary>
+      <ol>
+        <li>Run the downloaded Setup EXE, or extract the entire portable ZIP and open <strong>Plaza.exe</strong>.</li>
+        <li>Open <strong>Settings → Connect Discord</strong>. Approve in your browser, then return to Plaza.</li>
+        <li>Open <strong>Friends → Create invitation</strong> and share the code with your friend, or enter their code. Accept the friend request.</li>
+        <li>On Mac, invitations are under <strong>Discord &amp; Friends → Optional shared Mii profiles &amp; Plaza invitations</strong>.</li>
+        <li>Choose <strong>Public · Plaza friends</strong> when writing a note. Friends on either platform see it on the next refresh. Mac friends need version 0.16 or later.</li>
+      </ol>
+      <p>This Windows preview is unsigned, so SmartScreen may show an unknown-publisher warning. Check that you downloaded it from the linked GitHub release. The app needs no Node, Python or GitHub account.</p>
+      <p>Private notes and drafts work offline. Sign-in and sharing need the Plaza test service online. Unsent shared notes stay saved on your computer until the service reconnects.</p>
+    </details>
   </main>
   <footer>
     <a class="source-download" href="https://github.com/fr0nkle/mac-plaza/releases/download/v0.16.0/Mac-Plaza-0.16.0-Source.zip">Source code</a>
     <a class="release-notes" href="https://github.com/fr0nkle/mac-plaza/releases/tag/v0.16.0">Release notes</a>
+    <a class="windows-source-download" href="https://github.com/fr0nkle/mac-plaza/releases/download/windows-v0.1.0/Plaza-Windows-0.1.0-Source.zip">Windows source</a>
+    <a class="windows-release-notes" href="https://github.com/fr0nkle/mac-plaza/releases/tag/windows-v0.1.0">Windows release notes</a>
     <a href="LICENSING.txt">Licenses</a>
   </footer>
 </body>

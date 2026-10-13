@@ -9,5 +9,23 @@
     "url": "https://github.com/fr0nkle/mac-plaza/releases/download/v0.16.0/Mac-Plaza-0.16.0-Source.zip",
     "size": 5943131,
     "sha256": "f1e849af1ac52cf59afc3f88f652d3ad2b952bd73086732a4ae62a262f19ba18"
+  },
+  "windows": {
+    "version": "0.1.0",
+    "installer": {
+      "url": "https://github.com/fr0nkle/mac-plaza/releases/download/windows-v0.1.0/Plaza-Windows-0.1.0-Setup-x64.exe",
+      "size": 111654397,
+      "sha256": "40567b1730de764980e3d556e2d02b8b518a1d844030847a44cc4ef9be569ff1"
+    },
+    "portable": {
+      "url": "https://github.com/fr0nkle/mac-plaza/releases/download/windows-v0.1.0/Plaza-Windows-0.1.0-x64.zip",
+      "size": 153358207,
+      "sha256": "ed8b8351e23f24a5c9a6e14ebe8f9d4adb101f996d168506c7e9ff55536266aa"
+    },
+    "source": {
+      "url": "https://github.com/fr0nkle/mac-plaza/releases/download/windows-v0.1.0/Plaza-Windows-0.1.0-Source.zip",
+      "size": 297878,
+      "sha256": "f761e8438177c60533f015a023924aa577f6ad55d7083c020ec41c0dfafa2b73"
+    }
   }
 }

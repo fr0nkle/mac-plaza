@@ -5,8 +5,12 @@ h1 { color: #e60026; font-size: 2em; line-height: 1.2; margin: 0 0 24px; }
 p { margin: 0 0 20px; }
 a { color: #ff94ad; text-underline-offset: 3px; }
 .downloads { margin: 28px 0; }
-.download { display: inline-block; padding: 13px 20px; background: #e60026; color: #fff; border-radius: 6px; text-decoration: none; font-weight: 650; }
-.download:hover { background: #b50020; }
+.download, .windows-download { display: inline-block; padding: 13px 20px; background: #e60026; color: #fff; border-radius: 6px; text-decoration: none; font-weight: 650; }
+.download:hover, .windows-download:hover { background: #b50020; }
+h2 { font-size: 20px; margin: 28px 0 8px; }
+.windows-heading { border-top: 1px solid #49333f; padding-top: 26px; margin-top: 28px; }
+.windows-portable { margin-left: 14px; font-size: 15px; }
+.windows-details { font-size: 15px; color: #d0c1cb; margin-top: 16px; }
 a:focus-visible, summary:focus-visible { outline: 3px solid #ff94ad; outline-offset: 4px; }
 .requirements { font-size: 15px; margin: 4px 0; color: #d0c1cb; }
 details { margin-top: 26px; font-size: 15px; }
@@ -17,6 +21,7 @@ li { margin-bottom: 10px; }
 footer { display: flex; gap: 22px; flex-wrap: wrap; border-top: 1px solid #49333f; margin-top: 36px; padding-top: 22px; font-size: 15px; }
 @media (max-width: 480px) {
   body { margin: 5vh auto; padding: 22px; }
-  .download { display: block; text-align: center; }
+  .download, .windows-download { display: block; text-align: center; }
+  .windows-portable { display: block; margin: 12px 0 0; text-align: center; }
   footer { gap: 16px; }
 }

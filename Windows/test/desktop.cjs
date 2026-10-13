@@ -14,14 +14,15 @@ async function main(){
     const auth=await new Promise((resolve,reject)=>{let data='';fixture.stdout.on('data',chunk=>{data+=chunk;if(data.includes('\n'))resolve(JSON.parse(data.split('\n')[0]));});fixture.on('error',reject);fixture.on('exit',code=>reject(new Error('Fixture exited '+code)));fixture.stderr.on('data',chunk=>process.stderr.write(chunk));});
     const api=async(token,method,route,body)=>{const result=await fetch(auth.origin+'/v1/'+route,{method,headers:{Authorization:'Bearer '+token,'Content-Type':'application/json'},body:body?JSON.stringify(body):undefined});assert.equal(result.status,200);return result.json();};
     const launch=()=>electron.launch({...(process.env.PLAZA_EXECUTABLE?{executablePath:process.env.PLAZA_EXECUTABLE}:{}),args:[...(process.env.PLAZA_EXECUTABLE?[]:[root]),'--user-data-dir='+tmp],timeout:60000});
-    app=await launch();assert.equal(await app.evaluate(({app})=>app.getPath('userData')),tmp,'Tests require isolated user data');let page=await app.firstWindow();await page.waitForSelector('#write');
+    app=await launch();assert.equal(await fs.realpath(await app.evaluate(({app})=>app.getPath('userData'))),await fs.realpath(tmp),'Tests require isolated user data');let page=await app.firstWindow();await page.waitForSelector('#write');
     // Exercise the shipping offline app, then seed only this test's encrypted
     // session through Playwright's main-process API. There is no app auth bypass.
     await page.click('#write');await page.fill('#note-text','Private Windows note');await page.selectOption('#visibility','private');await page.click('#post-note');await page.getByText('Private Windows note',{exact:true}).waitFor();
     await page.click('#write');await page.fill('#note-text','An unsent draft');await page.click('#close-composer');
     await fs.mkdir(path.join(root,'test-results'),{recursive:true});await page.screenshot({path:path.join(root,'test-results','offline.png')});
     await app.close();app=await launch();page=await app.firstWindow();await page.getByText('Private Windows note',{exact:true}).waitFor();await page.click('#write');assert.equal(await page.inputValue('#note-text'),'An unsent draft');await page.click('#close-composer');
-    await app.evaluate(async({app,safeStorage},value)=>{const fs=require('node:fs/promises'),path=require('node:path');await fs.writeFile(path.join(app.getPath('userData'),'session.bin'),safeStorage.encryptString(JSON.stringify(value)));},{origin:auth.origin,token:auth.windows,accountID:auth.accountID});
+    const encrypted=await app.evaluate(({safeStorage},value)=>safeStorage.encryptString(JSON.stringify(value)).toString('base64'),{origin:auth.origin,token:auth.windows,accountID:auth.accountID});
+    await fs.writeFile(path.join(tmp,'session.bin'),Buffer.from(encrypted,'base64'));
     await app.close();app=await launch();page=await app.firstWindow();const failures=[];page.on('pageerror',error=>failures.push(error.message));
     await page.getByText('Hello Windows, from Mac!',{exact:true}).waitFor({timeout:30000});
     assert.equal(await page.getByText('Private Windows note',{exact:true}).count(),0,'Accounts must not inherit offline/private journals');

@@ -528,6 +528,7 @@ class ServiceTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             database=Path(directory)/"plaza.sqlite3"
             with sqlite3.connect(database) as saved:self.service.db.backup(saved)
+            saved.close()  # Windows cannot remove a directory with an open SQLite file.
             restarted=PlazaService(str(database),"http://127.0.0.1:8787",now=lambda:self.clock)
             try:
                 thread=restarted.handle("GET","/v1/notes/threads",{},self.a)["notes"][0]

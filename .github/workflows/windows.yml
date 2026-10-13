@@ -14,6 +14,8 @@ concurrency:
 jobs:
   windows:
     runs-on: windows-latest
+    permissions:
+      contents: write
     timeout-minutes: 45
     defaults:
       run:
@@ -95,7 +97,7 @@ jobs:
         run: |
           version=$(node -p "require('./Windows/package.json').version")
           tag="windows-v$version"
-          git archive --format=zip --prefix="Plaza-Windows-$version-Source/" -o "Windows/dist/Plaza-Windows-$version-Source.zip" HEAD Windows Server Sources/PlazaCore Sources/MacPlaza/Resources/FFL ThirdParty scripts/build-ffl.sh LICENSE LICENSING.md
+          git archive --format=zip --prefix="Plaza-Windows-$version-Source/" -o "Windows/dist/Plaza-Windows-$version-Source.zip" HEAD Windows Server Sources/PlazaCore Sources/MacPlaza ThirdParty scripts/build-ffl.sh LICENSE LICENSING.md
           cd Windows/dist
           sha256sum *.exe *.zip > SHA256SUMS.txt
           if gh release view "$tag" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then

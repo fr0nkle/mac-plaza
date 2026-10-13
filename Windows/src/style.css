@@ -5,3 +5,5 @@
 #maker-categories svg{width:44px;height:44px}#maker-categories{height:80px}#panel:has(#maker:not([hidden])){width:min(1100px,96vw)}.maker-columns{grid-template-columns:320px 1fr}#maker-render{height:360px}.maker-footer{position:sticky;bottom:0;z-index:2;background:#edf6e5ee}
 
 #text-prompt{width:440px;padding:25px}
+
+#panel-status{font-size:11px;color:#637c70;max-width:55%;overflow-wrap:anywhere}

@@ -10,7 +10,7 @@
     async call(method,args=[]){await this.ready;return this.request(method,args);}
     async configure(avatars){return this.call('configure',[await prepare(avatars)]);}
     frame(value){this.iframe.contentWindow.plazaFFL.frame(value.poses,value.identities);}
-    dispose(){window.removeEventListener('message',this.listener);try{this.iframe.contentWindow.plazaFFL?.dispose();}catch{}for(const p of this.pending.values()){clearTimeout(p.timeout);p.reject(new Error('Renderer closed.'));}this.pending.clear();this.iframe.remove();}
+    dispose(){this.loadedReject(new Error('Renderer closed.'));window.removeEventListener('message',this.listener);try{this.iframe.contentWindow.plazaFFL?.dispose();}catch{}for(const p of this.pending.values()){clearTimeout(p.timeout);p.reject(new Error('Renderer closed.'));}this.pending.clear();this.iframe.remove();}
   }
   let resources=null,main=null,roster=[],running=true,busy=false,last=0,lastPaint=0,signature='',configuration=Promise.resolve(),cache=new Map();
   async function prepare(avatars){

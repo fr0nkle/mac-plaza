@@ -1,5 +1,5 @@
 'use strict';
-const { app, BrowserWindow, ipcMain, shell, safeStorage, dialog, Menu, powerMonitor, Notification, protocol, net, nativeImage } = require('electron');
+const { app, BrowserWindow, ipcMain, shell, safeStorage, dialog, Menu, powerMonitor, Notification, protocol, net, nativeImage, clipboard } = require('electron');
 const fs = require('node:fs/promises');
 const path = require('node:path');
 const { randomBytes, createHash } = require('node:crypto');
@@ -166,11 +166,13 @@ const actions = {
     const value = path.extname(file).toLowerCase()==='.json'?JSON.parse(await fs.readFile(file,'utf8')):await engine.call('decodeMii',{data:(await fs.readFile(file)).toString('base64')});value.id=cryptoUUID();
     return actions.profile(value);
   },
-  exportMii: async () => {
+  exportMii: async value => {
+    core.validateAvatar(value||doc().avatar);
     const result = await dialog.showSaveDialog(window, { defaultPath: 'Plaza-Mii.json', filters: [{ name: 'Character JSON', extensions: ['json'] }] });
-    if (!result.canceled) await fs.writeFile(result.filePath, JSON.stringify(doc().avatar, null, 2));
+    if (!result.canceled) await fs.writeFile(result.filePath, JSON.stringify(value||doc().avatar, null, 2));
     return {};
   },
+  copyInvite:async value=>{if(typeof value!=='string'||value.length>80)throw new Error('Invalid invitation.');clipboard.writeText(value);return{};},
   website: async () => { await shell.openExternal('https://plaza.squidproductions.org'); return {}; }
 };
 function cryptoUUID(){return require('node:crypto').randomUUID();}

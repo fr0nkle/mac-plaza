@@ -44,3 +44,11 @@ DownloadSite/
 Windows/node_modules/
 Windows/dist/
 Windows/test-results/
+Windows/Engine/.build/
+Windows/Engine/Sources/PlazaCore/
+Windows/src/ffl/
+Windows/native/sdk/
+Windows/native/build/
+Windows/native/runtime/
+Windows/native/build-input/
+Windows/build/

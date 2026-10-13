@@ -1,0 +1,17 @@
+'use strict';
+const fs=require('node:fs/promises'),path=require('node:path'),crypto=require('node:crypto');
+const aliases={'discord':'com.hnc.Discord','brave':'com.brave.Browser','google chrome':'com.google.Chrome','steam':'com.valvesoftware.steam','davinci resolve':'com.blackmagic-design.DaVinciResolve'};
+function item(label,file,steamAppID){const name=label.replace(/\.lnk$/i,'').slice(0,60);return{id:crypto.randomUUID(),label:name,bundleID:steamAppID?`steam.app.${steamAppID}`:(aliases[name.toLowerCase()]||'windows.app.'+crypto.createHash('sha256').update(file.toLowerCase()).digest('hex').slice(0,32)),path:file,steamAppID:steamAppID||null};}
+async function installed(app){
+  if(process.platform!=='win32')return[];const found=[],seen=new Set();
+  async function walk(dir,depth=0){if(depth>5||found.length>=500)return;let entries;try{entries=await fs.readdir(dir,{withFileTypes:true});}catch{return;}for(const entry of entries){if(entry.isSymbolicLink())continue;const file=path.join(dir,entry.name);if(entry.isDirectory())await walk(file,depth+1);else if(entry.name.toLowerCase().endsWith('.lnk')&&!/uninstall|readme|help|documentation/i.test(entry.name)&&!seen.has(entry.name.toLowerCase())){seen.add(entry.name.toLowerCase());found.push(item(entry.name,file));}if(found.length>=500)break;}}
+  await walk(path.join(app.getPath('appData'),'Microsoft/Windows/Start Menu/Programs'));await walk(path.join(process.env.ProgramData||'C:\\ProgramData','Microsoft/Windows/Start Menu/Programs'));
+  const steam=await steamGames();return found.concat(steam).slice(0,1000);
+}
+async function steamGames(){
+  if(process.platform!=='win32')return[];const roots=new Set([path.join(process.env['ProgramFiles(x86)']||'C:\\Program Files (x86)','Steam'),path.join(process.env.ProgramFiles||'C:\\Program Files','Steam')]);
+  try{const {execFile}=require('node:child_process');const value=await new Promise((resolve,reject)=>execFile('reg.exe',['query','HKCU\\Software\\Valve\\Steam','/v','SteamPath'],{windowsHide:true,timeout:5000},(error,stdout)=>error?reject(error):resolve(stdout)));const match=value.match(/SteamPath\s+REG_SZ\s+(.+)/i);if(match)roots.add(match[1].trim());}catch{}
+  for(const root of [...roots]){try{const text=await fs.readFile(path.join(root,'steamapps/libraryfolders.vdf'),'utf8');for(const match of text.matchAll(/"path"\s+"([^"]+)"/g)){const dir=match[1].replace(/\\\\/g,'\\');if(/^[a-z]:[\\/]/i.test(dir))roots.add(dir);}}catch{}}
+  const games=[],ids=new Set();for(const root of roots){let names;try{names=await fs.readdir(path.join(root,'steamapps'));}catch{continue;}for(const name of names){if(!/^appmanifest_\d+\.acf$/.test(name))continue;try{const text=await fs.readFile(path.join(root,'steamapps',name),'utf8'),id=Number(text.match(/"appid"\s+"(\d+)"/)?.[1]),label=text.match(/"name"\s+"([^"]+)"/)?.[1];if(!label||!Number.isInteger(id)||id<1||id>4294967295||ids.has(id))continue;ids.add(id);games.push(item(label,'steam://rungameid/'+id,id));}catch{}}}return games;
+}
+module.exports={installed,steamGames,item};

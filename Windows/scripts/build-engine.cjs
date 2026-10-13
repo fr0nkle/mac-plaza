@@ -13,7 +13,7 @@ if(process.platform==='win32'){
   find(base);
   if(process.env.SDKROOT)find(process.env.SDKROOT);
   if(process.env.LOCALAPPDATA)find(path.join(process.env.LOCALAPPDATA,'Programs/Swift'));
-  const runtime=candidates.find(dir=>fs.existsSync(path.join(dir,'swiftCore.dll')));if(!runtime)throw new Error('Could not locate Swift runtime DLLs. Set SWIFT_RUNTIME.');
+  const runtime=candidates.find(dir=>{const file=path.join(dir,'swiftCore.dll');if(!fs.existsSync(file))return false;const bytes=fs.readFileSync(file);return bytes.length>64&&bytes.readUInt16LE(bytes.readUInt32LE(60)+4)===0x8664;});if(!runtime)throw new Error('Could not locate Swift runtime DLLs. Set SWIFT_RUNTIME.');
   for(const name of fs.readdirSync(runtime))if(name.toLowerCase().endsWith('.dll'))fs.copyFileSync(path.join(runtime,name),path.join(output,name));
   for(const name of ['vcruntime140.dll','vcruntime140_1.dll','msvcp140.dll','concrt140.dll']){const file=path.join(process.env.SystemRoot||'C:/Windows','System32',name);if(fs.existsSync(file))fs.copyFileSync(file,path.join(output,name));}
   fs.cpSync(path.join(windows,'native/RuntimeLicenses'),path.join(output,'RuntimeLicenses'),{recursive:true});

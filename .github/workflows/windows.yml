@@ -63,15 +63,24 @@ jobs:
       - run: pnpm dist
         env:
           CSC_IDENTITY_AUTO_DISCOVERY: 'false'
-      - name: Test the packaged Windows executable
+      - name: Install and verify the Windows installer
+        shell: pwsh
+        run: |
+          $setup = Get-ChildItem dist/*Setup*.exe | Select-Object -First 1
+          $target = Join-Path $env:RUNNER_TEMP 'PlazaInstalled'
+          $process = Start-Process $setup.FullName -ArgumentList @('/S', "/D=$target") -Wait -PassThru
+          if ($process.ExitCode -ne 0 -or !(Test-Path "$target/Plaza.exe")) { throw 'Windows installer failed.' }
+          if ((Get-FileHash "$target/resources/app.asar").Hash -ne (Get-FileHash 'dist/win-unpacked/resources/app.asar').Hash) { throw 'Installed app differs from the ZIP payload.' }
+          Get-ChildItem dist/win-unpacked/resources/native -File | ForEach-Object {
+            if ((Get-FileHash $_.FullName).Hash -ne (Get-FileHash "$target/resources/native/$($_.Name)").Hash) { throw 'Installed native dependency differs from the ZIP payload.' }
+          }
+          "PLAZA_EXECUTABLE=$target\Plaza.exe" | Out-File $env:GITHUB_ENV -Append -Encoding utf8
+      - name: Test the installed Windows executable
         run: pnpm test:desktop
         env:
           PYTHON: python
-          PLAZA_EXECUTABLE: ${{ github.workspace }}\Windows\dist\win-unpacked\Plaza.exe
-      - name: Test packaged Windows parity
+      - name: Test installed Windows parity
         run: pnpm test:parity
-        env:
-          PLAZA_EXECUTABLE: ${{ github.workspace }}\Windows\dist\win-unpacked\Plaza.exe
       - uses: actions/upload-artifact@v4
         if: always()
         with:

@@ -2,19 +2,19 @@
 const {Tray,Menu,nativeImage,screen}=require('electron');
 const path=require('node:path');
 class Wallpaper {
-  constructor(window,native,{save,settings,notify,panel,quit}){this.window=window;this.native=native;this.settings=settings;this.save=save;this.notify=notify;this.panel=panel;this.quit=quit;this.active=false;this.interactive=true;this.quitting=false;this.restoring=false;
+  constructor(window,native,{save,settings,notify,panel,quit}){this.window=window;this.native=native;this.settings=settings;this.save=save;this.notify=notify;this.panel=panel;this.quit=quit;this.perform=action=>Promise.resolve().then(action).catch(error=>this.notify(error.message));this.active=false;this.interactive=true;this.quitting=false;this.restoring=false;
     if(process.platform==='win32'){
-      this.tray=new Tray(nativeImage.createFromPath(path.join(__dirname,'icon.ico')));this.tray.setToolTip('Plaza');this.tray.on('double-click',()=>this.active?this.setInteractive(true):this.showWindow());this.menu();
+      this.tray=new Tray(nativeImage.createFromPath(path.join(__dirname,'icon.ico')));this.tray.setToolTip('Plaza');this.tray.on('double-click',()=>this.perform(()=>this.active?this.setInteractive(true):this.showWindow()));this.menu();
       this.watch=setInterval(()=>{if(this.active&&!this.restoring){try{if(!JSON.parse(this.native.wallpaperStatus(this.window.getNativeWindowHandle())).attached)this.native.attachWallpaper(this.window.getNativeWindowHandle());}catch(error){this.restore().catch(()=>{});this.notify(error.message);}}},2000);
-      screen.on('display-metrics-changed',()=>{if(this.active)this.native.attachWallpaper(this.window.getNativeWindowHandle());});
+      screen.on('display-metrics-changed',()=>{if(this.active)this.perform(()=>this.native.attachWallpaper(this.window.getNativeWindowHandle()));});
     }
-    window.webContents.on('before-input-event',(event,input)=>{if(this.active&&input.type==='keyDown'&&input.key==='Escape'){event.preventDefault();this.setInteractive(false);}});
+    window.webContents.on('before-input-event',(event,input)=>{if(this.active&&input.type==='keyDown'&&input.key==='Escape'){event.preventDefault();this.perform(()=>this.setInteractive(false));}});
   }
   menu(){this.tray?.setContextMenu(Menu.buildFromTemplate([
-    {label:'Use as Wallpaper',type:'checkbox',checked:this.active,enabled:!!this.native,click:()=>this.active?this.restore():this.attach()},
-    {label:this.active?'Open Plaza in Window':'Show Plaza',click:()=>this.active?this.restore():this.showWindow()},
-    {label:this.interactive?'Return to Desktop · Esc':'Interact with Plaza',enabled:this.active,click:()=>this.setInteractive(!this.interactive)},
-    {type:'separator'},...['Mii Maker','Friends','Settings','Write Note','Activity'].map((label,i)=>({label,click:()=>this.panel(['maker','friends','settings','composer','activity'][i])})),
+    {label:'Use as Wallpaper',type:'checkbox',checked:this.active,enabled:!!this.native,click:()=>this.perform(()=>this.active?this.restore():this.attach())},
+    {label:this.active?'Open Plaza in Window':'Show Plaza',click:()=>this.perform(()=>this.active?this.restore():this.showWindow())},
+    {label:this.interactive?'Return to Desktop · Esc':'Interact with Plaza',enabled:this.active,click:()=>this.perform(()=>this.setInteractive(!this.interactive))},
+    {type:'separator'},...['Mii Maker','Friends','Settings','Write Note','Activity'].map((label,i)=>({label,click:()=>this.perform(()=>this.panel(['maker','friends','settings','composer','activity'][i]))})),
     {type:'separator'},{label:'Quit Plaza',click:()=>this.quit()}
   ]));}
   async attach(){if(!this.native)throw new Error('Wallpaper mode is available in the Windows build.');if(this.active)return;this.bounds=this.window.getBounds();this.native.attachWallpaper(this.window.getNativeWindowHandle());this.active=true;this.window.setSkipTaskbar(true);this.window.setMenuBarVisibility(false);this.window.showInactive();await this.setInteractive(this.settings.interactive!==false);this.settings.wallpaper=true;await this.save();this.menu();this.changed();}

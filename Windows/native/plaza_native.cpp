@@ -21,6 +21,12 @@ struct Desktop { HWND oldParent; LONG_PTR style,exStyle; RECT rect; };
 static std::unordered_map<HWND,Desktop> desktops;
 static std::vector<DWORD> ourProcesses;
 static bool ours(DWORD pid){return std::find(ourProcesses.begin(),ourProcesses.end(),pid)!=ourProcesses.end();}
+static std::string processPath(DWORD pid){
+  if(!pid||ours(pid))return{};HANDLE process=OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION,FALSE,pid);if(!process)return{};
+  wchar_t value[32768]{};DWORD length=32768;std::string result;
+  if(QueryFullProcessImageNameW(process,0,value,&length)){int size=WideCharToMultiByte(CP_UTF8,0,value,length,nullptr,0,nullptr,nullptr);if(size>0){result.resize(size);WideCharToMultiByte(CP_UTF8,0,value,length,result.data(),size,nullptr,nullptr);}}
+  CloseHandle(process);return result;
+}
 static napi_value fail(napi_env env,const char*message){napi_throw_error(env,nullptr,message);return nullptr;}
 static napi_value string(napi_env env,const std::string&text){napi_value v;napi_create_string_utf8(env,text.c_str(),text.size(),&v);return v;}
 static napi_value jsBoolean(napi_env env,bool value){napi_value v;napi_get_boolean(env,value,&v);return v;}
@@ -68,7 +74,13 @@ static napi_value attach(napi_env env,napi_callback_info info){
   return jsBoolean(env,true);
 }
 static napi_value detach(napi_env env,napi_callback_info info){HWND window=handle(env,info);auto found=desktops.find(window);if(found==desktops.end())return jsBoolean(env,false);auto state=found->second;SetParent(window,IsWindow(state.oldParent)?state.oldParent:nullptr);SetWindowLongPtrW(window,GWL_STYLE,state.style);SetWindowLongPtrW(window,GWL_EXSTYLE,state.exStyle);SetWindowPos(window,nullptr,state.rect.left,state.rect.top,state.rect.right-state.rect.left,state.rect.bottom-state.rect.top,SWP_FRAMECHANGED|SWP_NOZORDER|SWP_NOACTIVATE);desktops.erase(found);return jsBoolean(env,true);}
-static napi_value desktopStatus(napi_env env,napi_callback_info info){HWND window=handle(env,info);HWND host=desktopHost();return string(env,std::string("{\"attached\":")+(window&&desktops.count(window)&&GetParent(window)==host?"true":"false")+",\"hostAvailable\":"+(host?"true":"false")+"}");}
+static napi_value desktopStatus(napi_env env,napi_callback_info info){
+  HWND window=handle(env,info),host=desktopHost();RECT rect{};if(window)GetWindowRect(window,&rect);
+  MONITORINFO monitor{sizeof(MONITORINFO)};GetMonitorInfoW(MonitorFromPoint(POINT{0,0},MONITOR_DEFAULTTOPRIMARY),&monitor);
+  auto box=[](RECT r){return "["+std::to_string(r.left)+","+std::to_string(r.top)+","+std::to_string(r.right-r.left)+","+std::to_string(r.bottom-r.top)+"]";};
+  return string(env,std::string("{\"attached\":")+(window&&desktops.count(window)&&GetParent(window)==host?"true":"false")+",\"hostAvailable\":"+(host?"true":"false")+",\"bounds\":"+box(rect)+",\"monitor\":"+box(monitor.rcMonitor)+"}");
+}
+
 template<class T>static void release(T*&object){if(object){object->Release();object=nullptr;}}
 static bool otherAudio(EDataFlow flow){
   IMMDeviceEnumerator*enumerator=nullptr;IMMDevice*device=nullptr;IAudioSessionManager2*manager=nullptr;IAudioSessionEnumerator*sessions=nullptr;bool active=false;
@@ -82,7 +94,7 @@ static napi_value environment(napi_env env,napi_callback_info){
   ourProcesses={GetCurrentProcessId()};std::unordered_map<DWORD,DWORD>parents;HANDLE list=CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS,0);if(list!=INVALID_HANDLE_VALUE){PROCESSENTRY32W entry{sizeof(PROCESSENTRY32W)};if(Process32FirstW(list,&entry))do{parents[entry.th32ProcessID]=entry.th32ParentProcessID;}while(Process32NextW(list,&entry));CloseHandle(list);}for(const auto&pair:parents){DWORD pid=pair.first;for(int depth=0;depth<6;depth++){auto p=parents.find(pid);if(p==parents.end())break;pid=p->second;if(pid==GetCurrentProcessId()){ourProcesses.push_back(pair.first);break;}}}
   HWND foreground=GetForegroundWindow();DWORD pid=0;GetWindowThreadProcessId(foreground,&pid);bool covered=false;wchar_t name[128]{};GetClassNameW(foreground,name,128);
   if(!ours(pid)&&wcscmp(name,L"Progman")&&wcscmp(name,L"WorkerW")){RECT rect{};MONITORINFO monitor{sizeof(MONITORINFO)};if(GetWindowRect(foreground,&rect)&&GetMonitorInfoW(MonitorFromWindow(foreground,MONITOR_DEFAULTTONEAREST),&monitor)){const auto&m=monitor.rcMonitor;auto w=std::max(0L,std::min(rect.right,m.right)-std::max(rect.left,m.left)),h=std::max(0L,std::min(rect.bottom,m.bottom)-std::max(rect.top,m.top));covered=double(w)*h>=double(m.right-m.left)*(m.bottom-m.top)*0.85;}}
-  return string(env,std::string("{\"otherAudio\":")+(otherAudio(eRender)||otherAudio(eCapture)?"true":"false")+",\"covered\":"+(covered?"true":"false")+"}");
+  return string(env,std::string("{\"otherAudio\":")+(otherAudio(eRender)||otherAudio(eCapture)?"true":"false")+",\"covered\":"+(covered?"true":"false")+",\"foreground\":"+quoted(processPath(pid))+"}");
 }
 static void cleanup(void*){disconnect();for(auto&pair:desktops){if(IsWindow(pair.first)){SetParent(pair.first,nullptr);SetWindowLongPtrW(pair.first,GWL_STYLE,pair.second.style);SetWindowLongPtrW(pair.first,GWL_EXSTYLE,pair.second.exStyle);}}desktops.clear();}
 static napi_value init(napi_env env,napi_value exports){CoInitializeEx(nullptr,COINIT_APARTMENTTHREADED);napi_property_descriptor properties[]={

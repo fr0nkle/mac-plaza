@@ -608,7 +608,7 @@ final class SocialController: NSObject, ObservableObject, ASWebAuthenticationPre
             }
             await syncDiscordRecipients()
             try await reloadJournal()
-            journalSyncMessage = "Public notes are shared with your Plaza friends."
+            journalSyncMessage = "Posts are shared with their selected audience."
         } catch {
             guard generation == epoch else { return }
             journalSyncMessage = "Notes are saved on this Mac; sharing is pending. " + error.localizedDescription
@@ -1044,6 +1044,7 @@ final class SocialController: NSObject, ObservableObject, ASWebAuthenticationPre
     func remove(_ id: String, block: Bool = false) {
         let discordID = friends.first(where: { $0.id == id })?.discordID
         mutate("POST", block ? "v1/friends/block" : "v1/friends/remove", body: ["id": id]) { _ in
+            if block { Task { try? await self.reloadJournal(); await self.refreshActivity() } }
             if let discordID {
                 self.gameHistory.forget(discordID)
                 self.discordGames.removeAll { $0.discordID == discordID }

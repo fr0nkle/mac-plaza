@@ -215,3 +215,10 @@ requests and once per minute while idle, using an indexed creation-time query.
 Edits preserve the original timestamp, future client dates are clamped to receipt
 time, and expired uploads are discarded. SQLite reuses freed pages automatically.
 Drafts and independent profile messages are outside this policy.
+
+
+### Public Miiverse audiences
+
+Each published note carries `audience: "public"` or `"friends"`. Missing audience preserves the legacy friends-only behavior. Private notes are never uploaded. Public feed reads and likes/replies require an authenticated Plaza session established by verified Discord sign-in; the server supplies author names and IDs from that account. A public post does not expose friends-only posts by the same author. All read/action paths check each post and bilateral blocks. Changing a post to friends-only revokes unrelated accounts immediately on the service; making it private or deleting it retracts the remote thread. Existing copies previously viewed while public cannot be recalled from someone else's computer. Feeds remain bounded to 300 posts, 60,000 drawing points, 2,000 replies and 3.5 MB, with seven-day retention. Public posters can be blocked without a prior friendship.
+
+Run `python3 -B -m unittest discover -s Server` from the repository root. `test_public_miiverse.py` covers unrelated users, legacy privacy, audience changes, verified names, blocking, bounds and HTTP authentication.

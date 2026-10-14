@@ -125,6 +125,10 @@ def validated_journal_note(value, owner):
         strokes.append(dict(points=clean, eraser=boolean(stroke.get("eraser"))))
     if (not body and not drawing) or (drawing and not description):
         raise APIError("A shared note needs text or a described drawing.")
+    # Missing audience is the legacy friends-only contract, never public.
+    audience = value.get("audience", "friends")
+    if audience not in ("friends", "public"):
+        raise APIError("Choose Public or Friends Only for a shared post.")
     created = bounded(value.get("created"), 100000000000)
     topic = value.get("topic")
     if topic is not None:
@@ -137,7 +141,7 @@ def validated_journal_note(value, owner):
                 raise APIError("Invalid Steam game.")
     return dict(id=str(uuid.uuid5(uuid.UUID(owner), "note:" + local_id)), ownerID=owner, sourceID=local_id,
                 author=author, text=body, drawing=strokes, drawingDescription=description,
-                created=created, topic=topic)
+                created=created, topic=topic, audience=audience)
 
 
 class PlazaService:
@@ -470,8 +474,20 @@ class PlazaService:
         allowed.update(row["id"] for row in rows if not self.blocked(account["id"], row["id"]))
         return allowed
 
+    def journal_can_read(self, account, row, allowed=None):
+        owner = row["owner"]
+        if owner == account["id"]:
+            return True
+        if self.blocked(account["id"], owner):
+            return False
+        if json.loads(row["payload"]).get("audience", "friends") == "public":
+            return True
+        return owner in (self.journal_owners(account) if allowed is None else allowed)
+
     def journal_identity(self, account, payload):
         result = dict(payload)
+        # Replies have no audience field; posts explicitly retain legacy privacy.
+        if "drawing" in result: result["audience"] = result.get("audience", "friends")
         appearance = json.loads(account["journal_avatar"]) if account["journal_avatar"] else dict(payload["author"])
         appearance["id"] = account["avatar_id"]
         appearance["name"] = account["name"][:24]
@@ -493,18 +509,24 @@ class PlazaService:
 
     def journal_snapshot(self, account, include_own=False):
         allowed = self.journal_owners(account)
-        if not include_own:
-            allowed.discard(account["id"])
-        if not allowed:
-            return dict(notes=[])
         notes, points, byte_count, replies = [], 0, 0, 0
         placeholders = ",".join("?" for _ in allowed)
-        rows = self.db.execute("SELECT owner,id,payload FROM journal_notes WHERE owner IN (" + placeholders +
-            ") ORDER BY CASE WHEN owner=? THEN 0 ELSE 1 END,created DESC,id LIMIT 300",
-            tuple(sorted(allowed)) + (account["id"],)).fetchall()
-        owners = {owner: self.db.execute("SELECT * FROM accounts WHERE id=?", (owner,)).fetchone() for owner in allowed}
+        # Filter per post before applying the feed limit. A public post never
+        # grants access to another friends-only post by the same publisher.
+        rows = self.db.execute("""SELECT owner,id,payload FROM journal_notes
+            WHERE (owner IN (""" + placeholders + """) OR json_extract(payload,'$.audience')='public')
+            AND (? OR owner!=?) AND NOT EXISTS (SELECT 1 FROM blocks b
+              WHERE (b.owner=? AND b.target=journal_notes.owner)
+                 OR (b.target=? AND b.owner=journal_notes.owner))
+            ORDER BY CASE WHEN owner=? THEN 0 ELSE 1 END,created DESC,id LIMIT 300""",
+            tuple(sorted(allowed)) + (include_own, account["id"], account["id"], account["id"], account["id"])).fetchall()
+        owners = {owner: self.db.execute("SELECT * FROM accounts WHERE id=?", (owner,)).fetchone()
+                  for owner in {row["owner"] for row in rows}}
         for row in rows:
+            if not self.journal_can_read(account, row, allowed):
+                continue
             note = self.journal_identity(owners[row["owner"]], json.loads(row["payload"]))
+            note["isFriend"] = row["owner"] != account["id"] and row["owner"] in allowed
             note.update(self.journal_interactions(row["owner"], row["id"], account["id"]))
             count = sum(len(stroke["points"]) for stroke in note["drawing"])
             size = len(json.dumps(note).encode("utf-8"))
@@ -525,15 +547,13 @@ class PlazaService:
             FROM journal_activity e JOIN accounts a ON a.id=e.actor
             JOIN journal_notes n ON n.owner=e.recipient AND n.id=e.note_id
             WHERE e.recipient=? ORDER BY e.id DESC LIMIT 200""", (account["id"],)).fetchall()
-        result, audiences = [], {}
+        result = []
         for row in rows:
             actor = row["actor"]
             if self.blocked(account["id"],actor):
                 continue
-            if actor not in audiences:
-                person = self.db.execute("SELECT * FROM accounts WHERE id=?",(actor,)).fetchone()
-                audiences[actor] = self.journal_owners(person)
-            if account["id"] not in audiences[actor]:
+            person = self.db.execute("SELECT * FROM accounts WHERE id=?", (actor,)).fetchone()
+            if not self.journal_can_read(person, dict(owner=account["id"], payload=row["note_payload"])):
                 continue
             reply, author = None, None
             if row["kind"] == "reply":
@@ -560,7 +580,7 @@ class PlazaService:
         except (ValueError, TypeError):
             raise APIError("Note unavailable.", 404)
         row = self.db.execute("SELECT * FROM journal_notes WHERE id=?", (note_id,)).fetchone()
-        if not row or row["owner"] not in self.journal_owners(account):
+        if not row or not self.journal_can_read(account, row):
             raise APIError("Note unavailable.", 404)
         owner, actor = row["owner"], account["id"]
         if len(parts) == 2 and parts[1] == "like" and method == "PUT":
@@ -787,7 +807,8 @@ class PlazaService:
                 target = self.db.execute("SELECT discord_id FROM accounts WHERE id=?", (other,)).fetchone()
                 automatic = target and self.db.execute("SELECT 1 FROM discord_recipients WHERE (owner=? AND discord_id=?) OR (owner=? AND discord_id=?)",
                     (other, me["discord_id"], aid, target[0])).fetchone()
-                if not exists and not automatic:
+                public_target = path.endswith("block") and target is not None and other != aid
+                if not exists and not automatic and not public_target:
                     raise APIError("Friendship unavailable.", 404)
                 self.db.execute("DELETE FROM friendships WHERE (sender=? AND recipient=?) OR (sender=? AND recipient=?)", (aid, other, other, aid))
                 if path.endswith("block") or automatic:

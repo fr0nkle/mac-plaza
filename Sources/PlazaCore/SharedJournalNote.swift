@@ -11,6 +11,8 @@ public struct SharedJournalNote: Codable, Identifiable, Equatable, Sendable {
     public var liked: Bool?
     public var displayName: String?
     public var discordID: String?
+    public var audience: NoteAudience?
+    public var isFriend: Bool?
     public var author: Avatar
     public var text: String
     public var drawing: [InkStroke]
@@ -20,7 +22,7 @@ public struct SharedJournalNote: Codable, Identifiable, Equatable, Sendable {
     public var publicDisplayName: String { displayName ?? author.name }
 
     public static func publishing(notes: [LocalNote], apps: [AppIsland], primary: Avatar) -> [Self] {
-        notes.filter { $0.shared == true && !NoteRetention.isExpired($0.created) }.compactMap { note in
+        notes.filter { $0.visibility != .privateOnly && !NoteRetention.isExpired($0.created) }.compactMap { note in
             let app = note.appID.flatMap { id in apps.first { $0.id == id } }
             guard note.appID == nil || app != nil else { return nil }
             return Self(note: note, author: primary, app: app)
@@ -28,7 +30,7 @@ public struct SharedJournalNote: Codable, Identifiable, Equatable, Sendable {
     }
 
     public init(note: LocalNote, author: Avatar, app: AppIsland?) {
-        id = note.id; self.author = author
+        id = note.id; self.author = author; audience = note.visibility
         self.author.features.creator = ""; self.author.features.birthDay = 0; self.author.features.birthMonth = 0
         text = note.text; drawing = note.drawing; drawingDescription = note.drawingDescription
         created = note.created.timeIntervalSince1970
@@ -36,6 +38,7 @@ public struct SharedJournalNote: Codable, Identifiable, Equatable, Sendable {
     }
     public func validate() throws {
         _ = try author.validated()
+        guard audience != .privateOnly else { throw PlazaError.invalid("Private notes cannot enter a shared feed.") }
         guard displayName.map({ (1...80).contains($0.count) }) ?? true else { throw PlazaError.invalid("Invalid public note name.") }
         guard discordID.map({ $0.count <= 24 && (UInt64($0) ?? 0) > 0 }) ?? true else { throw PlazaError.invalid("Invalid public Discord identity.") }
         guard created.isFinite, created >= 0, ownerID.map({ UUID(uuidString: $0) != nil }) ?? true else {
@@ -54,7 +57,7 @@ public struct SharedJournalNote: Codable, Identifiable, Equatable, Sendable {
     public func localNote(apps: [AppIsland]) -> LocalNote {
         var note = LocalNote(authorID: author.id, author: String(publicDisplayName.prefix(24)),
             appID: topic?.match(in: apps)?.id, text: text, drawing: drawing, drawingDescription: drawingDescription)
-        note.id = id; note.created = Date(timeIntervalSince1970: created); note.shared = true
+        note.id = id; note.created = Date(timeIntervalSince1970: created); note.visibility = audience ?? .friends
         return note
     }
 }

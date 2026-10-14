@@ -249,3 +249,8 @@ Writing a note or reply crossfades to a separate offline soundtrack, returning t
 
 
 **Local-first social features (0.21):** Direct Discord authorization and renewal use the official SDK with PKCE on each Mac. Discussion snapshots and pending likes/replies/profile/read-state changes are encrypted locally with an account-scoped Keychain key, excluded from exports, and replayed after reconnection. Notes, replies, likes and activity expire after seven days. This is a local-first client with a shared delivery service, not a peer-to-peer bot host. Container deployment files are supplied for moving that service off the developer’s Mac; that migration has not been deployed.
+
+
+**Public Miiverse (0.22):** New posts default to Public: everyone signed in with Discord can see, like and reply, even without a friendship. Friends Only restricts a post to authorized Discord/Plaza friends; Private keeps it on this Mac. Existing shared posts and drafts remain friends-only, and existing private posts stay private. Names and posting identities come from the authenticated Discord account. Public Posts has its own Miiverse section; Friends’ Notes excludes unrelated public authors. Blocks take precedence over every shared audience. The existing seven-day retention and local-first delivery rules still apply.
+
+**Report a Bug:** The bottom-left button opens your email app addressed to alexanderhosier@squidproductions.org, with the app version and a blank report template. It sends nothing automatically and attaches no saved plaza, credentials or diagnostics.

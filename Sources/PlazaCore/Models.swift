@@ -56,9 +56,29 @@ public struct InkStroke: Codable, Equatable, Sendable {
     public var eraser: Bool
     public init(points: [InkPoint], eraser: Bool = false) { self.points = points; self.eraser = eraser }
 }
+public enum NoteAudience: String, Codable, CaseIterable, Sendable {
+    case everyone = "public", friends = "friends", privateOnly = "private"
+    public var label: String {
+        switch self { case .everyone: return "Public"; case .friends: return "Friends Only"; case .privateOnly: return "Private" }
+    }
+    public var explanation: String {
+        switch self {
+        case .everyone: return "Public · Everyone signed in with Discord can see, like and reply."
+        case .friends: return "Friends Only · Your authorized Plaza and Discord friends can see, like and reply."
+        case .privateOnly: return "Private · Only on this Mac."
+        }
+    }
+}
+
 public struct LocalNote: Codable, Identifiable, Equatable, Sendable {
     /// Missing on older saves: keep private until the owner chooses to share.
     public var shared: Bool?
+    public var audience: NoteAudience?
+    /// Legacy shared posts remain friends-only; missing sharing stays private.
+    public var visibility: NoteAudience {
+        get { shared == true ? audience ?? .friends : .privateOnly }
+        set { audience = newValue; shared = newValue != .privateOnly }
+    }
     public var id = UUID()
     public var authorID: UUID
     public var author: String
@@ -71,7 +91,7 @@ public struct LocalNote: Codable, Identifiable, Equatable, Sendable {
     public var replies: [LocalReply]?
     public var read: Bool?
     public init(authorID: UUID, author: String, appID: UUID?, text: String, drawing: [InkStroke] = [], drawingDescription: String = "") {
-        self.shared = true
+        self.shared = true; self.audience = .everyone
         self.authorID = authorID; self.author = author; self.appID = appID; self.text = text
         self.drawing = drawing; self.drawingDescription = drawingDescription
     }

@@ -19,16 +19,16 @@ struct NoteComposer: View {
     @State private var ready=false
     @State private var committed=false
     @State private var initialDraft: NoteDraft?
-    @State private var shared = NoteDraft().isPublic
+    @State private var audience = NoteAudience.everyone
+    private var shared: Bool { audience != .privateOnly }
     var body: some View {
         VStack(spacing: 0) {
             SheetHeader(title: existing == nil ? "New Miiverse Post" : "Edit Miiverse Post", subtitle: "Choose who can see your post.") { close() }
             VStack(alignment: .leading, spacing: 16) {
-                Picker("Post visibility", selection: $shared) {
-                    Text("Public").tag(true)
-                    Text("Private").tag(false)
+                Picker("Post visibility", selection: $audience) {
+                    ForEach(NoteAudience.allCases, id: \.self) { Text($0.label).tag($0) }
                 }.pickerStyle(.segmented).accessibilityLabel("Post visibility")
-                Text(shared ? "Public · Shared with your Plaza friends when connected." : "Private · Only on this Mac.")
+                Text(audience.explanation)
                     .font(.caption).foregroundStyle(.secondary)
                 HStack {
                     Picker("Character", selection: shared ? .constant(model.document.primaryAvatar.id) : $authorID) { ForEach(model.document.avatars) { avatar in Text(avatar.name).tag(avatar.id) } }.frame(width: 220).disabled(shared)
@@ -39,7 +39,7 @@ struct NoteComposer: View {
                     }.frame(width: 240)
                 }
                 if shared {
-                    Text("Public as \(model.social.account?.displayName ?? "your linked Discord name") · Primary Mii: \(model.document.primaryAvatar.name)")
+                    Text("Post as \(model.social.account?.displayName ?? "your linked Discord name") · Primary Mii: \(model.document.primaryAvatar.name)")
                         .font(.caption).foregroundStyle(.secondary)
                 }
                 if let saveError { Text(saveError).font(.caption).foregroundStyle(.red) }
@@ -83,10 +83,10 @@ struct NoteComposer: View {
                 topicID = existing?.appID ?? appID
                 if existing == nil, let draft=model.document.draft, appID == nil || draft.appID == appID {
                     text=draft.text; strokes=draft.drawing; description=draft.description; drawing = !strokes.isEmpty; topicID=draft.appID
-                    shared=draft.isPublic
+                    audience=draft.visibility
                     if let id=draft.authorID, model.document.avatars.contains(where:{$0.id==id}) { authorID=id }
                 }
-                if let existing { shared = existing.shared == true; text = existing.text; strokes = existing.drawing; description = existing.drawingDescription; drawing = !strokes.isEmpty }
+                if let existing { audience = existing.visibility; text = existing.text; strokes = existing.drawing; description = existing.drawingDescription; drawing = !strokes.isEmpty }
                 initialDraft=draft
                 ready=true
             }
@@ -99,7 +99,7 @@ struct NoteComposer: View {
             }
     }
     private func close() { if let onClose { onClose() } else { dismiss() } }
-    private var draft: NoteDraft { var d=NoteDraft(); d.text=text; d.drawing=drawing ? strokes:[]; d.description=description; d.appID=topicID; d.authorID=authorID; d.shared=shared; return d }
+    private var draft: NoteDraft { var d=NoteDraft(); d.text=text; d.drawing=drawing ? strokes:[]; d.description=description; d.appID=topicID; d.authorID=authorID; d.visibility=audience; return d }
     private var canSave: Bool {
         (!text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || (drawing && !strokes.isEmpty)) &&
         (!drawing || strokes.isEmpty || !description.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty) &&
@@ -113,7 +113,7 @@ struct NoteComposer: View {
         }
         guard let author = shared ? model.document.primaryAvatar : model.document.avatars.first(where: { $0.id == authorID }) else { return }
         var note = LocalNote(authorID: author.id, author: author.name, appID: topicID, text: text.trimmingCharacters(in: .whitespacesAndNewlines), drawing: drawing ? strokes : [], drawingDescription: description.trimmingCharacters(in: .whitespacesAndNewlines))
-        note.shared = shared
+        note.visibility = audience
         if let existing { note.id = existing.id; note.created = existing.created; note.acknowledged = existing.acknowledged; note.replies=existing.replies; note.read=existing.read }
         let saved = model.mutate { doc in
             if let index = doc.notes.firstIndex(where: { $0.id == note.id }) { doc.notes[index] = note }
@@ -188,8 +188,15 @@ struct MiiverseView: View {
     }
     private func posts(notes: [LocalNote], labels: [UUID: String], ownIDs: Set<UUID>, selected: MiiverseSection) -> some View {
         VStack(spacing: 0) {
-            SheetHeader(title: "Miiverse", subtitle: "\(selected.label) · \(notes.count) posts · Your plaza and friends") {
+            SheetHeader(title: "Miiverse", subtitle: "\(selected.label) · \(notes.count) posts · The Plaza community") {
                 if let onClose { onClose() } else { dismiss() }
+            }
+            if !model.social.hasSession {
+                HStack {
+                    Text("Sign in with Discord to browse Public and Friends Only posts.").font(.caption).foregroundStyle(.secondary)
+                    Spacer()
+                    PlazaButton("Connect Discord") { model.sheet = .social }
+                }.padding(.horizontal, 18).padding(.top, 12)
             }
             HStack {
                 TextField("Search Miiverse", text: $query).textFieldStyle(.roundedBorder)
@@ -208,7 +215,7 @@ struct MiiverseView: View {
                         VStack(spacing: 12) {
                             Image(systemName: "text.bubble").font(.system(size: 35)).foregroundStyle(PlazaStyle.teal)
                             Text(query.isEmpty ? "No posts in this section yet." : "No notes found.").font(.title3)
-                            Text("Write a reminder, celebrate a finished project, or leave a sketch. New posts are public by default. Choose Private to keep a post on this Mac.").font(.callout).foregroundStyle(.secondary).multilineTextAlignment(.center)
+                            Text("Write a reminder, celebrate a finished project, or leave a sketch. New posts are public to everyone signed in with Discord. Choose Friends Only or Private for a smaller audience.").font(.callout).foregroundStyle(.secondary).multilineTextAlignment(.center)
                         }.frame(maxWidth: .infinity).padding(36)
                     }
                     ForEach(notes) { note in
@@ -216,7 +223,7 @@ struct MiiverseView: View {
                             HStack(spacing: 10) {
                                 MiiHeadIcon(avatar: model.noteAvatar(note)).frame(width: 42, height: 42)
                                 VStack(alignment: .leading, spacing: 3) {
-                                    Text("\(ownIDs.contains(note.id) ? (note.shared == true ? "Your public note · Plaza friends" : "Private · This Mac") : "Friend’s public note") · \(note.created.formatted(date: .abbreviated, time: .shortened))").font(.system(size: 10)).foregroundStyle(.secondary)
+                                    Text("\(ownIDs.contains(note.id) ? "Your note · " + note.visibility.label : note.visibility.label + " post") · \(note.created.formatted(date: .abbreviated, time: .shortened))").font(.system(size: 10)).foregroundStyle(.secondary)
                                 }
                                 Spacer()
                                 Text(labels[note.id] ?? "The Plaza").font(.caption).padding(7).background(PlazaStyle.teal.opacity(0.06), in: Capsule())
@@ -240,8 +247,12 @@ struct MiiverseView: View {
                                 PlazaButton("Edit") { editing = note }
                                 PlazaButton("Delete", role: .destructive) { deleted = note; model.mutate { $0.notes.removeAll { $0.id == note.id } } }
                                 } else {
-                                    Label(ownIDs.contains(note.id) ? "Your shared note" : "Shared by a Plaza friend", systemImage: "person.2")
+                                    Label(ownIDs.contains(note.id) ? "Your shared note" : "Shared in Miiverse", systemImage: "person.2")
                                     Spacer()
+                                    if !ownIDs.contains(note.id), let owner = model.sharedThread(for: note)?.ownerID {
+                                        PlazaButton("Block Author", role: .destructive) { model.social.remove(owner, block: true) }
+                                            .disabled(model.social.busy)
+                                    }
                                     if !note.drawing.isEmpty { PlazaButton("Export Drawing") { exportDrawing(note) } }
                                 }
                             }.font(.caption).buttonStyle(.borderless)
@@ -260,7 +271,7 @@ struct MiiverseView: View {
                     VStack(alignment: .leading, spacing: 7) {
                         Label("Plaza Guide", systemImage: "sparkle").font(.caption).foregroundStyle(PlazaStyle.teal)
                         Text(model.social.journalSyncMessage).font(.caption).foregroundStyle(.secondary)
-                        Text("Public notes sync with your authorized Plaza friends. Public replies and likes sync too. Private notes, drafts and earlier local replies stay on this Mac. Edits and deletions sync when connected.").font(.callout).foregroundStyle(.secondary)
+                        Text("Public posts, likes and replies are visible to everyone signed in with Discord. Friends Only posts stay with authorized friends. Private notes, drafts and local replies stay on this Mac. Connect Discord to access shared Miiverse posts; delivery retries when connected.").font(.callout).foregroundStyle(.secondary)
                     }.padding(18)
                 }.padding(.horizontal, 18).padding(.bottom, 18)
               }.background(PlazaStyle.paper)
@@ -300,13 +311,18 @@ struct MiiverseView: View {
                 .font(.system(size: 23, weight: .bold, design: .rounded)).foregroundStyle(PlazaStyle.teal).padding(20)
             ScrollView {
                 VStack(alignment: .leading, spacing: 6) {
-                    ForEach(Array(catalog.sections.prefix(4))) { item in sectionButton(item, selected: selected) }
+                    ForEach(Array(catalog.sections.prefix(5))) { item in sectionButton(item, selected: selected) }
                     Text("APP COMMUNITIES").font(.system(size: 10, weight: .bold)).foregroundStyle(.secondary).padding(.top, 18).padding(.horizontal, 10)
-                    ForEach(Array(catalog.sections.dropFirst(4))) { item in sectionButton(item, selected: selected) }
+                    ForEach(Array(catalog.sections.dropFirst(5))) { item in sectionButton(item, selected: selected) }
                 }.padding(.horizontal, 12).padding(.bottom, 16)
             }
-            Text("Your private notes stay on this Mac. Public posts are shared with your Plaza friends.")
+            Text("Public posts are for everyone signed in with Discord. Friends Only and Private remain available.")
                 .font(.caption).foregroundStyle(.secondary).padding(18)
+            PlazaButton { NSWorkspace.shared.open(BugReport.emailURL()) } label: {
+                Label("Report a Bug", systemImage: "ladybug")
+            }.font(.caption).buttonStyle(.plain).foregroundStyle(PlazaStyle.teal)
+                .padding(.horizontal, 18).padding(.bottom, 18)
+                .help("Email alexanderhosier@squidproductions.org")
         }.frame(width: 225).background(PlazaStyle.teal.opacity(0.04))
     }
     private func sectionButton(_ item: MiiverseSection, selected: String) -> some View {
@@ -316,7 +332,7 @@ struct MiiverseView: View {
                     Image(nsImage: model.icon(app)).resizable().scaledToFit()
                         .frame(width: 24, height: 24).accessibilityHidden(true)
                 } else {
-                    Image(systemName: item.id == "all" ? "square.grid.2x2" : item.id == "mine" ? "person.crop.circle" : item.id == "friends" ? "person.2" : item.id == "plaza" ? "sun.max" : "app")
+                    Image(systemName: item.id == "all" ? "square.grid.2x2" : item.id == "mine" ? "person.crop.circle" : item.id == "friends" ? "person.2" : item.id == "plaza" ? "sun.max" : item.id == "public" ? "globe" : "app")
                         .frame(width: 24, height: 24).accessibilityHidden(true)
                 }
                 Text(item.label).lineLimit(2).multilineTextAlignment(.leading)
@@ -375,10 +391,10 @@ struct ReplyComposer: View {
     var body: some View {
         VStack(spacing: 0) {
             SheetHeader(title: publicReply ? "A shared reply" : "A local reply",
-                subtitle: publicReply ? "Visible to the note’s Plaza friends." : "Saved only on this Mac.") { if !saving { dismiss() } }
+                subtitle: publicReply ? "Visible to the same audience as the post." : "Saved only on this Mac.") { if !saving { dismiss() } }
             VStack(alignment: .leading, spacing: 15) {
                 Picker("Character", selection: publicReply ? .constant(model.document.primaryAvatar.id) : $authorID) { ForEach(model.document.avatars) { Text($0.name).tag($0.id) } }.disabled(publicReply)
-                if publicReply { Text("Public as \(model.social.account?.displayName ?? "your linked Discord name") · Primary Mii: \(model.document.primaryAvatar.name)").font(.caption).foregroundStyle(.secondary) }
+                if publicReply { Text("Post as \(model.social.account?.displayName ?? "your linked Discord name") · Primary Mii: \(model.document.primaryAvatar.name)").font(.caption).foregroundStyle(.secondary) }
                 TextEditor(text: $text).font(.body).scrollContentBackground(.hidden).frame(height: 130)
                     .padding(14).modifier(PlazaPostSurface()).accessibilityLabel("Reply text")
                     .onChange(of: text) { _, value in if value.count > 280 { text = String(value.prefix(280)) } }

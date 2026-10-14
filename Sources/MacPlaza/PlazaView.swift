@@ -166,8 +166,12 @@ struct PlazaView: View {
                   VStack {
                       Spacer()
                       HStack(alignment: .bottom) {
-                          PlazaControlSurface { plazaZoomControls(size: proxy.size) }
-                              .frame(width: 136, height: 40)
+                          PlazaControlSurface {
+                              VStack(spacing: 9) {
+                                  plazaZoomControls(size: proxy.size)
+                                  bugReportButton
+                              }
+                          }.frame(width: 160, height: 78)
                           Spacer()
                           PlazaControlSurface { PlazaBottomControls(model: model, social: model.social) }
                               .frame(width: 292, height: model.social.activityAlert == nil ? 116 : 216)
@@ -314,6 +318,14 @@ struct PlazaView: View {
         withAnimation(reduceMotion ? nil : .timingCurve(0.22, 0.72, 0.15, 1, duration: 0.7)) { model.previewAppID = nil }
         focusedApp = id
     }
+    private var bugReportButton: some View {
+        PlazaButton { NSWorkspace.shared.open(BugReport.emailURL()) } label: {
+            Label("Report a Bug", systemImage: "ladybug")
+        }.font(.system(size: 12, weight: .medium)).buttonStyle(.plain)
+            .padding(.horizontal, 12).padding(.vertical, 7)
+            .background(.regularMaterial, in: Capsule())
+            .help("Email alexanderhosier@squidproductions.org")
+    }
     private var desktopControls: some View {
         HStack(spacing: 14) {
             PlazaButton("Return to Desktop · Esc") { model.desktop.returnToDesktop() }
@@ -345,6 +357,7 @@ struct PlazaView: View {
                 PlazaButton { model.listMode.toggle() } label: { Label(model.listMode ? "Plaza" : "List", systemImage: model.listMode ? "sun.max" : "list.bullet") }
             }.font(.system(size: 12 + (model.document.preferences.largerText == true ? 2 : 0), weight: .medium)).buttonStyle(.plain).padding(.horizontal, 30).padding(.top, 16)
             HStack {
+                if model.listMode { bugReportButton }
                 Text(model.status).lineLimit(1)
                 Spacer()
                 Text(model.isMoving ? "Local rendering · 30 fps" : "Local rendering · Still plaza")
@@ -539,7 +552,7 @@ struct AppListView: View {
                 ForEach(model.visibleNotes) { note in
                     PlazaButton { model.openMiiverse(note: note.id) } label: {
                         VStack(alignment: .leading, spacing: 4) {
-                            Text("\(model.noteDisplayName(note)) · \(model.isOwnNote(note) ? (note.shared == true ? "Public note" : "Private note") : "Friend’s note")").font(.caption).foregroundStyle(PlazaStyle.teal)
+                            Text("\(model.noteDisplayName(note)) · \(model.isOwnNote(note) ? note.visibility.label + " note" : note.visibility.label + " post")").font(.caption).foregroundStyle(PlazaStyle.teal)
                             Text(note.drawing.isEmpty ? note.text : note.drawingDescription).lineLimit(3)
                         }.padding(.vertical, 4)
                     }.buttonStyle(.plain)

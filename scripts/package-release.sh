@@ -26,7 +26,7 @@ shutil.rmtree(sdk)
 PY
 mkdir "$staging/$sourceName/Server"
 # Explicit allowlist: never package environment secrets, databases, or virtual environments.
-for item in server.py updates.py downloads.py public_releases.py presence_bot.py run_local.py friend_test.py login_start.py 'Start Friend Test.command' 'Stop Friend Test.command' 'Enable Hosting at Login.command' 'Disable Hosting at Login.command' test_server.py test_presence_bot.py test_updates.py test_downloads.py test_public_releases.py test_owned_notes.py test_login_start.py Dockerfile compose.yaml .dockerignore requirements.txt README.md .env.example; do
+for item in server.py updates.py downloads.py public_releases.py presence_bot.py run_local.py friend_test.py login_start.py 'Start Friend Test.command' 'Stop Friend Test.command' 'Enable Hosting at Login.command' 'Disable Hosting at Login.command' test_server.py test_presence_bot.py test_updates.py test_downloads.py test_public_releases.py test_owned_notes.py test_login_start.py test_public_miiverse.py Dockerfile compose.yaml .dockerignore requirements.txt README.md .env.example; do
   ditto "Server/$item" "$staging/$sourceName/Server/$item"
 done
 ditto -c -k --sequesterRsrc --keepParent "$staging/$sourceName" "Artifacts/$sourceName.zip"

@@ -66,8 +66,13 @@ public struct NoteDraft: Codable, Equatable, Sendable {
     public var appID: UUID?
     public var authorID: UUID?
     public var shared: Bool?
-    public var isPublic: Bool { shared ?? true }
-    public init() {}
+    public var audience: NoteAudience?
+    public var visibility: NoteAudience {
+        get { shared == false ? .privateOnly : audience ?? .friends }
+        set { audience = newValue; shared = newValue != .privateOnly }
+    }
+    public var isPublic: Bool { visibility != .privateOnly }
+    public init() { audience = .everyone }
     public var hasContent: Bool {
         !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || !drawing.isEmpty ||
         !description.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty

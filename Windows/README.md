@@ -2,7 +2,7 @@
 
 Windows 10/11 x64. Install the Setup EXE, or extract the entire portable ZIP and run Plaza.exe. Users do not need Swift, Node, Python, or a GitHub account.
 
-The Windows app follows the Mac plaza layout and uses its shared Swift crowd engine, original character artwork, Mii feature catalogs, local FFL renderer and imported body animations. It includes the eight-category Mii Maker, saved Miis, binary Mii/JSON/portrait export, installed apps and Steam shortcuts, rotating pins, notes/drawings/replies/likes, local music imports and portable plazas.
+The Windows app follows the Mac plaza layout and uses its shared Swift crowd engine, original character artwork, Mii feature catalogs, local FFL renderer and imported body animations. It includes the eight-category Mii Maker, saved Miis, binary Mii/JSON/portrait export, installed apps and Steam shortcuts, recent-app rotation, app paging and layout undo, Steam store previews, square drawings and PNG export, notes/replies/likes, music previews and local imports and portable plazas.
 
 ## Wallpaper and Discord
 

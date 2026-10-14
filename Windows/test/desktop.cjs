@@ -43,6 +43,6 @@ async function main(){
     await api(auth.mac,'POST','friends/block',{id:auth.accountID});await page.click('#refresh');await page.waitForFunction(()=>!document.querySelector('#notes').textContent.includes('Hello Windows, from Mac!'));
     assert.deepEqual(failures,[]);assert.equal(await page.evaluate(()=>typeof require),'undefined');
     console.log('Desktop passed: offline persistence, draft recovery, account isolation, Mac ↔ Windows text/drawings/Steam topics, likes/replies, edit preservation, privacy retraction and block revocation.');
-  }catch(error){if(app){const p=await app.firstWindow();console.error('UI status:',await p.locator('#status').textContent());await p.screenshot({path:path.join(root,'test-results','failure.png')});}throw error;}finally{if(app)await app.close();fixture.kill();await fs.rm(tmp,{recursive:true,force:true});}
+  }catch(error){console.error(error.stack||error);if(app){const p=await app.firstWindow();console.error('UI status:',await p.locator('#status').textContent());await p.screenshot({path:path.join(root,'test-results','failure.png')});}throw error;}finally{if(app)await app.close();fixture.kill();await fs.rm(tmp,{recursive:true,force:true});}
 }
 main().catch(error=>{console.error(error);process.exitCode=1;});

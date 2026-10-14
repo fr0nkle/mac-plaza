@@ -4,10 +4,10 @@
 window.PlazaMusic=(()=>{
   const companion=new URLSearchParams(location.search).has('panel');
   const keys={plaza:'musicVolume',maker:'makerMusicVolume',friends:'friendsMusicVolume',settings:'settingsMusicVolume',writing:'writingMusicVolume'};
-  let state,role='plaza',muted=false,context,loop,revision='',current=null,serial=Promise.resolve();
+  let state,role='plaza',muted=false,previewing=false,context,loop,revision='',current=null,serial=Promise.resolve();
   const voices=new Map();
   async function sound(){if(loop)return loop;const value=await window.plaza.call('engine',{command:'music',args:{}});const bytes=Uint8Array.from(atob(value.data),c=>c.charCodeAt(0));loop=URL.createObjectURL(new Blob([bytes],{type:'audio/wav'}));return loop;}
-  async function updateVoice(){if(companion||!state)return;const enabled=state.document.settings?.ambientSound!==false&&!state.document.settings?.pauseMotion&&!state.document.settings?.safeMode&&!muted;const volume=Math.min(.35,Math.max(0,state.document.settings?.[keys[role]]??.12));
+  async function updateVoice(){if(companion||!state)return;const enabled=state.document.settings?.ambientSound!==false&&!state.document.settings?.pauseMotion&&!state.document.settings?.safeMode&&!muted&&!previewing;const volume=Math.min(.35,Math.max(0,state.document.settings?.[keys[role]]??.12));
     if(!enabled){for(const voice of voices.values()){voice.audio.pause();voice.gain.gain.cancelScheduledValues(context.currentTime);voice.gain.gain.value=0;}return;}
     context ||= new AudioContext();await context.resume();const source=state.music?.[role]?.file||'fallback';const key=role+':'+source;let voice=voices.get(key);
     if(!voice){const audio=new Audio();audio.loop=true;audio.src=source==='fallback'?await sound():'plaza-media://music/'+role+'?revision='+encodeURIComponent(source);const gain=context.createGain();gain.gain.value=0;context.createMediaElementSource(audio).connect(gain).connect(context.destination);voice={audio,gain,timer:null};voices.set(key,voice);}
@@ -17,6 +17,6 @@ window.PlazaMusic=(()=>{
   }
   function schedule(){serial=serial.catch(()=>{}).then(updateVoice).catch(error=>document.dispatchEvent(new CustomEvent('plaza-ui-error',{detail:'Music could not play: '+error.message})));return serial;}
   function setRole(next){if(!keys[next])next='plaza';if(companion){window.plaza.call('musicRole',next).catch(()=>{});return;}if(role!==next){role=next;schedule();}}
-  if(!companion)window.plaza.subscribe('plaza-music-role',setRole);
-  return{role:setRole,update(value){state=value;const next=JSON.stringify([value.music,value.document.settings]);if(next!==revision){revision=next;schedule();}},mute(value){if(muted!==value){muted=value;schedule();}},diagnostics:()=>({role,muted,voices:[...voices].map(([key,v])=>({key,playing:!v.audio.paused,time:v.audio.currentTime,volume:v.gain.gain.value}))})};
+  if(!companion){window.plaza.subscribe('plaza-music-role',setRole);window.plaza.subscribe('plaza-music-preview',value=>{previewing=value;schedule();});}
+  return{role:setRole,preview(value){previewing=value;if(companion)window.plaza.call('musicPreview',value).catch(()=>{});else schedule();},previewSource:async kind=>{const info=await window.plaza.call('musicInfo');return info[kind]?.url||await sound();},update(value){state=value;const next=JSON.stringify([value.music,value.document.settings]);if(next!==revision){revision=next;schedule();}},mute(value){if(muted!==value){muted=value;schedule();}},diagnostics:()=>({role,muted,voices:[...voices].map(([key,v])=>({key,playing:!v.audio.paused,time:v.audio.currentTime,volume:v.gain.gain.value}))})};
 })();

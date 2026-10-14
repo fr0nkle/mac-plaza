@@ -16,6 +16,8 @@
   async function prepare(avatars){
     const result=[];for(const avatar of avatars){const payload=avatar.data?{...avatar}:await hostCall('engine',{command:'renderAvatar',args:{avatar}});if(!resources?.resource){const source=avatar.avatar||avatar;const key=payload.data;if(!cache.has(key)){const value=await hostCall('engine',{command:'fallback',args:{avatar:source}});if(cache.size>64)cache.delete(cache.keys().next().value);cache.set(key,value);}payload.fallback=cache.get(key);}result.push(payload);}return result;
   }
+  let headSurface,headBox,headQueue=Promise.resolve(),headGeneration=0;const headCache=new Map();
+  function headPortrait(avatar){const key=JSON.stringify(avatar),generation=headGeneration;if(headCache.has(key))return headCache.get(key);const task=headQueue.catch(()=>{}).then(async()=>{if(generation!==headGeneration)throw new Error('Renderer changed.');if(!headSurface){headBox=document.createElement('div');headBox.className='thumbnail-surface';document.body.append(headBox);headSurface=new Surface(headBox,'portrait',await loadResources());await headSurface.ready;}const[payload]=await prepare([avatar]);return headSurface.call('portrait',[payload,0,0,true,96,96]);});headQueue=task;if(headCache.size>160)headCache.delete(headCache.keys().next().value);headCache.set(key,task);return task;}
   async function loadResources(){resources=await hostCall('resources');return resources;}
   async function update(avatars,options={}){
     const nextSignature=JSON.stringify([avatars,options.population,options.islandCount,options.gathering,!!resources?.resource,!!resources?.body]);if(signature===nextSignature)return configuration;signature=nextSignature;
@@ -29,5 +31,5 @@
   }
   new ResizeObserver(ground).observe(document.querySelector('#plaza'));
   requestAnimationFrame(loop);
-  window.plazaScene={update,whenConfigured:()=>configuration,roster:()=>roster,setPostsHeld:value=>postsHeld=value,setMoving:value=>{running=value;if(!value)last=0;},pause:()=>{running=!running;return!running;},prepare,Surface,resources:async()=>resources||loadResources(),reload:async()=>{main?.dispose();main=null;signature='';cache.clear();await loadResources();},surface:()=>main,ground};
+  window.plazaScene={headPortrait,update,whenConfigured:()=>configuration,roster:()=>roster,setPostsHeld:value=>postsHeld=value,setMoving:value=>{running=value;if(!value)last=0;},pause:()=>{running=!running;return!running;},prepare,Surface,resources:async()=>resources||loadResources(),reload:async()=>{headGeneration++;headSurface?.dispose();headSurface=null;headBox?.remove();headCache.clear();main?.dispose();main=null;signature='';cache.clear();await loadResources();},surface:()=>main,ground};
 })();

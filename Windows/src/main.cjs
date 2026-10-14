@@ -290,5 +290,14 @@ app.whenReady().then(async () => {
   setInterval(backgroundRefresh,15000).unref();
   if(native)setInterval(()=>{if(!session?.discordSDK)return;try{const current=JSON.parse(native.discordSnapshot()).state;if(current!==lastState){lastState=current;if(current==='ready')backgroundRefresh();}}catch{}},1000).unref();
 }).catch(error=>{console.error('Plaza startup failed:',error);dialog.showErrorBox('Plaza could not start',error.message);app.exit(1);});
-app.on('before-quit',()=>{if(quitting)return;quitting=true;wallpaper?.cleanup();native?.disconnectDiscord();engine?.close();for(const item of windows)if(!item.isDestroyed())item.destroy();});
+app.on('before-quit',event=>{
+  if(quitting)return;event.preventDefault();quitting=true;
+  // Let pending saves and audio teardown finish before destroying renderers.
+  // Deferring quit also lets an inspector-triggered quit return to its caller.
+  setImmediate(async()=>{
+    const bounded=promise=>Promise.race([promise,new Promise(resolve=>setTimeout(resolve,2000))]);
+    try{await bounded(operation);await bounded(Promise.allSettled([...windows].filter(item=>!item.isDestroyed()).map(item=>item.webContents.executeJavaScript('window.plazaScene?.setMoving(false);window.stopMusicPreview?.();window.PlazaMusic?.shutdown();'))));}catch(error){console.error('Plaza shutdown:',error.message);}
+    wallpaper?.cleanup();native?.disconnectDiscord();engine?.close();for(const item of windows)if(!item.isDestroyed())item.destroy();app.quit();
+  });
+});
 app.on('window-all-closed',()=>{if(process.platform!=='win32')app.quit();});

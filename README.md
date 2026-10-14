@@ -4,6 +4,8 @@ A working native macOS plaza inspired by WaraWara Plaza, built from the supplied
 
 ## Testing preview
 
+Mac Plaza is currently available for macOS only.
+
 Download from **https://plaza.squidproductions.org** to install on Apple silicon/macOS 15+. Discord setup opens on first launch with the test service preconfigured. Choose a Mii, enable **Share my chosen Mii and note with my Discord friends**, then save. Both people can share their own Miis without Plaza invitation codes. Sharing is opt-in and older explicit Plaza friendships remain supported.
 
 Sparkle provides signed private updates after Discord sign-in, with **Check for Updates…** in the app menu and automatic download/install options in Preferences. The public GitHub repository is **[fr0nkle/mac-plaza](https://github.com/fr0nkle/mac-plaza)**. Downloads need no account and work while the hosting Mac is offline. This preview is not Apple notarized. Discord features and in-app updates still need the Mac-hosted service/tunnel running; its Tailscale address survives restarts. [Installer, release publishing, hosting, and signing instructions](DISTRIBUTION.md).

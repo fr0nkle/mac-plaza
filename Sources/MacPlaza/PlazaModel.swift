@@ -10,6 +10,9 @@ final class PlazaModel: ObservableObject {
     @Published var loaded = false
     @Published var journalRevision = 0
     @Published var recoveryRequired = false
+    @Published var resourcePackBusy = false
+    @Published var resourcePackMessage: String?
+    @Published var resourcePackBackup: URL?
     @Published var diagnosticsExporting = false
     @Published var diagnosticsExportMessage: String?
     @Published var diagnosticsDescriptionDraft = ""

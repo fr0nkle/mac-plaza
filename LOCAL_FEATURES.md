@@ -909,3 +909,8 @@ rejection, visitor merging and private-note preservation. Logs are in
 ## Audio resource crash fix — 0.19.1, 14 October 2026
 
 Eight tester crash reports across 0.16–0.19 showed the same SwiftPM resource-bundle assertion while starting/resuming audio. PlazaResources replaces the fatal Bundle.module fallback with optional lookups confined to the installed app, while development/tests can use adjacent resource bundles. Missing recordings use synthesized playback; absent arrival effects are skipped. Renderer assets use the same safe resolver. Custom music, muting and crossfades are preserved. Build 28 is a focused hotfix above 0.19.0.
+
+
+## Resource pack importer release — 14 October 2026
+
+Version 0.20.2/build 31 adds the Settings → Mii Appearance resource pack importer, streaming bounded format validation, native renderer/audio checks, resource backups and rollback. Existing saved plaza data and music preferences are preserved. Private resource packs remain separate from app/source releases. Scoped from the published 0.19.1 base; unrelated local workspace work is preserved.

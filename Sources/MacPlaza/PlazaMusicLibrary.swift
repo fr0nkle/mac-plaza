@@ -39,6 +39,12 @@ final class PlazaMusicLibrary: ObservableObject {
         return parts.count == 2 && UUID(uuidString: String(parts[0])) != nil &&
             !parts[1].isEmpty && parts[1].count <= 10 && parts[1].allSatisfy { $0.isASCII && ($0.isLetter || $0.isNumber) }
     }
+    func reloadInstalled() {
+        discardSelections()
+        let saved = (try? Data(contentsOf: manifest)).flatMap { try? JSONDecoder().decode([String: Recording].self, from: $0) } ?? [:]
+        recordings = saved.filter { PlazaAudio.Track(rawValue: $0.key) != nil && Self.validFileName($0.value.file) }
+        revision = UUID(); onChange?()
+    }
     func url(for track: PlazaAudio.Track) -> URL? {
         guard let recording = recordings[track.rawValue] else { return nil }
         let url = directory.appendingPathComponent(recording.file)

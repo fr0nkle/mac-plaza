@@ -23,6 +23,13 @@ import PlazaCore
         for clip in clips {if let name=clip["name"] as? String,let frames=clip["frames"] as? Double,frames>0 {durations[name]=frames/30}}
         return CrowdTiming(clips:durations)
     }
+    func reloadInstalled() {
+        if let bytes = try? Data(contentsOf: url), let count = try? Self.check(bytes) {
+            data = bytes; installed = true
+            message = "Original Wii U menu bodies and \(count) animation clips installed locally."
+        } else { data = nil; installed = false; message = "Using locally authored bodies and motion." }
+        revision = UUID(); FFLPortraits.shared.reset()
+    }
     var originalCatalog:OriginalLoungeCatalog? {
         guard let data,let object=try? JSONSerialization.jsonObject(with:data) as? [String:Any],
               let clips=object["animations"] as? [[String:Any]] else{return nil}

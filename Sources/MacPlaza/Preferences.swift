@@ -198,6 +198,19 @@ struct PreferencesView: View {
                     }
                 }
                 if selectedCategory == .appearance {
+                    Section("Plaza resource pack") {
+                        HStack {
+                            Button("Import Plaza Resource Pack…") { model.importResourcePack() }
+                                .disabled(model.resourcePackBusy || ffl.importing || bodies.importing)
+                            if model.resourcePackBusy { ProgressView().controlSize(.small) }
+                        }
+                        Text("Import one .plazapack file containing original Mii faces, bodies, animations and menu music. Your saved Miis, notes, apps and settings stay in place. Included resources and music are backed up before replacement.")
+                            .font(.caption).foregroundStyle(.secondary)
+                        if let message = model.resourcePackMessage { Text(message).font(.caption).textSelection(.enabled) }
+                        if let backup = model.resourcePackBackup {
+                            Button("Show Resource Backup") { NSWorkspace.shared.open(backup) }
+                        }
+                    }
                     Section("Wii U Mii renderer") {
                         Text(ffl.message).font(.caption).textSelection(.enabled)
                         HStack {
@@ -265,6 +278,7 @@ struct PreferencesView: View {
                     }
                 }
             }.formStyle(.grouped).scrollContentBackground(.hidden)
+                .disabled(model.resourcePackBusy)
             .id(selectedCategory)
             .onChange(of:ffl.revision) { _,_ in model.rebuildScene() }
             .onChange(of:bodies.revision) { _,_ in model.rebuildScene() }

@@ -22,6 +22,21 @@ Friends using your custom Mii assignments appear first in both Discord friends l
 
 ## Run
 
+**Settings → Mii Appearance → Import Plaza Resource Pack…** installs a single
+`.plazapack` file containing local Mii face/body/animation resources and menu
+soundtracks. The app validates checksums, audio and test Mii renders before
+installation, backs up replaced resources, and preserves your saved Miis, notes,
+apps, account and volume preferences. Imported music uses the existing preview,
+replacement, crossfade and automatic mute controls. Resource packs stay separate
+from portable saved-plaza exports and public app downloads.
+
+To package resources already supplied locally, run
+`python3 scripts/create-private-resource-pack.py "Artifacts/Private/Wii U Plaza Resources.plazapack"`.
+This reads the local renderer files and six recordings without downloading
+anything or adding saved plaza/account data. Generated packs belong in the
+ignored `Artifacts/Private` folder.
+
+
 Open **Artifacts/Mac Plaza.app**. The optimized build requires Apple silicon and macOS 15 or later. **Artifacts/Mac-Plaza-Wallpaper.zip** contains the wallpaper build. It is ad-hoc signed for local development; Developer ID signing and notarization remain distribution work.
 
 Closing the window leaves the menu bar item running. Choose Quit Mac Plaza to exit completely. Keep the app in a stable location before enabling Open at Login.

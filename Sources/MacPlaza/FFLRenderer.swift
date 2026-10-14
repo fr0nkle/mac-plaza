@@ -30,6 +30,11 @@ final class FFLResources: ObservableObject {
         guard data.prefix(4)==Data("FFRA".utf8) else{throw FFLError.message("This is not an uncompressed FFL high-resolution resource (FFRA header missing).")}
         return data
     }
+    func reloadInstalled() {
+        installed = (try? Self.checkedData(at: url)) != nil
+        message = installed ? "Local FFL resource validated and installed. Wii U FFL shader enabled." : "Original face and hair resources required."
+        revision = UUID(); FFLPortraits.shared.reset(); AvatarArtwork.clearCaches()
+    }
     func importResource() {
         let panel=NSOpenPanel();panel.title="Import Wii U Mii resources";panel.message="Choose FFLResHigh.dat from your Wii U. It stays on this Mac.";panel.canChooseDirectories=false;panel.allowsMultipleSelection=false
         guard panel.runModal() == .OK,let selected=panel.url else{return}

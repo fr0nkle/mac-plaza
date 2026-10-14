@@ -50,13 +50,26 @@ function wireNote(note) {
 }
 // Read current server state before applying this device's edits. Never replace
 // notes with an empty local cache on first sign-in, or resurrect remote deletions.
-function mergeNotes(remote, ownerID, pending) {
-  const notes = new Map(remote.filter(n => n.ownerID === ownerID).map(n => [n.sourceID, wireNote(n)]));
+const NOTE_RETENTION_SECONDS = 7 * 24 * 60 * 60;
+function expired(note, now = Date.now()/1000) { return note.created <= now - NOTE_RETENTION_SECONDS; }
+function pruneNotes(store, now = Date.now()/1000) {
+  let removed = 0;
+  for (const doc of Object.values(store.accounts || {})) {
+    for (const key of ['privateNotes', 'remoteNotes']) if (Array.isArray(doc[key])) {
+      const before = doc[key].length; doc[key] = doc[key].filter(n => !expired(n, now)); removed += before-doc[key].length;
+    }
+    for (const [id, note] of Object.entries(doc.pending || {})) if (note && expired(note, now)) { delete doc.pending[id]; removed++; }
+  }
+  return removed;
+}
+function mergeNotes(remote, ownerID, pending, now = Date.now()/1000) {
+  const notes = new Map(remote.filter(n => n.ownerID === ownerID && !expired(n, now)).map(n => [n.sourceID, wireNote(n)]));
   for (const [id, change] of Object.entries(pending)) {
     if (change === null) notes.delete(id);
-    else notes.set(id, wireNote(change));
+    else if (!expired(change, now)) notes.set(id, wireNote(change));
   }
   if (notes.size > 200 || [...notes.values()].reduce((total, note) => total + note.drawing.reduce((n, s) => n + s.points.length, 0), 0) > 60000) throw new Error('The shared journal has reached its limit. Remove a note or drawing first.');
   return [...notes.values()];
 }
-module.exports = { DEFAULT_SERVICE, endpoint, avatar, document, validateAvatar, validateNote, wireNote, mergeNotes };
+function publicAvatar(avatar) { validateAvatar(avatar);const value=structuredClone(avatar);value.features.creator='';value.features.birthMonth=0;value.features.birthDay=0;return value; }
+module.exports = { publicAvatar, DEFAULT_SERVICE, endpoint, avatar, document, validateAvatar, validateNote, wireNote, mergeNotes, NOTE_RETENTION_SECONDS, expired, pruneNotes };

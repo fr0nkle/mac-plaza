@@ -1,5 +1,6 @@
 """Isolated real Plaza HTTP service. Credentials stay in the test process pipe."""
 import json
+import os
 from pathlib import Path
 import sys
 import uuid
@@ -9,7 +10,7 @@ from server import PlazaService, make_server
 from test_server import avatar
 
 service = PlazaService(':memory:', 'http://127.0.0.1:8787', 'test', 'test')
-windows = service.create_session('10001', 'Windows Friend')['token']
+windows = service.create_session('10001', os.environ.get('PLAZA_TEST_ACCOUNT_NAME','Windows Friend'))['token']
 mac = service.create_session('10002', 'Mac Friend')['token']
 stranger = service.create_session('10003', 'Stranger')['token']
 def call(token, method, route, **body):

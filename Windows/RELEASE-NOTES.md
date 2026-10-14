@@ -1,11 +1,14 @@
-Plaza for Windows 0.2.0 brings the Mac plaza experience to Windows 10/11 x64.
+Plaza for Windows 0.3.0 brings the latest Mac features to Windows 10/11 x64.
 
-- Mac-style plaza and Mii Maker with the shared Swift crowd engine, original artwork and feature catalogs, app/Steam pins with paging and layout undo, recent-app rotation, Steam store previews, zoom and gathering.
-- Windows Explorer wallpaper mode, passive interaction with Escape, tray controls, companion windows, login preferences, audio suppression and lock/sleep handling.
-- Automatic Discord friends and availability through the official Social SDK. Reconnect existing 0.1 sessions once to authorize discovery. Shared Miis and optional local friend assignments use the same appearance fields as Mac.
-- Cross-platform notes, square drawings with PNG export, likes and replies; offline drafts, pending changes, private notes and separate account data.
-- Local head/body resource imports, binary Mii/JSON/portrait export, five soundtrack roles with crossfades and recording previews and explicit selection, portable Mac/Windows plazas and backup recovery.
+- Miiverse in a floating wallpaper window: All Notes, My Notes, Friends’ Notes, The Plaza and app communities, including uninstalled games. Search text, full author names, descriptions and communities; sort newest, oldest or most liked. Private notes, drawings, local/shared replies, likes and delete undo use the same journal controls.
+- The same offline Miiverse recording as Mac 0.20.2, with independent volume/import/preview controls. Writing notes crossfades to the writing soundtrack and returns to Miiverse. Optional click/back effects have their own imports, switch and volume.
+- Nine Mac-style System Settings categories and a bottom category strip. Settings, Miiverse, Activity, writing, Friends and Mii Maker float over the existing wallpaper.
+- Full linked Discord names on public notes/replies and the primary public Mii, including updates to existing posts. Published note appearances replace temporary Discord visitors. Private notes retain their local author.
+- Import the same private .plazapack as Mac: verify checksums and sizes, render a test Mii, validate recordings, back up replaced resources/music selections and roll back a failed installation. The private pack is supplied separately.
+- Activity badges, individual/all read actions, navigation to the referenced note, optional desktop notifications and account-scoped delivery cursors that keep initial history quiet.
+- Local seven-day note cleanup, preserving drafts, Miis, apps and preferences. Editing does not extend the lifetime.
+- Diagnostics ZIP export with a tester description, app/OS/recovery information and bounded renderer-exit metadata and recent Windows Error Reporting app-crash metadata; email draft with the ZIP attached for manual review and sending. No plazas, Miis, notes, credentials, music or raw memory dumps are collected or uploaded automatically. Interrupted launches offer diagnostics.
 
-Install the Setup EXE or extract the entire portable ZIP. The preview is unsigned. No development tools are required by users. Platform fonts, title bars, system dialogs and desktop integration follow Windows. Use the website for updates. Imported console resources and recordings are not bundled.
+The installer, portable ZIP and corresponding source are included with SHA-256 checksums. Native Windows fonts, title bars, dialogs and Explorer/tray integration follow Windows. This testing preview is unsigned.
 
-Validation: source and packaged Windows desktop suites plus shared-service interoperability and roster/portable-data tests. Automated SDK checks load the official runtime but do not authorize a live Discord account. Corresponding source, dependency notices and SHA256SUMS.txt accompany the downloads.
+Validation includes Node unit tests, real-service fixture interoperability, source and installed Windows desktop/parity/feature suites through GitHub Actions, plus local Mac execution of the Windows interface and real private-pack import. Live Windows Discord authorization and real-account Windows/Mac friend discovery remain unverified because no Windows device/test accounts were available; fixture sessions do not replace that test.

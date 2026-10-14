@@ -14,7 +14,7 @@ class Wallpaper {
     {label:'Use as Wallpaper',type:'checkbox',checked:this.active,enabled:!!this.native,click:()=>this.perform(()=>this.active?this.restore():this.attach())},
     {label:this.active?'Open Plaza in Window':'Show Plaza',click:()=>this.perform(()=>this.active?this.restore():this.showWindow())},
     {label:this.interactive?'Return to Desktop · Esc':'Interact with Plaza',enabled:this.active,click:()=>this.perform(()=>this.setInteractive(!this.interactive))},
-    {type:'separator'},...['Mii Maker','Friends','Settings','Write Note','Activity'].map((label,i)=>({label,click:()=>this.perform(()=>this.panel(['maker','friends','settings','composer','activity'][i]))})),
+    {type:'separator'},...['Mii Maker','Friends','Settings','Write Note','Activity','Miiverse'].map((label,i)=>({label,click:()=>this.perform(()=>this.panel(['maker','friends','settings','composer','activity','miiverse'][i]))})),
     {type:'separator'},{label:'Quit Plaza',click:()=>this.quit()}
   ]));}
   async attach(){if(!this.native)throw new Error('Wallpaper mode is available in the Windows build.');if(this.active)return;this.bounds=this.window.getBounds();this.native.attachWallpaper(this.window.getNativeWindowHandle());this.active=true;this.window.setSkipTaskbar(true);this.window.setMenuBarVisibility(false);this.window.showInactive();await this.setInteractive(this.settings.interactive!==false);this.settings.wallpaper=true;await this.save();this.menu();this.changed();}

@@ -9,8 +9,8 @@ function validateFriends(value){
 class FriendRoster{
   constructor(){this.temporary=new Map();}
   reset(){this.temporary.clear();}
-  resolve(records,snapshot,document,games={games:[],customStatuses:[]}){
-    const linked=new Map(snapshot.friends.map(f=>[f.discordID,f]));const hidden=new Set(document.hiddenFriends||[]);const now=Date.now()/1000;
+  resolve(records,snapshot,document,games={games:[],customStatuses:[]},threads=[]){
+    const linked=new Map(snapshot.friends.map(f=>[f.discordID,f]));for(const note of threads){if(note.discordID&&!linked.has(note.discordID))linked.set(note.discordID,{id:note.ownerID,discordID:note.discordID,displayName:note.displayName,avatar:note.author,note:''});}const hidden=new Set(document.hiddenFriends||[]);const now=Date.now()/1000;
     const roster=[];for(const record of records){if(hidden.has(record.discordID))continue;let shared=linked.get(record.discordID);
       if(shared){validateAvatar(shared.avatar);shared={...shared,presence:record.presence};}
       else{

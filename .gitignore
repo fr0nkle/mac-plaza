@@ -53,3 +53,5 @@ Windows/native/build/
 Windows/native/runtime/
 Windows/native/build-input/
 Windows/build/
+
+Windows/node_modules

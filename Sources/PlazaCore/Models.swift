@@ -92,6 +92,8 @@ public struct Preferences: Codable, Equatable, Sendable {
     public var friendsMusicVolume: Double?
     public var settingsMusicVolume: Double?
     public var writingMusicVolume: Double?
+    public var uiSoundEffects: Bool?
+    public var uiSoundVolume: Double?
     public var miiverseMusicVolume: Double?
     public var rotatingHomeScreen: Bool?
     public init() {}
@@ -120,6 +122,7 @@ public struct PlazaDocument: Codable, Equatable, Sendable {
               preferences.friendsMusicVolume.map({ $0.isFinite && (0...0.35).contains($0) }) ?? true,
               preferences.settingsMusicVolume.map({ $0.isFinite && (0...0.35).contains($0) }) ?? true,
               preferences.writingMusicVolume.map({ $0.isFinite && (0...0.35).contains($0) }) ?? true,
+              preferences.uiSoundVolume.map({ $0.isFinite && (0...1).contains($0) }) ?? true,
               preferences.miiverseMusicVolume.map({ $0.isFinite && (0...0.35).contains($0) }) ?? true,
               notes.reduce(0, { $0 + $1.drawing.count }) <= 4096,
               notes.reduce(0, { $0 + $1.drawing.reduce(0, { $0 + $1.points.count }) }) + (draft?.drawing.reduce(0, { $0 + $1.points.count }) ?? 0) <= 60000

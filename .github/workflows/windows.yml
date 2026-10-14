@@ -1,7 +1,7 @@
 name: Windows build and cross-platform notes
 on:
   push:
-    branches: [main, codex/windows-parity]
+    branches: [main, codex/windows-parity, codex/windows-current-features]
     paths: ['Windows/**', 'Sources/PlazaCore/**', 'Sources/MacPlaza/Resources/FFL/**', '.github/workflows/windows.yml']
   pull_request:
     paths: ['Windows/**', 'Server/**', '.github/workflows/windows.yml']
@@ -65,6 +65,7 @@ jobs:
       - run: ./scripts/prepare-native.ps1
         env:
           GH_TOKEN: ${{ github.token }}
+      - run: python scripts/prepare-music.py
       - run: pnpm run build:engine
       - run: pnpm test
       - run: python -m pip install -r ../Server/requirements.txt
@@ -75,6 +76,10 @@ jobs:
           PYTHON: python
       - run: pnpm test:parity
         timeout-minutes: 5
+      - run: pnpm test:features
+        timeout-minutes: 5
+        env:
+          PYTHON: python
       - run: pnpm dist
         env:
           CSC_IDENTITY_AUTO_DISCOVERY: 'false'
@@ -98,6 +103,11 @@ jobs:
       - name: Test installed Windows parity
         timeout-minutes: 5
         run: pnpm test:parity
+      - name: Test installed feature parity
+        timeout-minutes: 5
+        run: pnpm test:features
+        env:
+          PYTHON: python
       - uses: actions/upload-artifact@v4
         if: always()
         with:

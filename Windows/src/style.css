@@ -7,3 +7,7 @@
 #text-prompt{width:440px;padding:25px}
 
 #panel-status{font-size:11px;color:#637c70;max-width:55%;overflow-wrap:anywhere}
+
+.speech-post{border:1px solid #c4c4c4;background:linear-gradient(#fff,#fafafa);box-shadow:0 3px 3px #0000001f}.speech-post strong{display:table;border-radius:16px;padding:3px 9px;background:#474747;color:#fff;font-size:10px;font-weight:500}.speech-post::after{content:'';position:absolute;bottom:-8px;left:50%;width:14px;height:14px;background:#fafafa;border-right:1px solid #c4c4c4;border-bottom:1px solid #c4c4c4;transform:rotate(45deg)}.speech-post canvas{max-width:100%;height:auto}
+
+#plaza-layers.arrival-focus{transition:none}.safe-mode #speech-posts{display:none}

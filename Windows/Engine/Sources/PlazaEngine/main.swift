@@ -7,12 +7,14 @@ var simulation = CrowdSimulation(population: 0, localCount: 0, seed: 0x57415241)
 var characters: [Avatar] = []
 var width = 1200.0, height = 720.0
 var configured = false
+var posts = PlazaPostCadence()
+var pendingArrival:UUID?
 let compact: [[Double]] = [[0.22,0.18],[0.40,0.105],[0.60,0.105],[0.78,0.18],[0.84,0.55],[0.625,0.67],[0.38,0.65],[0.165,0.55],[0.945,0.33],[0.055,0.33]]
 let expanded: [[Double]] = [[0.22,0.18],[0.40,0.105],[0.60,0.105],[0.78,0.18],[0.945,0.33],[0.055,0.33],[0.83,0.68],[0.61,0.72],[0.39,0.72],[0.17,0.68],[0.94,0.52],[0.06,0.52]]
 func decode<T: Decodable>(_ value: Any, _ type: T.Type) throws -> T { try JSONDecoder().decode(type, from: JSONSerialization.data(withJSONObject: value)) }
 func encode<T: Encodable>(_ value: T) throws -> Any { try JSONSerialization.jsonObject(with: JSONEncoder().encode(value)) }
 func rendering(_ a: Avatar) throws -> [String: Any] {
-    var r = a; r.name = "Mii"; r.features.creator = ""
+    var r = a; r.id=UUID(uuidString:"00000000-0000-4000-8000-000000000001")!; r.name = "Mii"; r.features.creator = ""
     let shift = (a.featureHeight - 0.5) * 0.25
     r.features.eyeY = min(1,max(0,a.features.eyeY + shift)); r.features.browY = min(1,max(0,a.features.browY + shift))
     r.features.noseY = min(1,max(0,a.features.noseY + shift)); r.features.mouthY = min(1,max(0,a.features.mouthY + shift))
@@ -72,16 +74,17 @@ func perform(_ command: String, _ args: [String:Any]) throws -> Any {
         simulation.islands=Array((count>10 ? expanded:compact).prefix(count)).map{CrowdPoint($0[0],$0[1])}
         if let values=args["gathering"] as? [String:Int] {var assignments:[Int:Int]=[:];for(i,a)in characters.enumerated(){if let island=values[a.id.uuidString.lowercased()]{assignments[i]=island}};simulation.setGatheringIslands(assignments)}
         if !configured {simulation.step(0.001);if args["reduceMotion"] as? Bool != true {simulation.beginEntrance()};configured=true}
+        if let id=pendingArrival,let index=characters.firstIndex(where:{$0.id==id}){simulation.beginArrival(index:index);pendingArrival=nil}
         return ["avatars":try characters.map {a -> [String:Any] in var value=try rendering(a);value["avatar"]=try encode(a);return value},"originalControllers":original]
     case "frame":
-        viewport(args);simulation.step(min(0.1,max(0,args["dt"] as? Double ?? 1.0/30)))
+        let dt=min(0.1,max(0,args["dt"] as? Double ?? 1.0/30));viewport(args);simulation.step(dt);posts.advance(by:dt,held:args["postsHeld"] as? Bool == true || simulation.entranceElapsed != nil)
         let depth=48*height/width/(16/sqrt(22*22+16*16))
         let poses=simulation.walkers.enumerated().map { i,w -> [Double] in
             let drop=i==simulation.arrivalIndex ? PlazaArrival.height(at:simulation.arrivalElapsed ?? 0):0
             let base:[Double]=[(w.position.x-0.5)*48,(w.position.y-0.5)*depth,drop,w.angle,Double(w.state),w.phase,w.motion,w.partner != nil && w.greeting<=0 ? 1:0,w.blink ? 1:0,Double(w.mood),w.animationTime,w.lookYaw,w.turn,Double(w.activity.rawValue),w.activityTime,w.activityDuration,simulation.animationClock]
             return base+(simulation.originalSample(i)?.bridge ?? [])
         }
-        return ["poses":poses,"identities":characters.map{$0.id.uuidString},"entrance":simulation.entranceElapsed as Any? ?? NSNull(),"arrival":simulation.arrivalElapsed as Any? ?? NSNull()]
+        return ["arrivalFocus":simulation.arrivalElapsed.map{PlazaArrival.focus(at:$0)} as Any? ?? NSNull(),"islandEntrance":simulation.islands.map{p -> [Double] in let progress=simulation.entranceElapsed.map{PlazaEntrance.iconProgress(at:p,elapsed:$0)} ?? 1;return [PlazaEntrance.iconScale(progress:progress),progress>0 ? 1:0]},"postPresentation":posts.presentation == .journal ? "journal":posts.presentation == .friends ? "friends":"quiet","poses":poses,"identities":characters.map{$0.id.uuidString},"entrance":simulation.entranceElapsed as Any? ?? NSNull(),"arrival":simulation.arrivalElapsed as Any? ?? NSNull()]
     case "music":return ["data":Soundtrack.loop().base64EncodedString()]
     case "renderAvatar":return try rendering(decode(args["avatar"] ?? [:],Avatar.self).validated())
     case "fallback":return CharacterRig.fallback(try decode(args["avatar"] ?? [:],Avatar.self).validated())
@@ -89,7 +92,7 @@ func perform(_ command: String, _ args: [String:Any]) throws -> Any {
     case "encodeMii":return ["data":try MiiFile.encode(decode(args["avatar"] ?? [:],Avatar.self)).base64EncodedString()]
     case "acknowledge":simulation.acknowledge(args["index"] as? Int ?? -1);return [:]
     case "cheer":let i=args["index"] as? Int ?? -1;if simulation.islands.indices.contains(i){simulation.cheer(near:simulation.islands[i])};return [:]
-    case "arrival":let i=args["index"] as? Int ?? -1;if characters.indices.contains(i){simulation.beginArrival(index:i)};return [:]
+    case "arrival":let id=UUID(uuidString:args["id"] as? String ?? "");let i=id.flatMap{key in characters.firstIndex(where:{$0.id==key})} ?? (args["index"] as? Int ?? -1);if let id,!characters.contains(where:{$0.id==id}){pendingArrival=id};if characters.indices.contains(i){simulation.beginArrival(index:i)};return [:]
     case "finishEntrance":simulation.finishEntrance();simulation.finishArrival();return [:]
     default:throw PlazaError.invalid("Unknown engine operation.")
     }

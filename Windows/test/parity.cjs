@@ -5,7 +5,7 @@ const root=path.resolve(__dirname,'..'),core=require('../src/core.cjs');
 async function main(){
   const directory=await fs.mkdtemp(path.join(os.tmpdir(),'plaza-parity-'));
   const result=path.join(root,'test-results');await fs.mkdir(result,{recursive:true});
-  const document=core.document();document.settings={population:20,rotateHome:false};
+  const document=core.document();document.settings={population:20,rotateHome:false,ambientSound:false};
   await fs.writeFile(path.join(directory,'plaza.json'),JSON.stringify({origin:core.DEFAULT_SERVICE,accounts:{offline:document},apps:Array.from({length:12},(_,i)=>({id:require('node:crypto').randomUUID(),label:'App '+(i+1),bundleID:'test.app.'+i,path:'',icon:''}))}));
   if(process.env.PLAZA_FFL_RESOURCE){await fs.mkdir(path.join(directory,'Renderer'),{recursive:true});await fs.copyFile(process.env.PLAZA_FFL_RESOURCE,path.join(directory,'Renderer/FFLResHigh.dat'));if(process.env.PLAZA_BODY_RESOURCE)await fs.copyFile(process.env.PLAZA_BODY_RESOURCE,path.join(directory,'Renderer/body.json'));}
   let app,page;const errors=[];
@@ -30,7 +30,7 @@ async function main(){
       await page.locator('#use-wallpaper').click();await page.waitForFunction(()=>document.body.classList.contains('wallpaper'));
       const nativeState=await app.evaluate(({app,BrowserWindow})=>{const require=process.getBuiltinModule('module').createRequire(app.getAppPath()+'/package.json');const native=require(app.isPackaged?require('node:path').join(process.resourcesPath,'native/plaza_native.node'):require('node:path').join(app.getAppPath(),'native/runtime/plaza_native.node'));const main=BrowserWindow.getAllWindows()[0];const assertNative=JSON.parse(native.wallpaperStatus(main.getNativeWindowHandle()));return{desktop:assertNative,discord:JSON.parse(native.discordSnapshot()),environment:JSON.parse(native.environment())};});
       assert.equal(nativeState.desktop.attached,true);assert.deepEqual(nativeState.desktop.bounds,nativeState.desktop.monitor);await fs.writeFile(path.join(result,'native-desktop.json'),JSON.stringify(nativeState.desktop,null,2));assert.equal(nativeState.discord.state,'disconnected');assert.deepEqual(nativeState.discord.friends,[]);assert.equal(typeof nativeState.environment.otherAudio,'boolean');
-      await page.keyboard.press('Escape');assert.equal((await page.evaluate(()=>plaza.call('state'))).wallpaper.interactive,false);
+      await page.keyboard.press('Escape');await page.waitForFunction(()=>document.body.dataset.wallpaperInteractive==='false');assert.equal((await page.evaluate(()=>plaza.call('state'))).wallpaper.interactive,false);
       await page.evaluate(()=>plaza.call('wallpaper',{action:'interactive',value:true}));
       const opened=app.waitForEvent('window');await page.evaluate(()=>plaza.call('panel','friends'));const companion=await opened;await companion.waitForSelector('#friend-search');await companion.close();
       await page.evaluate(()=>plaza.call('wallpaper',{action:'restore'}));await page.waitForFunction(()=>!document.body.classList.contains('wallpaper'));assert.equal((await page.evaluate(()=>plaza.call('state'))).wallpaper.active,false);

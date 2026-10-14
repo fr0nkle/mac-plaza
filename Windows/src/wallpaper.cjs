@@ -19,7 +19,7 @@ class Wallpaper {
   ]));}
   async attach(){if(!this.native)throw new Error('Wallpaper mode is available in the Windows build.');if(this.active)return;this.bounds=this.window.getBounds();this.native.attachWallpaper(this.window.getNativeWindowHandle());this.active=true;this.window.setSkipTaskbar(true);this.window.setMenuBarVisibility(false);this.window.showInactive();await this.setInteractive(this.settings.interactive!==false);this.settings.wallpaper=true;await this.save();this.menu();this.changed();}
   async restore(){if(!this.active)return;this.restoring=true;try{this.native.detachWallpaper(this.window.getNativeWindowHandle());this.window.setIgnoreMouseEvents(false);this.active=false;this.window.setSkipTaskbar(false);this.window.setMenuBarVisibility(true);if(this.bounds)this.window.setBounds(this.bounds);this.window.show();this.settings.wallpaper=false;await this.save();this.menu();this.changed();}finally{this.restoring=false;}}
-  async setInteractive(value){this.interactive=!!value;this.window.setIgnoreMouseEvents(!this.interactive,{forward:true});if(this.interactive&&this.active)this.window.focus();this.settings.interactive=this.interactive;await this.save();this.menu();this.changed();}
+  async setInteractive(value){this.interactive=!!value;this.window.setIgnoreMouseEvents(!this.interactive,{forward:true});if(this.interactive&&this.active){this.window.focus();this.window.webContents.focus();}this.settings.interactive=this.interactive;await this.save();this.menu();this.changed();}
   state(){return{supported:!!this.native,active:this.active,interactive:this.interactive};}
   changed(){this.window.webContents.send('plaza-wallpaper',this.state());}
   showWindow(){this.window.show();this.window.focus();}

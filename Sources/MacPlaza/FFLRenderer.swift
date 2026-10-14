@@ -103,8 +103,8 @@ final class FFLSurface: NSObject, WKScriptMessageHandler, WKNavigationDelegate {
         webView.loadFileURL(root.appendingPathComponent("index.html"),allowingReadAccessTo:root)
     }
     static var assetRoot:URL {
-        if let root=Bundle.main.resourceURL?.appendingPathComponent("FFL"),FileManager.default.fileExists(atPath:root.appendingPathComponent("index.html").path){return root}
-        return Bundle.module.url(forResource:"FFL",withExtension:nil)!
+        PlazaResources.url(for: "index", extension: "html", directory: "FFL")?.deletingLastPathComponent()
+            ?? (Bundle.main.resourceURL ?? Bundle.main.bundleURL).appendingPathComponent("FFL")
     }
     static func avatar(_ a:Avatar) throws -> [String:Any] {
         var rendering=a

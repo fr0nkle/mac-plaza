@@ -904,3 +904,8 @@ long names, primary changes, atomic invalid batches, retraction, spoofed name
 rejection, visitor merging and private-note preservation. Logs are in
 .qa/public-identity-*-tests.log; pre-deployment backups in
 .qa/public-identity-migration.
+
+
+## Audio resource crash fix — 0.19.1, 14 October 2026
+
+Eight tester crash reports across 0.16–0.19 showed the same SwiftPM resource-bundle assertion while starting/resuming audio. PlazaResources replaces the fatal Bundle.module fallback with optional lookups confined to the installed app, while development/tests can use adjacent resource bundles. Missing recordings use synthesized playback; absent arrival effects are skipped. Renderer assets use the same safe resolver. Custom music, muting and crossfades are preserved. Build 28 is a focused hotfix above 0.19.0.

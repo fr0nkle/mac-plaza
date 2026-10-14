@@ -6,6 +6,14 @@ import OSLog
 /// Local soundtrack playback; no network or web player is needed at runtime.
 @MainActor
 final class PlazaAudio: NSObject, ObservableObject, AVAudioPlayerDelegate {
+    private let resourceRoots: [URL]
+    init(resourceRoots: [URL] = PlazaResources.searchRoots) {
+        self.resourceRoots = resourceRoots
+        super.init()
+    }
+    private func recordingURL(for track: Track) -> URL? {
+        PlazaResources.url(for: track.rawValue, extension: "m4a", directory: "Audio", roots: resourceRoots)
+    }
     enum Track: String { case plaza = "warawara-home", maker = "mii-maker", friends = "friends-menu", settings = "system-settings", writing = "note-writing", miiverse = "miiverse" }
     static let crossfadeDuration: TimeInterval = 1.2
     private final class Voice {
@@ -34,13 +42,11 @@ final class PlazaAudio: NSObject, ObservableObject, AVAudioPlayerDelegate {
         effects.map {($0.cue,$0.player.isPlaying,$0.player.volume)}
     }
     static func arrivalEffectURL(for cue:PlazaArrival.Cue)->URL? {
-        if let url=Bundle.main.resourceURL?.appendingPathComponent("Audio/\(cue.rawValue).wav"),
-           FileManager.default.fileExists(atPath:url.path) {return url}
-        return Bundle.module.url(forResource:cue.rawValue,withExtension:"wav",subdirectory:"Audio")
+        PlazaResources.url(for: cue.rawValue, extension: "wav", directory: "Audio")
     }
     func playArrivalEffect(_ cue:PlazaArrival.Cue,volume:Double) {
         guard backgroundRequest?.enabled == true,previewPlayer == nil,volume.isFinite,volume>0,
-              let url=Self.arrivalEffectURL(for:cue),let player=try? AVAudioPlayer(contentsOf:url) else{return}
+              let url=PlazaResources.url(for:cue.rawValue,extension:"wav",directory:"Audio",roots:resourceRoots),let player=try? AVAudioPlayer(contentsOf:url) else{return}
         effects.removeAll {if !$0.player.isPlaying {$0.player.stop();return true};return false}
         player.numberOfLoops=0;player.volume=Float(min(0.35,max(0,volume*1.4)));player.delegate=self
         guard player.prepareToPlay(),player.play() else{return}
@@ -62,9 +68,7 @@ final class PlazaAudio: NSObject, ObservableObject, AVAudioPlayerDelegate {
     }
     static var soundtrackURL: URL? { soundtrackURL(for: .plaza) }
     static func soundtrackURL(for track: Track) -> URL? {
-        if let url = Bundle.main.resourceURL?.appendingPathComponent("Audio/\(track.rawValue).m4a"),
-           FileManager.default.fileExists(atPath: url.path) { return url }
-        return Bundle.module.url(forResource: track.rawValue, withExtension: "m4a", subdirectory: "Audio")
+        PlazaResources.url(for: track.rawValue, extension: "m4a", directory: "Audio")
     }
     func update(enabled: Bool, volume: Double = 0.12, track: Track = .plaza, customURL: URL? = nil, allowPreview: Bool = true) {
         backgroundRequest = (enabled, volume, track, customURL)
@@ -75,7 +79,7 @@ final class PlazaAudio: NSObject, ObservableObject, AVAudioPlayerDelegate {
         }
         let level = Float(volume.isFinite ? max(0, min(0.35, volume)) : 0.12)
         effects.forEach {$0.player.setVolume(min(0.35,level*1.4),fadeDuration:0.06)}
-        let source = customURL ?? Self.soundtrackURL(for: track)
+        let source = customURL ?? recordingURL(for: track)
         if voice?.track != track || voice?.source != source {
             let next: Voice
             if let index = fadingVoices.firstIndex(where: { $0.track == track && $0.source == source }) {
@@ -84,7 +88,7 @@ final class PlazaAudio: NSObject, ObservableObject, AVAudioPlayerDelegate {
                 next.retirement?.cancel(); next.retirement = nil
             } else {
                 var player = source.flatMap { try? AVAudioPlayer(contentsOf: $0) }
-                if player == nil, customURL != nil { player = Self.soundtrackURL(for: track).flatMap { try? AVAudioPlayer(contentsOf: $0) } }
+                if player == nil, customURL != nil { player = recordingURL(for: track).flatMap { try? AVAudioPlayer(contentsOf: $0) } }
                 if player == nil { player = try? AVAudioPlayer(data: Self.loop()) }
                 guard let player else { return }
                 player.numberOfLoops = -1

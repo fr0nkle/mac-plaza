@@ -90,8 +90,11 @@ static bool otherAudio(EDataFlow flow){
     }
   }release(sessions);release(manager);release(device);release(enumerator);return active;
 }
-static napi_value environment(napi_env env,napi_callback_info){
-  ourProcesses={GetCurrentProcessId()};std::unordered_map<DWORD,DWORD>parents;HANDLE list=CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS,0);if(list!=INVALID_HANDLE_VALUE){PROCESSENTRY32W entry{sizeof(PROCESSENTRY32W)};if(Process32FirstW(list,&entry))do{parents[entry.th32ProcessID]=entry.th32ParentProcessID;}while(Process32NextW(list,&entry));CloseHandle(list);}for(const auto&pair:parents){DWORD pid=pair.first;for(int depth=0;depth<6;depth++){auto p=parents.find(pid);if(p==parents.end())break;pid=p->second;if(pid==GetCurrentProcessId()){ourProcesses.push_back(pair.first);break;}}}
+static napi_value environment(napi_env env,napi_callback_info info){
+  std::unordered_map<DWORD,DWORD>parents;HANDLE list=CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS,0);if(list!=INVALID_HANDLE_VALUE){PROCESSENTRY32W entry{sizeof(PROCESSENTRY32W)};if(Process32FirstW(list,&entry))do{parents[entry.th32ProcessID]=entry.th32ParentProcessID;}while(Process32NextW(list,&entry));CloseHandle(list);}
+  DWORD owner=GetCurrentProcessId();size_t argc=1;napi_value args[1];napi_get_cb_info(env,info,&argc,args,nullptr,nullptr);uint32_t candidate=0;
+  if(argc==1&&napi_get_value_uint32(env,args[0],&candidate)==napi_ok&&candidate&&parents[owner]==candidate)owner=candidate;
+  ourProcesses={owner};for(const auto&pair:parents){DWORD pid=pair.first;for(int depth=0;depth<6;depth++){auto p=parents.find(pid);if(p==parents.end())break;pid=p->second;if(pid==owner){ourProcesses.push_back(pair.first);break;}}}
   HWND foreground=GetForegroundWindow();DWORD pid=0;GetWindowThreadProcessId(foreground,&pid);bool covered=false;wchar_t name[128]{};GetClassNameW(foreground,name,128);
   if(!ours(pid)&&wcscmp(name,L"Progman")&&wcscmp(name,L"WorkerW")){RECT rect{};MONITORINFO monitor{sizeof(MONITORINFO)};if(GetWindowRect(foreground,&rect)&&GetMonitorInfoW(MonitorFromWindow(foreground,MONITOR_DEFAULTTONEAREST),&monitor)){const auto&m=monitor.rcMonitor;auto w=std::max(0L,std::min(rect.right,m.right)-std::max(rect.left,m.left)),h=std::max(0L,std::min(rect.bottom,m.bottom)-std::max(rect.top,m.top));covered=double(w)*h>=double(m.right-m.left)*(m.bottom-m.top)*0.85;}}
   return string(env,std::string("{\"otherAudio\":")+(otherAudio(eRender)||otherAudio(eCapture)?"true":"false")+",\"covered\":"+(covered?"true":"false")+",\"foreground\":"+quoted(processPath(pid))+"}");

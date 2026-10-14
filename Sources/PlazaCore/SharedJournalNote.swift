@@ -20,7 +20,7 @@ public struct SharedJournalNote: Codable, Identifiable, Equatable, Sendable {
     public var publicDisplayName: String { displayName ?? author.name }
 
     public static func publishing(notes: [LocalNote], apps: [AppIsland], primary: Avatar) -> [Self] {
-        notes.filter { $0.shared == true }.compactMap { note in
+        notes.filter { $0.shared == true && !NoteRetention.isExpired($0.created) }.compactMap { note in
             let app = note.appID.flatMap { id in apps.first { $0.id == id } }
             guard note.appID == nil || app != nil else { return nil }
             return Self(note: note, author: primary, app: app)

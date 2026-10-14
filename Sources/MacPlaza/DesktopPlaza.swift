@@ -108,6 +108,7 @@ final class DesktopPlazaController: NSObject, NSWindowDelegate {
     func handleKeyEvent(_ event: NSEvent) -> NSEvent? {
         guard event.type == .keyDown, event.keyCode == 53, model?.desktopInteractive == true,
               event.window === window else { return event }
+        PlazaUISounds.shared.play(.back)
         returnToDesktop()
         return nil
     }
@@ -322,7 +323,7 @@ private struct DesktopMenuRoot:View {
                     PlazaActivityView(model: model, social: model.social, onClose: { model.sheet = nil })
                         .scaleEffect(min(1, proxy.size.width/660, proxy.size.height/640))
                 } else if model.sheet?.id == "miiverse" {
-                    FeedView(model: model, miiverse: true, onClose: { model.sheet = nil })
+                    MiiverseView(model: model, onClose: { model.sheet = nil })
                         .scaleEffect(min(1, proxy.size.width/960, proxy.size.height/720))
                 } else {
                     Group {
@@ -339,7 +340,7 @@ private struct DesktopMenuRoot:View {
         .background(MakerBackground())
         .preferredColorScheme(.light)
         .alert("Mac Plaza",isPresented:Binding(get:{model.error != nil},set:{if !$0 {model.error=nil}})) {
-            Button("OK") {model.error=nil}
+            PlazaButton("OK") {model.error=nil}
         } message: {Text(model.error ?? "")}
     }
 }
@@ -374,9 +375,9 @@ struct WallpaperCompanionView: View {
             Text("Your plaza is on the desktop").font(.title2)
             Text("Click the plaza’s buttons, apps and characters directly. Press Escape to return to your desktop files; use Interact with Plaza in the menu bar to resume.")
                 .foregroundStyle(.secondary).multilineTextAlignment(.center)
-            Button("Interact with Plaza") { model.window?.orderOut(nil); model.desktop.interact() }
+            PlazaButton("Interact with Plaza") { model.window?.orderOut(nil); model.desktop.interact() }
                 .buttonStyle(.borderedProminent)
-            Button("Open Plaza in Window") { model.desktop.disable() }
+            PlazaButton("Open Plaza in Window") { model.desktop.disable() }
         }.padding(50).frame(maxWidth: .infinity, maxHeight: .infinity)
             .background(PlazaStyle.paper)
     }
@@ -400,8 +401,7 @@ struct PlazaPanels: ViewModifier {
                 case .friend(let friend): FriendProfileView(model: model, social: model.social, initial: friend)
                 case .social: SocialSettingsView(model: model, social: model.social)
                 case .compose(let appID): NoteComposer(model: model, appID: appID)
-                case .feed: FeedView(model: model)
-                case .miiverse: FeedView(model: model, miiverse: true)
+                case .miiverse: MiiverseView(model: model)
                 case .activity: PlazaActivityView(model: model, social: model.social)
                 case .preferences: PreferencesView(model: model)
                 case .app(let app): AppDetailsView(model: model, appID: app.id)
@@ -410,13 +410,13 @@ struct PlazaPanels: ViewModifier {
             }
             .preferredColorScheme(.light)
             .alert("Mac Plaza", isPresented: Binding(get: { model.error != nil }, set: { if !$0 { model.error = nil } })) {
-                Button("OK") { model.error = nil }
+                PlazaButton("OK") { model.error = nil }
             } message: { Text(model.error ?? "") }
         }
         .alert("Mac Plaza", isPresented: Binding(get: { model.error != nil && model.sheet == nil }, set: {
             if !$0 && model.sheet == nil { model.error = nil; model.desktop.dismissCompanionIfNeeded() }
         })) {
-            Button("OK") { model.error = nil; model.desktop.dismissCompanionIfNeeded() }
+            PlazaButton("OK") { model.error = nil; model.desktop.dismissCompanionIfNeeded() }
         } message: { Text(model.error ?? "") }
     }
 }

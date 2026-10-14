@@ -29,6 +29,7 @@ Server/.run/
 Server/.updates/
 Server/.downloads/
 .release.env
+scripts/__pycache__/
 *.p12
 *.p8
 *.pem
@@ -54,4 +55,12 @@ Windows/native/runtime/
 Windows/native/build-input/
 Windows/build/
 
+Sources/MacPlaza/Resources/Audio/UI/*.wav
+
 Windows/node_modules
+
+Windows/update-baseline/
+
+# Windows distribution has been retired; retain local experiments privately.
+Windows/
+.github/workflows/windows.yml

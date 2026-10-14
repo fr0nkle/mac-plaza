@@ -1,4 +1,5 @@
 import XCTest
+import SwiftUI
 import PlazaCore
 @testable import MacPlaza
 
@@ -71,6 +72,39 @@ final class PlazaViewportTests: XCTestCase {
             for index in 0..<3 where start[index] != crowd.walkers[index].position {moved.insert(index)}
         }
         XCTAssertFalse(moved.isEmpty,"Saved Miis should take part in the ongoing crowd, alongside quiet group members")
+    }
+    func testWalkingBoundsFollowScreenEdgesAtEveryZoom() {
+        let size=CGSize(width:1400,height:800),insets=SwiftUI.EdgeInsets(top:40,leading:20,bottom:60,trailing:20)
+        for zoom:CGFloat in [0.75,1,1.75] {
+            let offset=PlazaViewport.offset(CGSize(width:200,height:-100),zoom:zoom,size:size)
+            let bounds=PlazaViewport.walkingBounds(size:size,zoom:zoom,offset:offset,insets:insets)
+            func screenX(_ x:Double)->Double {700+(x-0.5)*1400*zoom+offset.width}
+            XCTAssertLessThan(screenX(bounds.minX),-20)
+            XCTAssertGreaterThan(screenX(bounds.maxX),1420)
+            let screenY=400+(bounds.minY-0.5)*800*zoom+offset.height
+            XCTAssertEqual(screenY,-40+0.065*800*zoom,accuracy:0.001)
+            let physicalWidth=(size.width+insets.leading+insets.trailing)/zoom
+            XCTAssertLessThan(physicalWidth,size.width*PlazaScene.renderScale)
+        }
+    }
+    @MainActor func testOverscanKeepsAppCoordinatesAndSpeechAnchorsAligned() {
+        let size=CGSize(width:1200,height:720),scene=PlazaScene(size:CGSize(width:1200,height:720)),owner=UUID()
+        scene.configure(avatars:[Avatar(name:"One")],population:1)
+        var before:[[Double]]=[],after:[[Double]]=[]
+        scene.attachFFL(owner:owner,frame:{before=$0},configure:{_ in})
+        scene.resize(size);scene.rendererDidBecomeReady()
+        scene.fflFrame={after=$0}
+        scene.setRendererScale(PlazaScene.renderScale)
+        scene.resize(CGSize(width:size.width*PlazaScene.renderScale,height:size.height*PlazaScene.renderScale))
+        // Geometry and poses must retain the app layout's world scale.
+        scene.rendererDidBecomeReady()
+        XCTAssertEqual(before.first?.prefix(3),after.first?.prefix(3))
+        let avatar=scene.fflCharacters[0];var anchor:CGPoint?
+        scene.attachNotes(owner:owner,targets:[avatar.id]) {anchor=$0[avatar.id]}
+        scene.acceptFFLAnchors([[0,0.6,0.4]])
+        XCTAssertEqual(anchor?.x ?? -1,810,accuracy:0.001)
+        XCTAssertEqual(anchor?.y ?? -1,234,accuracy:0.001)
+        scene.detachNotes(owner:owner);scene.detachFFL(owner:owner)
     }
     func testZoomAndPanKeepThePlazaReachable() {
         let size=CGSize(width:1280,height:580)

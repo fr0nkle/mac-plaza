@@ -5,7 +5,7 @@ import PlazaCore
 @testable import MacPlaza
 
 final class PlazaPostTests: XCTestCase {
-    func testPostsHaveQuietGapsAndNeverAppearTogether() {
+    func testPostIntervalsRetainQuietGaps() {
         var cadence = PlazaPostCadence()
         var journal = 0, friends = 0, quiet = 0
         for _ in 0..<104 {
@@ -20,6 +20,29 @@ final class PlazaPostTests: XCTestCase {
         XCTAssertEqual(friends, 20)
         XCTAssertEqual(quiet, 64, "Most plaza time should have no speech panels")
         XCTAssertEqual(cadence.presentation, .quiet)
+    }
+
+    func testBubbleDensityVariesFromOneToThreeAndHoldingPreservesIt() {
+        var cadence = PlazaPostCadence()
+        var previous: Int?, seen = Set<Int>()
+        for _ in 0..<60 {
+            cadence.advance(by: 12)
+            XCTAssertEqual(cadence.presentation, .journal)
+            XCTAssertTrue((1...3).contains(cadence.bubbleCount))
+            if let previous { XCTAssertNotEqual(cadence.bubbleCount, previous) }
+            let count = cadence.bubbleCount
+            cadence.advance(by: 40, held: true)
+            XCTAssertEqual(cadence.bubbleCount, count)
+            seen.insert(count)
+            cadence.advance(by: 10)
+            cadence.advance(by: 14)
+            XCTAssertEqual(cadence.presentation, .friends)
+            XCTAssertNotEqual(cadence.bubbleCount, count)
+            previous = cadence.bubbleCount
+            seen.insert(cadence.bubbleCount)
+            cadence.advance(by: 16)
+        }
+        XCTAssertGreaterThanOrEqual(seen.count, 2)
     }
 
     func testHoldingAPostPreservesItsReadingTimeAndInvalidElapsedIsIgnored() {
@@ -57,7 +80,7 @@ final class PlazaPostTests: XCTestCase {
         model.advanceBubblePresentation(by: 40)
         XCTAssertEqual(model.postPresentation, .journal)
         model.document.preferences.pausePosts = false
-        model.sheet = .feed
+        model.sheet = .miiverse
         model.advanceBubblePresentation(by: 40)
         XCTAssertEqual(model.postPresentation, .journal)
         model.sheet = nil
@@ -92,7 +115,7 @@ final class PlazaPostTests: XCTestCase {
         }
         try capture(BubbleView(model: model, offset: 0).frame(width: 240).padding(35).background(PlazaStyle.paper),
                     size: CGSize(width: 310, height: 180), name: "wiiu-journal-bubble.png")
-        try capture(FeedView(model: model), size: CGSize(width: 660, height: 670), name: "wiiu-journal.png")
+        try capture(MiiverseView(model: model), size: CGSize(width: 960, height: 720), name: "wiiu-miiverse.png")
         await model.flush()
         try await model.storage.endSession()
     }

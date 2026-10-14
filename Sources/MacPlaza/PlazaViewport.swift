@@ -9,6 +9,16 @@ struct PlazaViewport {
     static func zoom(_ value: CGFloat) -> CGFloat {
         min(zoomRange.upperBound, max(zoomRange.lowerBound, value))
     }
+    static func walkingBounds(size:CGSize,zoom:CGFloat,offset:CGSize,insets:EdgeInsets)->CrowdNavigationBounds {
+        let z=Double(zoom),w=Double(max(1,size.width)),h=Double(max(1,size.height))
+        // Portals sit a complete body beyond the physical screen, so neither
+        // the departure nor arrival pops into view. Top/bottom keep heads visible.
+        return CrowdNavigationBounds(
+            minX:0.5+(-Double(insets.leading)-w/2-Double(offset.width))/(w*z)-0.035,
+            maxX:0.5+(w/2+Double(insets.trailing)-Double(offset.width))/(w*z)+0.035,
+            minY:0.5+(-Double(insets.top)-h/2-Double(offset.height))/(h*z)+0.065,
+            maxY:0.5+(h/2+Double(insets.bottom)-Double(offset.height))/(h*z)-0.015)
+    }
     /// A shared camera move keeps the selected tile and nearby walkers together.
     /// Position the app on the left, leaving the right side for its speech bubble.
     static func appFocus(at point: CGPoint, size: CGSize) -> (zoom: CGFloat, offset: CGSize) {

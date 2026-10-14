@@ -112,7 +112,7 @@ final class PlazaScene {
         for value in values.prefix(6) where value.count == 3 && value.allSatisfy(\.isFinite) {
             guard value[0] >= 0, value[0] < Double(characters.count) else { continue }
             let i = Int(value[0]); guard noteTargets.contains(characters[i].id) else { continue }
-            positions[characters[i].id] = CGPoint(x: value[1] * viewport.width, y: value[2] * viewport.height)
+            positions[characters[i].id] = CGPoint(x: (0.5+(value[1]-0.5)*rendererScale)*viewport.width, y: (0.5+(value[2]-0.5)*rendererScale)*viewport.height)
         }
         notePositions?(positions)
     }
@@ -122,7 +122,7 @@ final class PlazaScene {
         for i in noteIndices where rigs.indices.contains(i) {
             var top = rigs[i].head.worldPosition; top.y += 0.42
             let p = view.projectPoint(top)
-            positions[characters[i].id] = CGPoint(x: p.x, y: viewport.height - p.y)
+            positions[characters[i].id] = CGPoint(x: p.x-(rendererScale-1)*viewport.width/2, y: viewport.height*rendererScale-p.y-(rendererScale-1)*viewport.height/2)
         }
         notePositions?(positions)
     }
@@ -148,6 +148,12 @@ final class PlazaScene {
     }
     private var timer: Timer?
     private var lastTime=0.0
+    /// Render beyond the app layout so zooming out and wallpaper margins have
+    /// live characters too. Simulation/app coordinates remain in logical points.
+    nonisolated static let renderScale:CGFloat=1.75
+    private var rendererScale:CGFloat=1
+    func setRendererScale(_ value:CGFloat) {rendererScale=value}
+    func setWalkingBounds(_ bounds:CrowdNavigationBounds) {simulation.setNavigationBounds(bounds)}
     private var viewport=CGSize(width:1200,height:720)
     var islandCount=8 { didSet { updateIslands() } }
     private weak var view: SCNView?
@@ -156,9 +162,9 @@ final class PlazaScene {
         camera.camera?.zNear=0.1; camera.camera?.zFar=100; camera.position=SCNVector3(0,16,22); camera.look(at:SCNVector3Zero)
         world.rootNode.addChildNode(camera); CharacterRig.addLighting(to:world)
     }
-    func configure(avatars: [Avatar],population: Int,localCount: Int? = nil) {
+    func configure(avatars: [Avatar],population: Int,localCount: Int? = nil,primaryAvatarID:UUID? = nil) {
         let ownCount=min(avatars.count,max(0,localCount ?? avatars.count))
-        let value=String(describing:avatars)+"\(population)-\(ownCount)-\(FFLResources.shared.installed)-\(FFLResources.shared.revision)-\(PlazaBodyResources.shared.revision)"
+        let value=String(describing:avatars)+"\(population)-\(ownCount)-\(primaryAvatarID?.uuidString ?? "")-\(FFLResources.shared.installed)-\(FFLResources.shared.revision)-\(PlazaBodyResources.shared.revision)"
         guard signature != value else { return }; signature=value
         rigs.forEach { $0.root.removeFromParentNode() }; rigs.removeAll(); characters.removeAll()
         var catalog=avatars
@@ -171,6 +177,7 @@ final class PlazaScene {
         for i in 0..<population { var a=catalog[i<avatars.count ? i:avatars.count+(i-avatars.count)%16]; if i>=avatars.count {a.id=UUID(uuidString:String(format:"57415241-0000-4000-8000-%012llx",UInt64(i-avatars.count)))!}; characters.append(a); if !FFLResources.shared.installed { let rig=CharacterRig(a);rig.root.name="character-\(i)";rigs.append(rig);world.rootNode.addChildNode(rig.root) } }
         simulation.worldWidth=PlazaLayout.worldWidth
         simulation.minimumSpacing=0.016
+        simulation.endlessWandering=true
         simulation.groupsBelowIslands=true
         simulation.nominalSpeed = 0.022 * 24 / PlazaLayout.worldWidth
         let original=FFLResources.shared.installed && PlazaBodyResources.shared.installed
@@ -180,6 +187,7 @@ final class PlazaScene {
             simulation.nominalSpeed=1.456*60*0.8461539/40/PlazaLayout.worldWidth
         } else {simulation.disableOriginalControllers()}
         simulation.reconcileRoster(characters.map(\.id),localCount:ownCount)
+        simulation.setPrimaryAvatar(primaryAvatarID)
         simulation.setStatures(characters.map{original ? 0.5+($0.height*127).rounded()*0.77/128:0.72+$0.height*0.40})
         updateGathering();updateGeometry();updateIslands()
         if !crowdConfigured {simulation.step(0.001);crowdConfigured=true}
@@ -220,9 +228,10 @@ final class PlazaScene {
         // Feet must leave room for the projected head above them.
         simulation.islandBottomClearance=(tile/2+32+Double(viewport.width)*0.035)/Double(viewport.height)
     }
-    func resize(_ size: CGSize) {
+    func resize(_ renderSize: CGSize) {
+        let size=CGSize(width:renderSize.width/rendererScale,height:renderSize.height/rendererScale)
         guard size.width>0,size.height>0 else { return }
-        camera.camera?.orthographicScale=PlazaLayout.worldWidth/2*Double(size.height/size.width)
+        camera.camera?.orthographicScale=PlazaLayout.worldWidth/2*Double(size.height/size.width)*Double(rendererScale)
         guard size != viewport else { return }
         viewport=size;updateGeometry();updateIslands();apply()
     }
@@ -276,11 +285,13 @@ struct LegacySceneView: NSViewRepresentable {
     let scene: PlazaScene
     var moving: Bool
     var onSelect: (Avatar)->Void
+    var renderScale:CGFloat=1
     func makeNSView(context: Context) -> PlazaRenderView {
+        scene.setRendererScale(renderScale)
         let view=PlazaRenderView(); view.owner=scene; view.backgroundColor = .clear; view.preferredFramesPerSecond=30; view.antialiasingMode = .multisampling2X
         view.setAccessibilityElement(false); scene.attach(view); return view
     }
-    func updateNSView(_ view: PlazaRenderView,context: Context) { scene.onSelect=onSelect; scene.setMoving(moving); scene.resize(view.bounds.size) }
+    func updateNSView(_ view: PlazaRenderView,context: Context) { scene.setRendererScale(renderScale);scene.onSelect=onSelect; scene.setMoving(moving); scene.resize(view.bounds.size) }
     static func dismantleNSView(_ view: PlazaRenderView,coordinator: ()) { view.owner?.detach(view) }
 }
 final class PlazaRenderView: SCNView {

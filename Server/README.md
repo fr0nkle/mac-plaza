@@ -4,6 +4,31 @@
 
 This pilot adds Discord identity linking, a published Mii per account, automatic Discord friend discovery and availability through the official Social SDK, optional Plaza invitations for chosen profiles and app activity, and overhead Plaza notes. Friends using or recently using a matching app gather around its island. The Mac app remains usable offline. Nothing connects until a service address is configured and the user signs in.
 
+## Run as much as possible on each device
+
+Discord & Friends now offers **Connect Discord on This Mac**; Windows offers **Connect Discord on This Computer**. This uses the official SDK’s PKCE flow and local callback instead of routing authorization and token renewal through the hosting Mac. Each device stores only its own authorization in Keychain (Mac) or OS-encrypted storage (Windows). The bot token and OAuth application secret remain on the service. The public Application ID is bundled and can be overridden for a custom application.
+
+The application owner must enable **Public Client** and add exactly `http://127.0.0.1/callback` under OAuth2 in Discord’s Developer Portal once. This is an authentication-configuration change; the code does not change that setting automatically. Existing service sign-in remains available. For the bundled Discord application, Public Client and the localhost callback were enabled and direct Mac sign-in was live-tested on October 14, 2026. Friends also loaded after a full app restart with the Plaza service configured to an unreachable address. Custom Discord applications need their own portal setup; token-expiry renewal and the native Windows sign-in still need live verification.
+
+Once authorized, friends and their Discord availability connect directly from the user’s device, even if the Plaza service is down. A device with direct authorization can also obtain a Plaza session from the updated service using `/v1/auth/direct`. The service verifies the token’s application, scopes, expiry and Discord identity against Discord; it does not store the access token or receive the refresh token. Older services need an update for this route; their existing sign-in still works.
+
+Each device retains authorized discussions locally and can queue likes, replies, reply edits/deletions, profile settings and activity read state during a service outage. Mac caches and queues are encrypted with an account/origin-scoped Keychain key, outside portable plaza exports; Windows discussion state stays in its existing per-account local save and credentials remain separately encrypted. Notes, drafts, rendering, Mii assignments, browsing and search run on the device. Pending delivery survives restart, preserves reply IDs across retries, and coalesces unsent changes. The next successful service poll replaces the cache and removes inaccessible discussions. Seven-day note expiry still applies. A cached discussion cannot reflect another device’s deletion or access revocation until reconnect.
+
+The shared service is still required for delivery between different homes, authorization of published content and optional bot-derived custom statuses/other-game activity. This is local storage with optional shared delivery, not an implemented P2P mesh. The bot cannot move between ordinary users’ devices without distributing its secret. To make shared delivery and the bot work while your Mac is off, run this small service on another always-on host; see the deployment steps below.
+
+## Move the optional service off the Mac
+
+`Server/Dockerfile` and `Server/compose.yaml` package only service source, never the existing `.env`, database, tunnel state or downloads. On an always-on Linux host with Docker Compose:
+
+1. Copy the service source and deployment files. Create a private `.env` from `.env.example`, using the existing Discord Application ID, a stable HTTPS origin for `PLAZA_PUBLIC_URL`, and the bot token only if you need bot features. The OAuth client secret is needed only for legacy service sign-in/refresh.
+2. Run `docker compose up -d --build` from the Server directory. SQLite lives in the persistent `plaza-data` volume. The process runs as UID 10001 with a read-only container filesystem; only its data volume and temporary directory are writable.
+3. Put your HTTPS reverse proxy in front of `127.0.0.1:8787`. The container port is bound to loopback, so a same-host proxy can reach it. Use edge rate limiting. The pilot also has aggregate request limits behind a proxy, so this configuration is intended for the current small pilot.
+4. Preserve the old database using SQLite’s backup API before migration, including existing account IDs, grants, notes and sessions. Stop writers during the final cutover, restore the backup as `/data/plaza.sqlite3` owned by UID 10001, and retain a private rollback copy. Do not run separate writable copies of the database as if they were replicas.
+5. Keep the old callback registered, and register the new HTTPS origin plus `/oauth/discord/callback` if retaining legacy sign-in. Point clients and future builds at the new service origin. Credentials and queues are origin-scoped: deliver pending changes before switching origins. Downloads and signed update feeds need their own migration; this container does not copy the Mac’s release files.
+6. Check `/health`, sign in, publish a note from one device and reply from another, then repeat with the hosting Mac powered off. Docker deployment requires environment-specific verification and is not claimed as deployed. Direct Mac sign-in and friend loading after restart were verified separately against live Discord with an unreachable Plaza service address.
+
+The container is prepared for deployment; no external host has been selected or provisioned, and the current Mac-hosted service has not been stopped or moved.
+
 ## Try the appearance without a service
 
 Build/open `Artifacts/Mac Plaza.app`, then click **Discord & Friends → Preview Sample Friends**. Three clearly labelled sample friends appear in the plaza, with walking Miis, example availability, and overhead notes. Clicking a Mii or note opens its profile. End the preview in Discord & Friends. The preview creates no account and uploads nothing.
@@ -14,7 +39,7 @@ Build/open `Artifacts/Mac Plaza.app`, then click **Discord & Friends → Preview
 2. In **OAuth2**, add the exact redirect URL `http://127.0.0.1:8787/oauth/discord/callback` for local testing. For a remote service, register `https://YOUR-HOST/oauth/discord/callback` and use that origin as `PLAZA_PUBLIC_URL`. Do not include a trailing path in the service address.
 3. Put the OAuth client secret in the server's `DISCORD_CLIENT_SECRET` environment variable. Never put it in the Mac app, source files, or chat.
 4. Open **Social SDK → Getting Started**, enter your developer/contact information, review and accept the SDK terms, then download the macOS SDK. The bundled integration uses version **1.10.19337**. Its headers, macOS framework, and license notices belong under `ThirdParty/DiscordSocialSDK/discord_social_sdk/`. Build scripts embed and sign the framework.
-5. Keep **Public Client** off. The server performs the confidential OAuth exchange. The app requests `identify openid sdk.social_layer_presence`; no email or message access is requested. After challenge verification, SDK credentials are handed to the Mac and saved in its Keychain. Discord credentials are never written to SQLite. The service issues its own 30-day Plaza session; SDK credentials refresh through an authenticated endpoint that verifies the same Discord identity.
+5. For legacy service-managed sign-in, the server performs the confidential OAuth exchange. **Public Client** may remain off if you do not enable direct device sign-in. The app requests `identify openid sdk.social_layer_presence`; no email or message access is requested. After challenge verification, SDK credentials are handed to the Mac and saved in its Keychain. Discord credentials are never written to SQLite. The service issues its own 30-day Plaza session; SDK credentials refresh through an authenticated endpoint that verifies the same Discord identity.
 
 The Mac app uses `ASWebAuthenticationSession`. Discord redirects to the service; the service then redirects to `macplaza://discord-linked`. A single-use five-minute challenge binds completion to the Mac that initiated sign-in. Install/open the built `.app` for this flow, rather than running the executable alone.
 
@@ -181,3 +206,12 @@ Journal publication now upserts retained note rows and deletes only retracted no
 `GET /v1/notes/activity` returns up to 200 recent visible events, their unread count and latest ID. Only new friend likes/replies on the authenticated account’s notes create events. Retry duplicates and edits do not create new notifications. `PUT /v1/notes/activity/read` accepts up to 200 explicit integer IDs and marks only the caller’s rows read; new arrivals outside those IDs stay unread. Blocks/revoked audiences are checked on every read. Unlike, reply deletion, note retraction and account deletion withdraw/cascade their events. Read state persists in the service’s journal_activity table, separately from Mac plaza saves.
 
 **Public journal identity (0.19):** Note/reply responses include server-authenticated `displayName` and note `discordID`. The legacy `author.name` contains the Discord name truncated to the 24-character Mii limit; updated clients render the full separate display name. The author Mii uses the account’s stable `avatar_id`, avoiding duplicate visitors. `PUT /v1/notes` optionally accepts `primaryAvatar`; sanitized appearance is stored in `accounts.journal_avatar` only while public notes remain. Older clients preserve an already supplied primary appearance. Reads project identities onto existing payloads without rewriting saved notes or discussions. Private profile avatars are never used to infer a public primary. Verified Discord authorization refresh also refreshes the linked display name.
+
+### Note retention
+
+Posted notes expire seven 24-hour days after their original creation, including
+Miiverse posts and all associated replies, likes and activity. Cleanup runs on
+requests and once per minute while idle, using an indexed creation-time query.
+Edits preserve the original timestamp, future client dates are clamped to receipt
+time, and expired uploads are discarded. SQLite reuses freed pages automatically.
+Drafts and independent profile messages are outside this policy.

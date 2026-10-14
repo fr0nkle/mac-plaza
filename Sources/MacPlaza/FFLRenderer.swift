@@ -133,7 +133,7 @@ final class FFLSurface: NSObject, WKScriptMessageHandler, WKNavigationDelegate {
                 let wasm=try Data(contentsOf:root.appendingPathComponent("vendor/ffl-emscripten.wasm"))
                 invoke("initialize",[data.base64EncodedString(),wasm.base64EncodedString(),mode,bodyResource?.base64EncodedString() as Any? ?? NSNull()])
             } catch { fail(error.localizedDescription) }
-        case "ready": ready=true;setNoteTargets(noteTargets);onReady?();if pendingFrame != nil{sendFrame()}
+        case "ready": ready=true;if mode == "plaza" {invoke("setRenderScale",[plazaRenderScale])};setNoteTargets(noteTargets);onReady?();if pendingFrame != nil{sendFrame()}
         case "noteAnchors": if let values = body["value"] as? [[Double]] { onNoteAnchors?(values) }
         case "select":if let i=body["value"] as? Int{onSelect?(i)}
         case "reply":
@@ -187,6 +187,7 @@ final class FFLSurface: NSObject, WKScriptMessageHandler, WKNavigationDelegate {
             if case .failure(let error)=result{self?.fail(error.localizedDescription);completion?(error)}else{completion?(nil)}
         }
     }
+    var plazaRenderScale=1.0
     func identifyFrames(_ avatars:[Avatar]) {frameIdentities=avatars.map { $0.id.uuidString }}
     func configure(_ avatars:[Avatar],completion:((Error?)->Void)?=nil){do{
         let payload=try avatars.map(Self.avatar)
@@ -299,23 +300,26 @@ struct SceneView:View {
     let scene:PlazaScene
     var moving:Bool
     var onSelect:(Avatar)->Void
+    var renderScale:CGFloat=1
     @ObservedObject private var resource=FFLResources.shared
     @ObservedObject private var bodyResource=PlazaBodyResources.shared
-    var body:some View {Group{if resource.installed{FFLSceneView(scene:scene,moving:moving,onSelect:onSelect).id(resource.revision.uuidString+bodyResource.revision.uuidString)}else{LegacySceneView(scene:scene,moving:moving,onSelect:onSelect)}}}
+    var body:some View {Group{if resource.installed{FFLSceneView(scene:scene,moving:moving,onSelect:onSelect,renderScale:renderScale).id(resource.revision.uuidString+bodyResource.revision.uuidString)}else{LegacySceneView(scene:scene,moving:moving,onSelect:onSelect,renderScale:renderScale)}}}
 }
 struct FFLSceneView:NSViewRepresentable {
     let scene:PlazaScene
     let moving:Bool
     let onSelect:(Avatar)->Void
-    func makeCoordinator()->Coordinator {Coordinator(scene)}
+    var renderScale:CGFloat=1
+    func makeCoordinator()->Coordinator {scene.setRendererScale(renderScale);return Coordinator(scene,renderScale:renderScale)}
     func makeNSView(context:Context)->WKWebView{context.coordinator.surface.webView}
-    func updateNSView(_ view:WKWebView,context:Context){scene.onSelect=onSelect;scene.setMoving(moving);scene.resize(view.bounds.size)}
+    func updateNSView(_ view:WKWebView,context:Context){scene.setRendererScale(renderScale);scene.onSelect=onSelect;scene.setMoving(moving);scene.resize(view.bounds.size)}
     static func dismantleNSView(_ view:WKWebView,coordinator:Coordinator){coordinator.scene.detachFFL(owner:coordinator.id);coordinator.surface.invalidate()}
     @MainActor final class Coordinator {
         let scene:PlazaScene
         let id=UUID()
         let surface=FFLSurface(mode:"plaza")
-        init(_ scene:PlazaScene){self.scene=scene
+        init(_ scene:PlazaScene,renderScale:CGFloat){self.scene=scene
+            surface.plazaRenderScale=Double(renderScale)
             scene.attachFFL(owner:id,frame:{[weak self] in self?.surface.frame($0)},configure:{[weak self] in self?.configure($0)})
             scene.fflNoteTargets = { [weak self] in self?.surface.setNoteTargets($0) }
             surface.setNoteTargets(scene.noteIndices)

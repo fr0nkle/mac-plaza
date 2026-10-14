@@ -15,8 +15,18 @@ enum AudioProcessActivity {
         processes.contains {
             // CoreSpeech keeps silent input/output streams open for background
             // speech detection. Those streams are not app playback or a call.
-            $0.pid > 0 && $0.pid != ownPID && $0.bundleID != "com.apple.CoreSpeech" && ($0.output || $0.input)
+            isOtherProcess($0, ownPID: ownPID) && ($0.input || ($0.output && !isNotificationOutput($0)))
         }
+    }
+
+    static func isOtherProcess(_ process: ProcessState, ownPID: pid_t) -> Bool {
+        process.pid > 0 && process.pid != ownPID && process.bundleID != "com.apple.CoreSpeech"
+    }
+
+    static func isNotificationOutput(_ process: ProcessState) -> Bool {
+        // Core Audio reports the system sound service as "systemsoundserverd"
+        // (verified with a silent AudioServices system sound), not an app ID.
+        process.bundleID == "systemsoundserverd" || process.bundleID == "com.apple.notificationcenterui"
     }
 
     static func snapshot() -> [ProcessState]? {
@@ -76,6 +86,46 @@ enum AudioProcessActivity {
     }
 }
 
+/// Short app chimes should mix over the music. Require continuous output from
+/// the same process before yielding; microphone activity still yields at once.
+struct SustainedAudioActivity {
+    static let outputDelay: TimeInterval = 2
+    private struct Output {
+        var bundleID: String?
+        var began: TimeInterval
+        var confirmed: Bool
+    }
+    private var outputs: [pid_t: Output] = [:]
+
+    mutating func update(processes: [AudioProcessActivity.ProcessState]?, ownPID: pid_t,
+                         now: TimeInterval) -> Bool? {
+        guard let processes else {
+            // Unknown samples cannot prove a chime became sustained playback,
+            // or forget output that already caused a genuine interruption.
+            outputs = outputs.filter { $0.value.confirmed }
+            return nil
+        }
+        let other = processes.filter { AudioProcessActivity.isOtherProcess($0, ownPID: ownPID) }
+        let inputs = Set(other.filter(\.input).map(\.pid))
+        let playing = other.filter { $0.output && !AudioProcessActivity.isNotificationOutput($0) }
+        let pids = Set(playing.map(\.pid))
+        outputs = outputs.filter { pids.contains($0.key) }
+        for process in playing {
+            var output = outputs[process.pid].flatMap { previous in
+                // A temporarily unavailable bundle-ID property is not evidence
+                // that a confirmed stream belongs to a different process.
+                if let oldID = previous.bundleID, let newID = process.bundleID, oldID != newID { return nil }
+                return previous
+            }
+                ?? Output(bundleID: process.bundleID, began: now, confirmed: false)
+            if output.bundleID == nil { output.bundleID = process.bundleID }
+            output.confirmed = output.confirmed || inputs.contains(process.pid) || now - output.began >= Self.outputDelay
+            outputs[process.pid] = output
+        }
+        return !inputs.isEmpty || outputs.values.contains { $0.confirmed }
+    }
+}
+
 /// Keep music quiet across short playback gaps and pauses within a call.
 struct AudioQuietPeriod {
     static let duration: TimeInterval = 1.5
@@ -99,6 +149,7 @@ final class OtherAudioMonitor {
     private var timer: Timer?
     private var sampleTask: Task<Void, Never>?
     private var quiet = AudioQuietPeriod()
+    private var activity = SustainedAudioActivity()
     private var lastValue = false
     private var lastSampleKnown: Bool?
     private let logger = Logger(subsystem: "local.macplaza.audio", category: "ProcessMonitor")
@@ -121,17 +172,17 @@ final class OtherAudioMonitor {
         guard sampleTask == nil else { return }
         let ownPID = ownPID
         sampleTask = Task { [weak self] in
-            let active = await Task.detached(priority: .utility) {
-                AudioProcessActivity.snapshot().map { AudioProcessActivity.hasOtherActivity($0, ownPID: ownPID) }
-            }.value
+            let processes = await Task.detached(priority: .utility) { AudioProcessActivity.snapshot() }.value
             guard !Task.isCancelled, let self else { return }
             self.sampleTask = nil
+            let now = ProcessInfo.processInfo.systemUptime
+            let active = self.activity.update(processes: processes, ownPID: ownPID, now: now)
             let known = active != nil
             if known != self.lastSampleKnown {
                 self.lastSampleKnown = known
                 self.logger.notice("Audio process sample available: \(known, privacy: .public)")
             }
-            let muted = self.quiet.update(active: active, now: ProcessInfo.processInfo.systemUptime)
+            let muted = self.quiet.update(active: active, now: now)
             guard muted != self.lastValue else { return }
             self.lastValue = muted
             self.logger.notice("Other-app audio suppression: \(muted, privacy: .public)")

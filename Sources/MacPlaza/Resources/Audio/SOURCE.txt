@@ -68,3 +68,8 @@ Uploader: LuisFerLCC 2
 Duration: 109 seconds (AAC, original format 140, no re-encoding)
 SHA-256: 2887175f70ba9a51591d83c527209da716e82210ac9563ee89e4b41626719ee6
 Included in the user-requested private friend app release from 0.18.1; excluded from default distribution builds and source archives. Rights remain with the original rights holders, separate from the MIT source license.
+
+Click and back interface effects (local 0.20.1):
+User-supplied original Wii U PCM recordings in Audio/UI.
+See UI/SOURCE.txt for numbered source filenames and exact SHA-256 checksums.
+Independent one-shot playback and volume; music playback is untouched.

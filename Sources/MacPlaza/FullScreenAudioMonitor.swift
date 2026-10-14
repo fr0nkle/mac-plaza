@@ -43,8 +43,10 @@ final class FullScreenAudioMonitor {
         refreshAfterTransition()
     }
 
-    static func shouldMute(frontmostPID: pid_t?, ownPID: pid_t, coversDisplay: Bool) -> Bool {
-        guard let frontmostPID, frontmostPID != ownPID else { return false }
+    static func shouldMute(frontmostPID: pid_t?, ownPID: pid_t, coversDisplay: Bool,
+                           frontmostBundleID: String? = nil) -> Bool {
+        guard let frontmostPID, frontmostPID != ownPID,
+              frontmostBundleID != "com.apple.notificationcenterui" else { return false }
         return coversDisplay
     }
 
@@ -91,9 +93,15 @@ final class FullScreenAudioMonitor {
     }
 
     private func refresh() {
-        let pid = NSWorkspace.shared.frontmostApplication?.processIdentifier
+        let frontmost = NSWorkspace.shared.frontmostApplication
+        // An overlay does not change whether the underlying app covers the
+        // plaza. Preserve that state until a regular app becomes foreground.
+        guard frontmost?.bundleIdentifier != "com.apple.notificationcenterui" else { return }
+        let pid = frontmost?.processIdentifier
         let ownPID = ProcessInfo.processInfo.processIdentifier
-        let state = pid.flatMap { $0 != ownPID ? foregroundCoverage($0) : nil } ?? State()
+        let state = Self.shouldMute(frontmostPID: pid, ownPID: ownPID, coversDisplay: true,
+                                    frontmostBundleID: frontmost?.bundleIdentifier)
+            ? pid.map { foregroundCoverage($0) } ?? State() : State()
         guard state != lastValue else { return }
         lastValue = state
         logger.notice("Window music suppression: full-screen=\(state.fullScreen, privacy: .public), covered=\(state.coversPlaza, privacy: .public)")

@@ -1,6 +1,6 @@
 import SwiftUI
 
-/// A continuous, fine checker floor receding into the white plaza horizon.
+/// A continuous checker floor with its horizon beyond the visible viewport.
 /// Both renderers and the zoomed backdrop share the same viewport coordinates.
 struct PlazaGround: View {
     var viewportSize: CGSize? = nil
@@ -16,7 +16,7 @@ struct PlazaGround: View {
                                 width: canvasSize.width, height: canvasSize.height)
             let bottom = CGPoint(x: 0, y: size.height)
             context.fill(Path(bounds), with: .linearGradient(Gradient(colors: [
-                Color(red: 0.985, green: 0.988, blue: 0.980),
+                Color(red: 0.95, green: 0.96, blue: 0.95),
                 Color(red: 0.94, green: 0.95, blue: 0.935),
                 Color(red: 0.86, green: 0.885, blue: 0.87)
             ]), startPoint: .zero, endPoint: bottom))
@@ -34,7 +34,7 @@ struct PlazaGround: View {
             func planeY(_ y: CGFloat) -> CGFloat {
                 y / max(0.1, 1 + perspective * y / size.height)
             }
-            let firstRow = Int(floor(planeY(max(0, bounds.minY)) / halfHeight)) - 2
+            let firstRow = Int(floor(planeY(bounds.minY) / halfHeight)) - 2
             let lastRow = Int(ceil(planeY(bounds.maxY) / halfHeight)) + 2
             var lightTiles = Path()
             for row in firstRow...max(firstRow, lastRow) where (row & 1) == 0 {
@@ -54,10 +54,10 @@ struct PlazaGround: View {
             // One batched fill keeps the enlarged floor inexpensive to redraw.
             context.fill(lightTiles, with: .color(.white.opacity(0.50)))
             context.fill(Path(bounds), with: .linearGradient(Gradient(stops: [
-                .init(color: .white.opacity(0.90), location: 0),
-                .init(color: .white.opacity(0.30), location: 0.30),
-                .init(color: .clear, location: 0.65)
-            ]), startPoint: .zero, endPoint: bottom))
+                .init(color: .white.opacity(0.60), location: 0),
+                .init(color: .white.opacity(0.12), location: 0.45),
+                .init(color: .clear, location: 0.70)
+            ]), startPoint: CGPoint(x: 0, y: -size.height), endPoint: bottom))
         }
     }
 }

@@ -25,10 +25,10 @@ struct PlazaHomeControls: View {
             }
             if model.editing {
                 HStack(spacing: 16) {
-                    Button { model.pickApp() } label: { Label("Add App", systemImage: "plus") }
-                    Button { model.pickSteamGame() } label: { Label("Add Steam Game", systemImage: "gamecontroller") }
+                    PlazaButton { model.pickApp() } label: { Label("Add App", systemImage: "plus") }
+                    PlazaButton { model.pickSteamGame() } label: { Label("Add Steam Game", systemImage: "gamecontroller") }
                     Spacer(minLength: 0)
-                    Button { model.undoLayout() } label: { Label("Undo", systemImage: "arrow.uturn.backward") }
+                    PlazaButton { model.undoLayout() } label: { Label("Undo", systemImage: "arrow.uturn.backward") }
                 }
                 .font(.system(size: 12, weight: .semibold, design: .rounded))
                 .buttonStyle(.plain).padding(.horizontal, 16).frame(height: 42)
@@ -38,7 +38,7 @@ struct PlazaHomeControls: View {
     }
 
     private func control(_ title: String, icon: String, width: CGFloat, action: @escaping () -> Void) -> some View {
-        Button(action: action) {
+        PlazaButton(action: action) {
             VStack(spacing: 5) {
                 Image(systemName: icon).font(.system(size: 24))
                 Text(title).font(.system(size: 11, weight: .semibold, design: .rounded))

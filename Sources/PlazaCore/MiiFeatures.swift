@@ -65,6 +65,8 @@ public struct NoteDraft: Codable, Equatable, Sendable {
     public var description = ""
     public var appID: UUID?
     public var authorID: UUID?
+    public var shared: Bool?
+    public var isPublic: Bool { shared ?? true }
     public init() {}
     public var hasContent: Bool {
         !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || !drawing.isEmpty ||

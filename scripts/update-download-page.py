@@ -13,13 +13,6 @@ if not re.fullmatch(r'\d+(?:\.\d+)*', version):
     raise SystemExit('Invalid release version.')
 origin = 'https://github.com/fr0nkle/mac-plaza/releases/download/v' + version
 public = {'version': version}
-# Windows releases have a separate version/build pipeline. Preserve their
-# verified links when publishing the next native Mac release.
-existing = root / 'Website/release.json'
-if existing.is_file():
-    windows = json.loads(existing.read_text()).get('windows')
-    if windows:
-        public['windows'] = windows
 for kind, filename, checksum in (
     ('installer', f'Mac-Plaza-{version}.dmg', 'installerSHA256'),
     ('source', f'Mac-Plaza-{version}-Source.zip', 'sourceSHA256'),

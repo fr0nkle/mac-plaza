@@ -8,28 +8,28 @@ struct PlazaBottomControls: View {
         VStack(spacing: 8) {
             if let alert = social.activityAlert {
                 HStack(alignment: .top, spacing: 8) {
-                    Button { social.openActivity(alert) } label: {
+                    PlazaButton { social.openActivity(alert) } label: {
                         VStack(alignment: .leading, spacing: 5) {
                             Text(model.document.preferences.privatePresentation ? "New activity on your notes" : alert.message)
                                 .font(.system(size: 12, weight: .semibold)).lineLimit(2)
                             Text("View note").font(.system(size: 11)).foregroundStyle(.secondary)
                         }.frame(maxWidth: .infinity, alignment: .leading)
                     }
-                    Button { social.dismissActivityAlert() } label: { Image(systemName: "xmark") }
+                    PlazaButton { social.dismissActivityAlert() } label: { Image(systemName: "xmark") }
                         .accessibilityLabel("Dismiss activity alert")
                 }.buttonStyle(.plain).padding(12).frame(height: 92)
                     .background(.white.opacity(0.97), in: RoundedRectangle(cornerRadius: 16))
             }
             HStack {
                 Spacer()
-                Button { model.sheet = .miiverse } label: {
+                PlazaButton { model.openMiiverse() } label: {
                     Label("Miiverse", systemImage: "bubble.left.and.bubble.right").frame(width: 118, height: 44)
                 }.buttonStyle(.plain).font(.system(size: 13, weight: .semibold, design: .rounded))
                     .background(.white.opacity(0.95), in: RoundedRectangle(cornerRadius: 16))
                     .accessibilityLabel("Miiverse").help("Browse your notes and friends’ notes by app and section")
             }
             HStack(spacing: 10) {
-                Button { model.sheet = .activity } label: {
+                PlazaButton { model.sheet = .activity } label: {
                     Label("Activity", systemImage: "bell").frame(width: 152, height: 52)
                 }.overlay(alignment: .topTrailing) {
                     if social.unreadActivityCount > 0 {
@@ -39,7 +39,7 @@ struct PlazaBottomControls: View {
                             .background(Color.red, in: Capsule()).offset(x: -4, y: -4).allowsHitTesting(false)
                     }
                 }.accessibilityLabel("Activity, \(social.unreadActivityCount) unread notifications")
-                Button { model.sheet = .compose(nil) } label: {
+                PlazaButton { model.sheet = .compose(nil) } label: {
                     Label("Write Note", systemImage: "square.and.pencil").frame(width: 118, height: 52)
                 }.disabled(!model.loaded || model.recoveryRequired).accessibilityLabel("Write Note")
             }.font(.system(size: 13, weight: .semibold, design: .rounded)).buttonStyle(.plain)
@@ -62,9 +62,9 @@ struct PlazaActivityView: View {
             HStack {
                 Text("\(social.unreadActivityCount) unread").font(.callout).foregroundStyle(PlazaStyle.teal)
                 Spacer()
-                Button("Mark all read") { Task { await social.markActivityRead(social.activity.filter { !$0.read }.map(\.id)) } }
+                PlazaButton("Mark all read") { Task { await social.markActivityRead(social.activity.filter { !$0.read }.map(\.id)) } }
                     .disabled(social.unreadActivityCount == 0 || social.markingActivityRead)
-                Button("Refresh") { Task { await social.refreshActivity() } }
+                PlazaButton("Refresh") { Task { await social.refreshActivity() } }
             }.padding(18)
             ScrollView {
                 LazyVStack(spacing: 12) {
@@ -77,7 +77,7 @@ struct PlazaActivityView: View {
                         }.frame(maxWidth: .infinity).padding(32)
                     }
                     ForEach(social.activity) { entry in
-                        Button { social.openActivity(entry) } label: {
+                        PlazaButton { social.openActivity(entry) } label: {
                             HStack(alignment: .top, spacing: 12) {
                                 if let author = entry.author { MiiHeadIcon(avatar: author).frame(width: 36, height: 36) }
                                 else { Image(systemName: entry.kind == .like ? "heart.fill" : "text.bubble").font(.system(size: 24)).frame(width: 36, height: 36).foregroundStyle(PlazaStyle.teal) }
@@ -96,7 +96,7 @@ struct PlazaActivityView: View {
             Divider()
             HStack {
                 if social.systemNotificationsEnabled { Label("macOS notifications enabled", systemImage: "bell.badge").font(.caption) }
-                else { Button("Enable macOS notifications") { Task { await social.enableActivityNotifications() } } }
+                else { PlazaButton("Enable macOS notifications") { Task { await social.enableActivityNotifications() } } }
                 Spacer()
                 Text("Activity updates while Mac Plaza is running.").font(.caption).foregroundStyle(.secondary)
             }.padding(18)

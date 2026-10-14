@@ -58,7 +58,7 @@ struct AppPreviewView: View {
                 Label(url == nil ? "Needs reconnecting" : "Ready to open", systemImage: url == nil ? "link.badge.plus" : "checkmark.circle")
                 if let version = info.version { Text("v\(version)").lineLimit(1) }
             }.font(.system(size: 10)).foregroundStyle(PlazaStyle.teal)
-            Button {
+            PlazaButton {
                 if url == nil { model.pickApp(replacing: app) }
                 else { close(); model.launch(app) }
             } label: {
@@ -68,12 +68,12 @@ struct AppPreviewView: View {
                 .disabled(model.launching.contains(app.id))
             Divider().opacity(0.5)
             HStack {
-                Button(notes.isEmpty ? "Leave a note" : "Read notes") {
-                    if let note = notes.first { model.openJournal(note: note.id) }
+                PlazaButton(notes.isEmpty ? "Leave a note" : "Read notes") {
+                    if let note = notes.first { model.openMiiverse(note: note.id) }
                     else { model.sheet = .compose(app.id) }
                 }
                 Spacer()
-                Button(model.document.apps.contains(where: { $0.id == app.id }) ? "Shortcut settings…" : "Pin to saved layout") {
+                PlazaButton(model.document.apps.contains(where: { $0.id == app.id }) ? "Shortcut settings…" : "Pin to saved layout") {
                     if model.document.apps.contains(where: { $0.id == app.id }) { model.sheet = .app(app) }
                     else { model.pinHomeApp(app) }
                 }

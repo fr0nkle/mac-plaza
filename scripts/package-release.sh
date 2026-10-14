@@ -16,15 +16,17 @@ python3 - "$staging/$sourceName" <<'PY'
 from pathlib import Path
 import shutil, sys
 root=Path(sys.argv[1])
-for item in (root/'Sources/MacPlaza/Resources/Audio').iterdir():
+for item in root.rglob('__pycache__'):
+    shutil.rmtree(item)
+for item in (root/'Sources/MacPlaza/Resources/Audio').rglob('*'):
     if item.suffix.lower() in ('.m4a','.wav'): item.unlink()
 sdk=root/'ThirdParty/DiscordSocialSDK/discord_social_sdk'
-shutil.copy2(sdk/'License-Notices.txt', sdk.parent/'License-Notices.txt')
+(sdk.parent/'License-Notices.txt').write_bytes((sdk/'License-Notices.txt').read_bytes().rstrip(b'\r\n') + b'\n')
 shutil.rmtree(sdk)
 PY
 mkdir "$staging/$sourceName/Server"
 # Explicit allowlist: never package environment secrets, databases, or virtual environments.
-for item in server.py updates.py downloads.py public_releases.py presence_bot.py run_local.py friend_test.py login_start.py 'Start Friend Test.command' 'Stop Friend Test.command' 'Enable Hosting at Login.command' 'Disable Hosting at Login.command' test_server.py test_presence_bot.py test_updates.py test_downloads.py test_public_releases.py requirements.txt README.md .env.example; do
+for item in server.py updates.py downloads.py public_releases.py presence_bot.py run_local.py friend_test.py login_start.py 'Start Friend Test.command' 'Stop Friend Test.command' 'Enable Hosting at Login.command' 'Disable Hosting at Login.command' test_server.py test_presence_bot.py test_updates.py test_downloads.py test_public_releases.py test_owned_notes.py test_login_start.py Dockerfile compose.yaml .dockerignore requirements.txt README.md .env.example; do
   ditto "Server/$item" "$staging/$sourceName/Server/$item"
 done
 ditto -c -k --sequesterRsrc --keepParent "$staging/$sourceName" "Artifacts/$sourceName.zip"

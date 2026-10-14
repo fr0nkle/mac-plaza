@@ -1,9 +1,9 @@
-# Testing preview — Mac Plaza 0.13
+# Testing preview — Mac Plaza 0.21
 
 The repository and current GitHub release are public at https://github.com/fr0nkle/mac-plaza.
 Send https://plaza.squidproductions.org to your tester. Its download buttons point
 directly to GitHub release assets and work while the hosting Mac is asleep or off.
-The current installer is `Mac-Plaza-0.13.3.dmg`. It contains the installer,
+The current installer is `Mac-Plaza-0.21.0.dmg`. It contains the installer,
 the app for drag-to-Applications installation, instructions, and corresponding source.
 The tester needs an Apple silicon Mac and macOS 15 or later. They do not need Python,
 GitHub, Developer Portal access, bot tokens, or a Plaza invitation code.
@@ -136,10 +136,14 @@ do not replace the website or email records. This testing release makes no DNS c
 1. Increment both version and build in `scripts/Info.plist` (build must increase).
 2. Write `scripts/release-notes/VERSION.md`.
 3. Run the focused Swift tests and `Server/.venv/bin/python -B -m unittest discover -s Server`.
-4. Run `PLAZA_DISTRIBUTION=1 zsh scripts/build-app.sh`, `zsh scripts/package-release.sh`, and
-   `zsh scripts/build-installer.sh`.
+4. For a Developer ID release, complete [Developer ID setup](scripts/DEVELOPER-ID.md)
+   and run `zsh scripts/build-signed-release.sh --check` then
+   `zsh scripts/build-signed-release.sh`. For an explicitly labeled ad-hoc testing
+   preview, run `PLAZA_DISTRIBUTION=1 zsh scripts/build-app.sh`,
+   `zsh scripts/package-release.sh` and `zsh scripts/build-installer.sh`.
 5. Commit and push the tested source to the repository.
-6. Run `zsh scripts/publish-release.sh`. It signs the app ZIP with the
+6. Run `zsh scripts/publish-release.sh` (Developer ID), or explicitly opt into
+   `zsh scripts/publish-release.sh --testing-preview` for an ad-hoc preview. It signs the app ZIP with the
    `macplaza-updates` Ed25519 key in this Mac's Keychain, stages it locally,
    and uploads the installer, app, source, and release manifest to a
    GitHub prerelease. It refreshes Website links locally; deploy that updated Site
@@ -159,23 +163,26 @@ Mac rather than putting signing keys in GitHub or a self-hosted Actions runner.
 
 ## Apple signing when ready
 
-Enroll in Apple's Developer Program. In Xcode/Keychain create **Developer ID Application**
-and **Developer ID Installer** identities. Do not send private keys/passwords in chat.
+The Developer ID release workflow is now prepared in
+[scripts/DEVELOPER-ID.md](scripts/DEVELOPER-ID.md). After enrollment, install
+Developer ID Application and Installer identities, fill the ignored
+`.release.env` from `scripts/release.env.example`, and save the notarization
+credentials in Keychain. Run `zsh scripts/build-signed-release.sh --check`, then
+`zsh scripts/build-signed-release.sh`. This signs and notarizes separate release
+artifacts without replacing the open development app. Publishing verifies
+Developer ID, the configured team, stable app identity and notarization on the
+actual ZIP/installer artifacts before staging an update. The explicit
+`--testing-preview` path instead verifies archive integrity, stable bundle/update
+identity, matching release metadata, and the ad-hoc signature; it never claims
+Apple signing or notarization. Existing published
+previews and feeds remain unchanged until a newly signed release is published.
 
-```sh
-PLAZA_SIGN_IDENTITY='Developer ID Application: YOUR NAME (TEAMID)' zsh scripts/build-app.sh
-zsh scripts/package-release.sh
-PLAZA_INSTALLER_IDENTITY='Developer ID Installer: YOUR NAME (TEAMID)' zsh scripts/build-installer.sh
-xcrun notarytool store-credentials MacPlazaNotary
-xcrun notarytool submit Artifacts/Mac-Plaza-VERSION.dmg --keychain-profile MacPlazaNotary --wait
-xcrun stapler staple Artifacts/Mac-Plaza-VERSION.dmg
-```
-
-Notarize/staple the app as well before creating the final app update ZIP; regenerate
-the ZIP, source, installer and signed manifest after stapling. Preserve the bundle
-identifier and update public key across releases. Back up the update-signing key
-securely; it is never included in source or artifacts. Test a downloaded quarantined
-installer on another Mac, and an actual old-to-new update, before public distribution.
+Preserve the bundle identifier, signing team and update public key across
+releases. Back up private keys securely; they are never included in source or
+artifacts. Test a downloaded installer on another Mac and an actual old-to-new
+Sparkle update before public distribution. Initial migration from ad-hoc signing
+may require one Keychain authorization; later signed updates should retain the
+same app identity.
 
 ## Sharing permissions
 

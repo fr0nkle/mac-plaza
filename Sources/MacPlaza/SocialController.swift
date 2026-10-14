@@ -12,6 +12,12 @@ private final class SocialRedirectBlocker: NSObject, URLSessionTaskDelegate {
     }
 }
 
+private struct SocialHTTPError: LocalizedError {
+    var status: Int
+    var message: String
+    var errorDescription: String? { message }
+}
+
 private enum SocialKeychain {
     static func query(_ endpoint: URL, purpose: String = "session") -> [String: Any] {
         [kSecClass as String: kSecClassGenericPassword, kSecAttrService as String: purpose == "session" ? "local.macplaza.social" : "local.macplaza.social." + purpose,
@@ -44,7 +50,7 @@ final class SocialController: NSObject, ObservableObject, ASWebAuthenticationPre
     @Published private(set) var snapshot: SocialSnapshot?
     @Published private(set) var friends: [SharedMii] = []
     @Published private(set) var sharedJournal: [SharedJournalNote] = []
-    var visibleSharedJournal: [SharedJournalNote] { sharedJournal.filter { !hiddenIDs.contains($0.ownerID ?? "") } }
+    var visibleSharedJournal: [SharedJournalNote] { sharedJournal.filter { !hiddenIDs.contains($0.ownerID ?? "") && !NoteRetention.isExpired(Date(timeIntervalSince1970: $0.created)) } }
     @Published private(set) var journalSyncMessage = "Public notes will sync when connected to Plaza."
     @Published private(set) var activity: [JournalActivity] = []
     @Published private(set) var unreadActivityCount = 0
@@ -64,6 +70,17 @@ final class SocialController: NSObject, ObservableObject, ASWebAuthenticationPre
     private var pendingActivityNotification: (Int, String)?
     @Published private(set) var interactingNotes = Set<UUID>()
     @Published private(set) var journalInteractionMessage: String?
+    @Published private(set) var pendingInteractionCount = 0
+    @Published var discordApplicationID = ""
+    @Published private(set) var connectingLocally = false
+    var usesLocalDiscord: Bool { discordCredentials?.localAuthorization == true }
+    private let localAuthorization = DiscordLocalAuthorization()
+    private let localStore = LocalSocialStore()
+    private var localState: LocalSocialState?
+    private var flushingInteractions = false
+    private var flushingProfile = false
+    private var attachingService = false
+    private let localDiscordEndpoint = URL(string: "https://discord.com")!
     private var journalFetchSequence = 0
     private var journalAppliedSequence = 0
     private var localJournal: [SharedJournalNote] = []
@@ -120,7 +137,15 @@ final class SocialController: NSObject, ObservableObject, ASWebAuthenticationPre
     private var hiddenKey: String { "social.hidden." + (endpoint?.absoluteString ?? "") }
     var contacts: [FriendRequest] { snapshot?.contacts ?? [] }
     var hasSession: Bool { token != nil }
-    var account: SocialAccount? { snapshot?.account }
+    var account: SocialAccount? {
+        guard var account = snapshot?.account else { return nil }
+        if let profile = localState?.pendingProfile {
+            account.avatar = profile.avatar; account.note = profile.note; account.sharing = profile.sharing
+            account.sharePresence = profile.sharePresence; account.shareActivity = profile.shareActivity
+            account.shareDiscordFriends = profile.shareDiscordFriends
+        }
+        return account
+    }
     var botInstallURL: URL? {
         guard let appID = discordCredentials?.applicationID else { return nil }
         return URL(string: "https://discord.com/oauth2/authorize?client_id=\(appID)&scope=bot&permissions=0&integration_type=0")
@@ -131,7 +156,8 @@ final class SocialController: NSObject, ObservableObject, ASWebAuthenticationPre
         return UUID(uuidString: value)
     }
 
-    init(isolated: Bool = false) {
+    init(isolated: Bool = false, transport: URLSession? = nil,
+         restoredSession: (endpoint: URL, token: String, state: LocalSocialState)? = nil) {
         self.isolated = isolated
         localMiiChoices = LocalFriendMiiChoices(defaults: isolated ? nil : .standard)
         gameHistory = DiscordGameHistoryStore(defaults: isolated ? nil : .standard)
@@ -142,8 +168,10 @@ final class SocialController: NSObject, ObservableObject, ASWebAuthenticationPre
         let config = URLSessionConfiguration.ephemeral
         config.timeoutIntervalForRequest = 15; config.timeoutIntervalForResource = 20
         config.httpCookieStorage = nil; config.urlCredentialStorage = nil
-        network = URLSession(configuration: config, delegate: SocialRedirectBlocker(), delegateQueue: nil)
+        network = transport ?? URLSession(configuration: config, delegate: SocialRedirectBlocker(), delegateQueue: nil)
         super.init()
+        discordApplicationID = isolated ? "" : UserDefaults.standard.string(forKey: "social.discord-application")
+            ?? Bundle.main.object(forInfoDictionaryKey: "PlazaDiscordApplicationID") as? String ?? ""
         activityNotifications.onOpen = { [weak self] id, scope in
             guard let self else { return }
             self.pendingActivityNotification = (id, scope)
@@ -163,12 +191,19 @@ final class SocialController: NSObject, ObservableObject, ASWebAuthenticationPre
             self.discordRecords = records; self.discordFriendsMessage = status; self.discordReady = ready
             let ids = Set(records.map(\.discordID))
             if ready { self.gameHistory.retain(friendIDs: ids) }
-            self.discordGames = self.showDiscordGames ? (ready ? self.gameHistory.records() : self.gameHistory.suspend()) : []
+            self.discordGames = self.showDiscordGames ? (ready ? self.gameHistory.records() : self.gameHistory.suspend()).filter { ids.contains($0.discordID) } : []
             self.discordCustomStatuses = ready ? self.discordCustomStatuses.filter { ids.contains($0.discordID) } : []
             self.rebuildFriends()
             if ready { Task { await self.syncDiscordRecipients(); await self.refreshDiscordGames() } }
         }
-        if !serverAddress.isEmpty { configure() }
+        if let restoredSession {
+            endpoint = restoredSession.endpoint; serverAddress = restoredSession.endpoint.absoluteString; token = restoredSession.token
+            if let state = try? restoredSession.state.validated() {
+                localState = state; snapshot = state.snapshot; sharedJournal = state.displayedNotes
+                pendingInteractionCount = state.pending.count
+            }
+        } else if !serverAddress.isEmpty { configure() }
+        else { restoreLocalDiscord(); if usesLocalDiscord { startPolling() } }
     }
 
     func presentationAnchor(for session: ASWebAuthenticationSession) -> ASPresentationAnchor {
@@ -177,6 +212,7 @@ final class SocialController: NSObject, ObservableObject, ASWebAuthenticationPre
 
     func changeService() {
         reset(); endpoint = nil
+        restoreLocalDiscord()
         message = "Enter the new service address, then connect Discord."
     }
 
@@ -185,14 +221,28 @@ final class SocialController: NSObject, ObservableObject, ASWebAuthenticationPre
             let url = try SocialEndpoint.validated(serverAddress)
             reset()
             endpoint = url; serverAddress = url.absoluteString
+            let generation = epoch
+            Task {
+                struct Configuration: Decodable { var discordApplicationID: String }
+                if let data = try? await request("GET", "v1/config", authenticated: false), generation == epoch,
+                   let configuration = try? JSONDecoder().decode(Configuration.self, from: data),
+                   (UInt64(configuration.discordApplicationID) ?? 0) > 0, discordApplicationID.isEmpty {
+                    discordApplicationID = configuration.discordApplicationID
+                    if !isolated { UserDefaults.standard.set(discordApplicationID, forKey: "social.discord-application") }
+                }
+            }
             showDiscordGames = isolated ? true : UserDefaults.standard.object(forKey: "social.discord-games." + url.absoluteString) as? Bool ?? true
             if !isolated { UserDefaults.standard.set(serverAddress, forKey: "social.service") }
             hiddenIDs = isolated ? [] : Set(UserDefaults.standard.stringArray(forKey: hiddenKey) ?? [])
             token = isolated ? nil : SocialKeychain.read(url)
+            if token != nil, !isolated, let id = UserDefaults.standard.string(forKey: "social.cached-account." + url.absoluteString) {
+                restoreLocalState(accountID: id)
+            }
             if !isolated { PlazaUpdater.shared.configure(endpoint: url, token: token) }
             message = token == nil ? "Service ready. Connect Discord to continue." : "Reconnecting to Plaza…"
+            restoreLocalDiscord()
             if token != nil {
-                if !isolated, let stored = SocialKeychain.read(url, purpose: "discord-friends"),
+                if discordCredentials == nil, !isolated, let stored = SocialKeychain.read(url, purpose: "discord-friends"),
                    let data = stored.data(using: .utf8), let credentials = try? JSONDecoder().decode(DiscordSDKCredentials.self, from: data).validated() {
                     discordCredentials = credentials; hasDiscordFriendsAuthorization = true
                     localMiiChoices.useAccount(credentials.discordID)
@@ -202,11 +252,13 @@ final class SocialController: NSObject, ObservableObject, ASWebAuthenticationPre
                 }
                 startPolling()
             }
+            else if usesLocalDiscord { startPolling() }
         } catch { message = error.localizedDescription }
     }
 
     private func reset() {
         epoch += 1; auth?.cancel(); auth = nil; polling?.cancel(); polling = nil
+        localAuthorization.cancel(); connectingLocally = false; attachingService = false
         discordClient.stop(); discordCredentials = nil; discordRecords = []; hasDiscordFriendsAuthorization = false
         discordReady = false; discordGames = []; gamesRefreshing = false; gamesRefreshedAt = nil
         discordCustomStatuses = []
@@ -214,6 +266,7 @@ final class SocialController: NSObject, ObservableObject, ASWebAuthenticationPre
         discordRefreshing = false; discordFriendsMessage = "Load your Discord friends to see their Miis automatically."
         token = nil; connected = false; snapshot = nil; friends = []; blocks = []
         sharedJournal = []; uploadedJournal = nil; journalSyncTask?.cancel(); journalSyncTask = nil
+        localState = nil; pendingInteractionCount = 0; flushingInteractions = false; flushingProfile = false
         uploadedJournalPrimary = nil
         interactingNotes = []; journalInteractionMessage = nil; journalFetchSequence = 0; journalAppliedSequence = 0
         activity = []; unreadActivityCount = 0; activityAlert = nil; activityAlertTask?.cancel()
@@ -251,9 +304,10 @@ final class SocialController: NSObject, ObservableObject, ASWebAuthenticationPre
         guard (200..<300).contains(http.statusCode) else {
             let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
             if http.statusCode == 401 && authenticated {
-                SocialKeychain.remove(endpoint); SocialKeychain.remove(endpoint, purpose: "discord-friends"); reset()
+                SocialKeychain.remove(endpoint); SocialKeychain.remove(endpoint, purpose: "discord-friends"); reset(); restoreLocalDiscord()
+                if usesLocalDiscord { startPolling() }
             }
-            throw PlazaError.invalid(String((object?["error"] as? String ?? "The Plaza service is unavailable.").prefix(300)))
+            throw SocialHTTPError(status: http.statusCode, message: String((object?["error"] as? String ?? "The Plaza service is unavailable.").prefix(300)))
         }
         return data
     }
@@ -320,14 +374,22 @@ final class SocialController: NSObject, ObservableObject, ASWebAuthenticationPre
 
     private func apply(_ data: Data) throws {
         let next = try JSONDecoder().decode(SocialSnapshot.self, from: data).validated()
+        if localState?.accountID != next.account.id { restoreLocalState(accountID: next.account.id) }
         snapshot = next; connected = true; refreshedAt = Date()
+        if var state = localState { state.snapshot = next; try saveLocalState(state) }
         message = "Connected as \(next.account.displayName)"
         rebuildFriends()
     }
 
     private func activateDiscord(_ credentials: DiscordSDKCredentials) throws {
         let credentials = try credentials.validated()
-        if !isolated, let endpoint {
+        discordApplicationID = credentials.applicationID
+        if !isolated { UserDefaults.standard.set(credentials.applicationID, forKey: "social.discord-application") }
+        if credentials.localAuthorization == true, !isolated {
+            try SocialKeychain.save(String(decoding: JSONEncoder().encode(credentials), as: UTF8.self), endpoint: localDiscordEndpoint, purpose: "discord-local")
+            UserDefaults.standard.set(credentials.applicationID, forKey: "social.discord-application")
+            discordApplicationID = credentials.applicationID
+        } else if !isolated, let endpoint {
             let data = try JSONEncoder().encode(credentials)
             try SocialKeychain.save(String(decoding: data, as: UTF8.self), endpoint: endpoint, purpose: "discord-friends")
         }
@@ -338,14 +400,90 @@ final class SocialController: NSObject, ObservableObject, ASWebAuthenticationPre
         try discordClient.start(credentials)
     }
 
+    private func restoreLocalDiscord() {
+        guard !isolated, let stored = SocialKeychain.read(localDiscordEndpoint, purpose: "discord-local"),
+              let credentials = try? JSONDecoder().decode(DiscordSDKCredentials.self, from: Data(stored.utf8)).validated(),
+              credentials.localAuthorization == true else { return }
+        // Never combine a different local Discord account with a saved service identity.
+        if let endpoint, let storedService = SocialKeychain.read(endpoint, purpose: "discord-friends"),
+           let service = try? JSONDecoder().decode(DiscordSDKCredentials.self, from: Data(storedService.utf8)),
+           token != nil, service.discordID != credentials.discordID { return }
+        discordCredentials = credentials; hasDiscordFriendsAuthorization = true
+        localMiiChoices.useAccount(credentials.discordID)
+        gameHistory.useAccount(credentials.discordID, service: endpoint?.absoluteString ?? "discord-local")
+        if credentials.expiresAt > Date().timeIntervalSince1970 + 120 { try? discordClient.start(credentials) }
+        discordFriendsMessage = "Discord connects directly from this Mac."
+    }
+
+    func connectLocally() {
+        guard !busy, !connectingLocally, !isolated else { return }
+        if !serverAddress.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            do {
+                let desired = try SocialEndpoint.validated(serverAddress)
+                if endpoint != desired { configure() }
+            } catch { message = error.localizedDescription; return }
+        }
+        guard token == nil || discordCredentials != nil else {
+            message = "Use service sign-in once to verify this account, or disconnect this device before choosing a local Discord account."; return
+        }
+        connectingLocally = true; let generation = epoch
+        Task {
+            defer { if generation == epoch { connectingLocally = false } }
+            do {
+                let credentials = try await localAuthorization.authorize(applicationID: discordApplicationID,
+                    expectedUserID: token == nil ? nil : discordCredentials?.discordID)
+                guard generation == epoch else { return }
+                try activateDiscord(credentials); previewing = false
+                message = "Discord is connected directly on this Mac. Shared delivery uses the optional Plaza service."
+                startPolling()
+            } catch is CancellationError { }
+            catch { if generation == epoch { message = error.localizedDescription } }
+        }
+    }
+
+    func disconnectLocalDiscord() {
+        SocialKeychain.remove(localDiscordEndpoint, purpose: "discord-local")
+        if let endpoint { SocialKeychain.remove(endpoint); SocialKeychain.remove(endpoint, purpose: "discord-friends") }
+        reset(); message = "Disconnected on this Mac. Local notes and queued changes are preserved for this account."
+    }
+
+    private func attachLocalDiscordToService() async {
+        guard token == nil, let credentials = discordCredentials, credentials.localAuthorization == true,
+              credentials.expiresAt > Date().timeIntervalSince1970 + 120, endpoint != nil, !attachingService else { return }
+        attachingService = true; let generation = epoch
+        defer { if generation == epoch { attachingService = false } }
+        do {
+            struct Session: Decodable { var token: String }
+            let session = try JSONDecoder().decode(Session.self, from: await request("POST", "v1/auth/direct",
+                body: ["accessToken": credentials.accessToken], authenticated: false))
+            guard generation == epoch, let endpoint, (1...128).contains(session.token.count) else { return }
+            if !isolated {
+                try SocialKeychain.save(session.token, endpoint: endpoint)
+                try SocialKeychain.save(String(decoding: JSONEncoder().encode(credentials), as: UTF8.self), endpoint: endpoint, purpose: "discord-friends")
+                PlazaUpdater.shared.configure(endpoint: endpoint, token: session.token)
+            }
+            token = session.token
+        } catch {
+            guard generation == epoch else { return }
+            message = "Discord works directly. Shared delivery will reconnect when the Plaza service is available."
+        }
+    }
+
     private func refreshDiscordAuthorization() async {
         guard !discordRefreshing, let credentials = discordCredentials,
               credentials.expiresAt < Date().timeIntervalSince1970 + 120 else { return }
         discordRefreshing = true; let generation = epoch
         defer { if generation == epoch { discordRefreshing = false } }
         do {
-            let data = try await request("POST", "v1/discord/refresh", body: ["refreshToken": credentials.refreshToken])
-            let renewed = try JSONDecoder().decode(DiscordSDKCredentials.self, from: data).validated()
+            let renewed: DiscordSDKCredentials
+            if credentials.localAuthorization == true {
+                renewed = try await localAuthorization.authorize(applicationID: credentials.applicationID,
+                    expectedUserID: credentials.discordID, refreshToken: credentials.refreshToken)
+            } else {
+                let data = try await request("POST", "v1/discord/refresh", body: ["refreshToken": credentials.refreshToken])
+                renewed = try JSONDecoder().decode(DiscordSDKCredentials.self, from: data).validated()
+            }
+            guard generation == epoch else { return }
             guard renewed.discordID == credentials.discordID, renewed.applicationID == credentials.applicationID else {
                 throw PlazaError.invalid("Discord friends authorization does not match your account.")
             }
@@ -473,10 +611,24 @@ final class SocialController: NSObject, ObservableObject, ASWebAuthenticationPre
             journalSyncMessage = "Public notes are shared with your Plaza friends."
         } catch {
             guard generation == epoch else { return }
-            sharedJournal = []
             journalSyncMessage = "Notes are saved on this Mac; sharing is pending. " + error.localizedDescription
             onRosterChanged?()
         }
+    }
+
+    func expireJournal(now: Date = Date()) {
+        let expired = Set(sharedJournal.filter { NoteRetention.isExpired(Date(timeIntervalSince1970: $0.created), now: now) }.map(\.id))
+        if var state = localState { state.prune(now: now); try? saveLocalState(state) }
+        guard !expired.isEmpty else { return }
+        sharedJournal.removeAll { expired.contains($0.id) }
+        activity.removeAll { expired.contains($0.noteID) }
+        unreadActivityCount = activity.filter { !$0.read }.count
+        if let alert = activityAlert, expired.contains(alert.noteID) { dismissActivityAlert() }
+        if !isolated {
+            activityNotifications.setState(unreadIDs: Set(activity.filter { !$0.read }.map(\.id)), scope: activityScope, count: unreadActivityCount)
+            Task { await activityNotifications.reconcile() }
+        }
+        onActivityChanged?()
     }
 
     private func reloadJournal() async throws {
@@ -486,32 +638,109 @@ final class SocialController: NSObject, ObservableObject, ASWebAuthenticationPre
         let next = try JSONDecoder().decode(SharedJournalSnapshot.self, from: data).validated().notes
         guard generation == epoch, sequence >= journalAppliedSequence else { return }
         journalAppliedSequence = sequence
-        if sharedJournal != next { sharedJournal = next; rebuildFriends(notify: false); onRosterChanged?() }
+        if var state = localState {
+            state.notes = next; state.updatedAt = Date().timeIntervalSince1970
+            state.prune()
+            let visible = Set(next.map(\.id))
+            state.pending.removeAll { !visible.contains($0.noteID) }
+            try saveLocalState(state)
+        } else { sharedJournal = next }
+        rebuildFriends(notify: false); onRosterChanged?()
     }
 
-    private func interact(noteID: UUID, method: String, action: String, body: Any? = nil) async -> Bool {
-        guard connected, token != nil, !previewing else {
-            journalInteractionMessage = "Connect to Plaza to share a reply or like."; return false
-        }
-        guard interactingNotes.insert(noteID).inserted else { return false }
-        let generation = epoch
-        journalInteractionMessage = nil
-        defer { if generation == epoch { interactingNotes.remove(noteID) } }
+    private func restoreLocalState(accountID: String) {
+        guard let endpoint else { return }
         do {
-            _ = try await request(method, "v1/notes/" + noteID.uuidString + "/" + action, body: body)
-            // A committed mutation is successful even if the subsequent read
-            // fails. Do not encourage duplicate replies after a lost refresh.
-            do { try await reloadJournal() }
-            catch { journalSyncMessage = "Your interaction was saved. Refreshing the thread is pending." }
-            return generation == epoch
+            localState = isolated ? LocalSocialState(accountID: accountID) : try localStore.load(endpoint: endpoint, accountID: accountID)
+            snapshot = localState?.snapshot
+            sharedJournal = localState?.displayedNotes ?? []
+            pendingInteractionCount = localState?.pending.count ?? 0
+            activity = localState?.activities ?? []
+            unreadActivityCount = activity.filter { !$0.read }.count
+            journalSyncMessage = "Saved discussions are available on this Mac. Changes sync when the service reconnects."
         } catch {
-            if generation == epoch { journalInteractionMessage = error.localizedDescription }
-            return false
+            localState = nil
+            journalSyncMessage = error.localizedDescription
         }
     }
 
+    private func saveLocalState(_ state: LocalSocialState) throws {
+        guard let endpoint else { throw PlazaError.invalid("Choose a sharing service first.") }
+        if !isolated {
+            try localStore.save(state, endpoint: endpoint)
+            UserDefaults.standard.set(state.accountID, forKey: "social.cached-account." + endpoint.absoluteString)
+        }
+        localState = state; sharedJournal = state.displayedNotes
+        pendingInteractionCount = state.pending.count
+    }
+
+    private func queue(_ item: PendingJournalInteraction) async -> Bool {
+        guard token != nil, !previewing, var state = localState else {
+            journalInteractionMessage = "Connect to the Plaza service once before sharing interactions."; return false
+        }
+        do {
+            state.prune(); try state.enqueue(item)
+            try saveLocalState(state)
+            journalInteractionMessage = nil
+            journalSyncMessage = "Saved on this Mac · \(state.pending.count) interaction(s) waiting for delivery."
+            onRosterChanged?()
+            if connected { Task { await self.flushInteractions() } }
+            return true
+        } catch { journalInteractionMessage = error.localizedDescription; return false }
+    }
+
+    private func flushInteractions() async {
+        guard connected, token != nil, !flushingInteractions, !previewing, localState?.pending.isEmpty == false else { return }
+        flushingInteractions = true; let generation = epoch
+        defer { if generation == epoch { flushingInteractions = false } }
+        while generation == epoch, let item = localState?.pending.first {
+            do {
+                if item.expiresAt <= Date().timeIntervalSince1970 {
+                    if var state = localState { state.acknowledge(item.id); try saveLocalState(state) }
+                    continue
+                }
+                var body: [String: Any] = [:]
+                let action: String, method: String
+                if let liked = item.liked { action = "like"; method = "PUT"; body["liked"] = liked }
+                else if let replyID = item.replyID {
+                    action = "replies/" + replyID.uuidString; method = item.text == nil ? "DELETE" : "PUT"
+                    if let author = item.author, let text = item.text {
+                        body["author"] = try JSONSerialization.jsonObject(with: JSONEncoder().encode(author)); body["text"] = text
+                    }
+                } else { return }
+                _ = try await request(method, "v1/notes/" + item.noteID.uuidString + "/" + action, body: body)
+                guard generation == epoch, var state = localState else { return }
+                state.commit(item); try saveLocalState(state)
+                onRosterChanged?()
+            } catch let error as SocialHTTPError where [400, 403, 404, 409, 410, 422].contains(error.status) {
+                guard generation == epoch, var state = localState else { return }
+                state.acknowledge(item.id)
+                try? saveLocalState(state)
+                journalInteractionMessage = "A pending change could not be delivered: " + error.localizedDescription
+                onRosterChanged?()
+                // Stop if disk storage failed, keeping the original durable queue.
+                if localState?.pending.contains(where: { $0.id == item.id }) == true { return }
+            } catch {
+                guard generation == epoch else { return }
+                journalSyncMessage = "Saved on this Mac · delivery will retry when connected."
+                return
+            }
+        }
+        guard generation == epoch else { return }
+        try? await reloadJournal()
+        if pendingInteractionCount == 0 { journalSyncMessage = "Public notes and interactions are up to date." }
+    }
+
+    private func interactionExpiry(noteID: UUID) throws -> Double {
+        guard let note = sharedJournal.first(where: { $0.id == noteID }),
+              !NoteRetention.isExpired(Date(timeIntervalSince1970: note.created)) else {
+            throw PlazaError.invalid("This public note is no longer available.")
+        }
+        return note.created + 7 * 86400
+    }
     func like(noteID: UUID, liked: Bool) async -> Bool {
-        await interact(noteID: noteID, method: "PUT", action: "like", body: ["liked": liked])
+        do { return await queue(PendingJournalInteraction(noteID: noteID, liked: liked, expiresAt: try interactionExpiry(noteID: noteID))) }
+        catch { journalInteractionMessage = error.localizedDescription; return false }
     }
     func reply(noteID: UUID, replyID: UUID, author: Avatar, text: String) async -> Bool {
         do {
@@ -519,15 +748,29 @@ final class SocialController: NSObject, ObservableObject, ASWebAuthenticationPre
             guard !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty, text.count <= 280 else {
                 throw PlazaError.invalid("Write a reply of up to 280 characters.")
             }
+            let replies = sharedJournal.first { $0.id == noteID }?.replies ?? []
+            guard replies.count < 50 || replies.contains(where: { $0.id == replyID && $0.ownerID == account?.id }) else {
+                throw PlazaError.invalid("This note has reached its reply limit.")
+            }
+            if let previous = replies.first(where: { $0.id == replyID }), previous.ownerID != account?.id {
+                throw PlazaError.invalid("Only the reply's author can edit it.")
+            }
             var appearance = author
             appearance.features.creator = ""; appearance.features.birthDay = 0; appearance.features.birthMonth = 0
-            let object = try JSONSerialization.jsonObject(with: JSONEncoder().encode(appearance))
-            return await interact(noteID: noteID, method: "PUT", action: "replies/" + replyID.uuidString,
-                                  body: ["author": object, "text": text.trimmingCharacters(in: .whitespacesAndNewlines)])
+            return await queue(PendingJournalInteraction(noteID: noteID, replyID: replyID, author: appearance,
+                text: text.trimmingCharacters(in: .whitespacesAndNewlines), displayName: account?.displayName,
+                expiresAt: try interactionExpiry(noteID: noteID)))
         } catch { journalInteractionMessage = error.localizedDescription; return false }
     }
     func deleteReply(noteID: UUID, replyID: UUID) async -> Bool {
-        await interact(noteID: noteID, method: "DELETE", action: "replies/" + replyID.uuidString)
+        do {
+            guard let thread = sharedJournal.first(where: { $0.id == noteID }),
+                  let reply = thread.replies?.first(where: { $0.id == replyID }),
+                  reply.ownerID == account?.id || thread.ownerID == account?.id else {
+                throw PlazaError.invalid("You cannot remove this reply.")
+            }
+            return await queue(PendingJournalInteraction(noteID: noteID, replyID: replyID, expiresAt: try interactionExpiry(noteID: noteID)))
+        } catch { journalInteractionMessage = error.localizedDescription; return false }
     }
 
     private var currentActivityScope: String? {
@@ -535,7 +778,15 @@ final class SocialController: NSObject, ObservableObject, ASWebAuthenticationPre
         return SHA256.hash(data: Data((endpoint.absoluteString + "|" + account.id).utf8)).map { String(format: "%02x", $0) }.joined()
     }
     private func applyActivity(_ data: Data, sequence: Int) throws {
-        let snapshot = try JSONDecoder().decode(JournalActivitySnapshot.self, from: data).validated()
+        var snapshot = try JSONDecoder().decode(JournalActivitySnapshot.self, from: data).validated()
+        if var state = localState {
+            let read = Set(state.readActivityIDs)
+            snapshot.activities = snapshot.activities.map { var entry = $0; if read.contains(entry.id) { entry.read = true }; return entry }
+            snapshot.unreadCount = snapshot.activities.filter { !$0.read }.count
+            state.activities = snapshot.activities
+            state.readActivityIDs.removeAll { id in !snapshot.activities.contains { $0.id == id } }
+            try saveLocalState(state)
+        }
         guard sequence >= activityAppliedSequence, let scope = currentActivityScope else { return }
         activityAppliedSequence = sequence
         if activityScope != scope {
@@ -581,18 +832,33 @@ final class SocialController: NSObject, ObservableObject, ASWebAuthenticationPre
         }
     }
     func markActivityRead(_ ids: [Int]) async {
-        guard token != nil, !markingActivityRead, !ids.isEmpty else { return }
-        markingActivityRead = true
-        let generation = epoch
+        guard token != nil, !ids.isEmpty, var state = localState else { return }
+        let valid = Set(state.activities.map(\.id)).intersection(ids)
+        state.readActivityIDs = Array(Set(state.readActivityIDs).union(valid)).sorted()
+        state.activities = state.activities.map { var entry = $0; if valid.contains(entry.id) { entry.read = true }; return entry }
+        do {
+            try saveLocalState(state)
+            activity = state.activities; unreadActivityCount = activity.filter { !$0.read }.count
+            if let alert = activityAlert, valid.contains(alert.id) { dismissActivityAlert() }
+            if !isolated {
+                activityNotifications.setState(unreadIDs: Set(activity.filter { !$0.read }.map(\.id)), scope: currentActivityScope, count: unreadActivityCount)
+                Task { await activityNotifications.reconcile() }
+            }
+            onActivityChanged?()
+            if connected { await flushActivityRead() }
+        } catch { activityMessage = error.localizedDescription; onActivityChanged?() }
+    }
+    private func flushActivityRead() async {
+        guard token != nil, connected, !markingActivityRead, let ids = localState?.readActivityIDs, !ids.isEmpty else { return }
+        markingActivityRead = true; let generation = epoch
         defer { if generation == epoch { markingActivityRead = false } }
         do {
             let data = try await request("PUT", "v1/notes/activity/read", body: ["ids": ids])
-            guard generation == epoch else { return }
+            guard generation == epoch, var state = localState else { return }
+            state.readActivityIDs.removeAll { ids.contains($0) }; try saveLocalState(state)
             activityFetchSequence += 1
             try applyActivity(data, sequence: activityFetchSequence)
-        } catch {
-            if generation == epoch { activityMessage = "Could not mark activity read. Try again when connected."; onActivityChanged?() }
-        }
+        } catch { if generation == epoch { activityMessage = "Read state is saved on this Mac and will sync when connected." } }
     }
     func openActivity(_ entry: JournalActivity) {
         dismissActivityAlert()
@@ -663,8 +929,8 @@ final class SocialController: NSObject, ObservableObject, ASWebAuthenticationPre
         let generation = epoch
         polling = Task { [weak self] in
             while !Task.isCancelled {
-                guard let self, self.epoch == generation, self.token != nil else { return }
-                if self.active || (self.activityEligible && self.account?.shareActivity == true) { await self.refresh() }
+                guard let self, self.epoch == generation, self.token != nil || self.usesLocalDiscord else { return }
+                if self.active || self.usesLocalDiscord || (self.activityEligible && self.account?.shareActivity == true) { await self.refresh() }
                 else if self.activityEligible { await self.refreshActivity() }
                 do { try await Task.sleep(for: .seconds(15)) } catch { return }
             }
@@ -672,25 +938,31 @@ final class SocialController: NSObject, ObservableObject, ASWebAuthenticationPre
     }
 
     func refresh() async {
-        guard token != nil, !previewing, !refreshing, !busy else { return }
+        guard token != nil || usesLocalDiscord, !previewing, !refreshing, !busy, !connectingLocally else { return }
         refreshing = true
         let generation = epoch
         let revision = mutationRevision
         defer { if generation == epoch { refreshing = false } }
         do {
             await refreshDiscordAuthorization()
+            guard generation == epoch else { return }
+            if usesLocalDiscord { await attachLocalDiscordToService() }
+            guard token != nil else { return }
             _ = try await request("POST", "v1/heartbeat", body: heartbeat())
             let data = try await request("GET", "v1/snapshot")
             if revision == mutationRevision { try apply(data) }
+            await flushProfile()
             await syncDiscordRecipients()
             await refreshDiscordGames()
             await syncJournal()
+            await flushInteractions()
+            await flushActivityRead()
             await refreshActivity()
         } catch is CancellationError { }
         catch {
             guard generation == epoch, revision == mutationRevision else { return }
             connected = false; message = error.localizedDescription
-            sharedJournal = []
+            journalSyncMessage = "Offline · saved discussions are available; new changes wait on this Mac."
             discordGames = showDiscordGames ? gameHistory.suspend() : []
             discordCustomStatuses = []
             discordGamesMessage = "Live Discord activity is unavailable. Remembered games remain for up to two hours."
@@ -726,19 +998,38 @@ final class SocialController: NSObject, ObservableObject, ASWebAuthenticationPre
 
     func publish(avatar: Avatar, note: String, sharing: Bool, sharePresence: Bool, shareActivity: Bool, shareDiscordFriends: Bool = false) {
         do {
-            _ = try avatar.validated()
-            guard note.count <= 280 else { throw PlazaError.invalid("Plaza notes support up to 280 characters.") }
+            guard token != nil, !previewing, var state = localState else { throw PlazaError.invalid("Connect to the Plaza service once before sharing your profile.") }
             var appearance = avatar
             appearance.features.creator = ""; appearance.features.birthDay = 0; appearance.features.birthMonth = 0
-            let object = try JSONSerialization.jsonObject(with: JSONEncoder().encode(appearance))
-            mutate("PUT", "v1/profile", body: ["avatar": object, "note": note, "sharing": sharing, "sharePresence": sharePresence, "shareActivity": shareActivity, "shareDiscordFriends": shareDiscordFriends]) { _ in
-                if !self.isolated, let endpoint = self.endpoint, let account = self.account {
-                    UserDefaults.standard.set(avatar.id.uuidString, forKey: "social.avatar." + endpoint.absoluteString + account.id)
-                }
-                self.audienceRefreshedAt = nil
-                Task { await self.syncDiscordRecipients() }
+            let profile = LocalSharedProfile(avatar: appearance, note: note, sharing: sharing, sharePresence: sharePresence,
+                shareActivity: shareActivity, shareDiscordFriends: shareDiscordFriends)
+            try profile.validate(); state.pendingProfile = profile; try saveLocalState(state)
+            if !isolated, let endpoint, let account {
+                UserDefaults.standard.set(avatar.id.uuidString, forKey: "social.avatar." + endpoint.absoluteString + account.id)
             }
+            discordSharingMessage = "Profile saved on this Mac. Sharing changes will sync when connected."
+            if connected { Task { await self.flushProfile() } }
         } catch { message = error.localizedDescription }
+    }
+    private func flushProfile() async {
+        guard connected, token != nil, !flushingProfile, !previewing else { return }
+        flushingProfile = true; let generation = epoch
+        defer { if generation == epoch { flushingProfile = false } }
+        while generation == epoch, let profile = localState?.pendingProfile {
+            do {
+                let object = try JSONSerialization.jsonObject(with: JSONEncoder().encode(profile))
+                let data = try await request("PUT", "v1/profile", body: object)
+                guard generation == epoch, var state = localState else { return }
+                if state.pendingProfile?.id == profile.id { state.pendingProfile = nil }
+                try saveLocalState(state); try apply(data)
+                audienceRefreshedAt = nil
+                discordSharingMessage = "Your profile and sharing settings are up to date."
+                await syncDiscordRecipients()
+            } catch {
+                if generation == epoch { discordSharingMessage = "Profile saved on this Mac. Delivery will retry when connected." }
+                return
+            }
+        }
     }
 
     func createInvite() {
@@ -784,7 +1075,14 @@ final class SocialController: NSObject, ObservableObject, ASWebAuthenticationPre
     }
     func unlink() {
         mutate("DELETE", "v1/account", snapshotResponse: false) { _ in
-            if let endpoint = self.endpoint { SocialKeychain.remove(endpoint); SocialKeychain.remove(endpoint, purpose: "discord-friends") }
+            if let endpoint = self.endpoint {
+                if let id = self.account?.id {
+                    self.localStore.remove(endpoint: endpoint, accountID: id)
+                    UserDefaults.standard.removeObject(forKey: "social.cached-account." + endpoint.absoluteString)
+                }
+                SocialKeychain.remove(endpoint); SocialKeychain.remove(endpoint, purpose: "discord-friends")
+            }
+            SocialKeychain.remove(self.localDiscordEndpoint, purpose: "discord-local")
             self.gameHistory.clear()
             self.reset(); self.message = "Discord unlinked. Your shared account and friendships were deleted."
         }

@@ -62,7 +62,7 @@ struct PreferencesView: View {
             Spacer()
             Text("Ver. \(Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "—")")
                 .font(.system(size: 11)).monospacedDigit().foregroundStyle(.secondary)
-            Button { model.returnToPlaza() } label: {
+            PlazaButton(sound: .back) { model.returnToPlaza() } label: {
                 Image(systemName: "xmark").font(.system(size: 14, weight: .semibold))
                     .frame(width: 34, height: 34).background(.white.opacity(0.8), in: Circle())
             }.buttonStyle(.plain).accessibilityLabel("Close Settings")
@@ -99,7 +99,7 @@ struct PreferencesView: View {
 
     private var settingsFooter: some View {
         HStack(spacing: 16) {
-            Button {
+            PlazaButton(sound: .back) {
                 if selectedCategory == nil { model.returnToPlaza() }
                 else { selectedCategory = nil }
             } label: {
@@ -115,7 +115,7 @@ struct PreferencesView: View {
                 ScrollView(.horizontal) {
                     HStack(spacing: 5) {
                         ForEach(SettingsCategory.allCases) { category in
-                            Button { selectedCategory = category } label: {
+                            PlazaButton { selectedCategory = category } label: {
                                 Image(systemName: category.symbol).font(.system(size: 19, weight: .medium))
                                     .foregroundStyle(category.color).frame(width: 34, height: 36)
                                     .background(.white.opacity(0.85), in: RoundedRectangle(cornerRadius: 8))
@@ -143,19 +143,19 @@ struct PreferencesView: View {
                         }))
                         Text("Mix recently launched apps with games your friends are currently playing on Discord, when installed on this Mac. A new mix appears each time Mac Plaza starts; the layout stays steady while you use it. Turn this off to restore your pinned apps and their order.").font(.caption).foregroundStyle(.secondary)
                         if model.rotatingHomeEnabled {
-                            Button(model.preparingRotatingHome ? "Finding installed apps…" : "Shuffle Home Screen Now") { model.prepareRotatingHome() }
+                            PlazaButton(model.preparingRotatingHome ? "Finding installed apps…" : "Shuffle Home Screen Now") { model.prepareRotatingHome() }
                                 .disabled(model.preparingRotatingHome)
                             Text("Recent launches are remembered locally while rotation is on. The first mix also uses currently running apps. Discord games need visible game activity; unavailable or uninstalled games are skipped. Empty slots use your installed pinned apps.").font(.caption).foregroundStyle(.secondary)
                         }
-                        Button { model.beginChangingApps() } label: { Label(model.rotatingHomeEnabled ? "Edit Pinned Apps" : "Change Apps", systemImage: "square.grid.2x2") }
-                        Button { model.pickSteamGame() } label: { Label("Add Steam Game", systemImage: "gamecontroller") }
+                        PlazaButton { model.beginChangingApps() } label: { Label(model.rotatingHomeEnabled ? "Edit Pinned Apps" : "Change Apps", systemImage: "square.grid.2x2") }
+                        PlazaButton { model.pickSteamGame() } label: { Label("Add Steam Game", systemImage: "gamecontroller") }
                         Text("Add installed apps, drag icons to change their positions, or click an app to replace or remove its shortcut. Changes save automatically on this Mac.").font(.caption).foregroundStyle(.secondary)
                     }
                 }
                 if selectedCategory == .friends {
                     Section("Discord & Plaza friends") {
                         Text("Link Discord to see your friends’ Miis and availability automatically.").font(.caption).foregroundStyle(.secondary)
-                        Button("Discord & Friends…") { model.sheet = .social }
+                        PlazaButton("Discord & Friends…") { model.sheet = .social }
                     }
                 }
                 if selectedCategory == .display {
@@ -163,10 +163,29 @@ struct PreferencesView: View {
                         Toggle("Use Mac Plaza as wallpaper", isOn: Binding(get: { model.wallpaperEnabled }, set: { enabled in
                             if enabled { model.desktop.enable() } else { model.desktop.disable() }
                         })).disabled(!model.loaded)
-                        Text("Click buttons, app icons and characters directly on the wallpaper. Escape restores Finder’s desktop icons; choose Interact with Plaza in the menu bar to resume. Music mutes when another app plays audio, uses the microphone, goes full screen, or covers most of the plaza. Wallpaper mode is remembered on this Mac.").font(.caption).foregroundStyle(.secondary)
+                        Text("Click buttons, app icons and characters directly on the wallpaper. Escape restores Finder’s desktop icons; choose Interact with Plaza in the menu bar to resume. Notification chimes play over the music. Music mutes when another app plays sustained audio, uses the microphone, goes full screen, or covers most of the plaza. Wallpaper mode is remembered on this Mac.").font(.caption).foregroundStyle(.secondary)
                     }
                 }
                 if selectedCategory == .sound {
+                    Section("Interface sounds") {
+                        Toggle("Play click and back sounds", isOn: Binding(get: { model.document.preferences.uiSoundEffects ?? true }, set: { value in
+                            model.mutate { $0.preferences.uiSoundEffects = value }
+                        }))
+                        HStack {
+                            Text("Sound effect volume")
+                            Slider(value: Binding(get: { model.document.preferences.uiSoundVolume ?? 0.18 }, set: { value in
+                                model.mutate { $0.preferences.uiSoundVolume = value }
+                            }), in: 0...1).accessibilityLabel("Interface sound effect volume")
+                            Text("\(Int((model.document.preferences.uiSoundVolume ?? 0.18) * 100))%")
+                                .font(.caption).monospacedDigit().frame(width: 34)
+                        }
+                        HStack {
+                            PlazaButton("Test Click") {}
+                            PlazaButton("Test Back", sound: .back) {}
+                        }
+                        Text("Original Wii U recordings play over the music without pausing, ducking or restarting it. These controls are separate from music mute and volume.")
+                            .font(.caption).foregroundStyle(.secondary)
+                    }
                     Section("Music") {
                         Toggle("Play music", isOn: Binding(get: { model.document.preferences.ambientSound ?? true }, set: { value in model.mutate { $0.preferences.ambientSound = value } }))
                         if let reason = model.automaticMusicMuteReason {
@@ -178,7 +197,7 @@ struct PreferencesView: View {
                         musicControls(.settings, title: "Settings", volume: \.settingsMusicVolume, defaultVolume: 0.10)
                         musicControls(.writing, title: "Writing Notes", volume: \.writingMusicVolume, defaultVolume: 0.10)
                         musicControls(.miiverse, title: "Miiverse", volume: \.miiverseMusicVolume, defaultVolume: 0.10)
-                        Text("Choose an audio file up to 256 MB, preview it, then select Use Music to apply it. Plaza, Mii Maker, Friends, Settings and note-writing music crossfade when you open or close each menu. The plaza theme resumes where it paused when you return. Music yields to other apps’ audio and calls, and to windows covering most of the plaza. It fades back in once the plaza is available and other audio has stopped. Some apps keep audio active briefly after pausing. Your saved tracks loop and stay on this Mac.").font(.caption).foregroundStyle(.secondary)
+                        Text("Choose an audio file up to 256 MB, preview it, then select Use Music to apply it. Plaza, Mii Maker, Friends, Settings and note-writing music crossfade when you open or close each menu. The plaza theme resumes where it paused when you return. Notification chimes play over the music. Music yields after two seconds of continuous audio from another app, immediately for microphone use or calls, and to windows covering most of the plaza. It fades back in once the plaza is available and other audio has stopped. Some apps keep audio active briefly after pausing. Your saved tracks loop and stay on this Mac.").font(.caption).foregroundStyle(.secondary)
                         if let previewError { Text(previewError).font(.caption).foregroundStyle(.red).textSelection(.enabled) }
                         if let message = music.message { Text(message).font(.caption).foregroundStyle(.secondary).textSelection(.enabled) }
                     }
@@ -190,7 +209,7 @@ struct PreferencesView: View {
                         Toggle("Pause journal bubble cycling", isOn: preference(\.pausePosts))
                         Toggle("Private presentation — hide plaza bubbles", isOn: preference(\.privatePresentation))
                         Stepper("Characters in the plaza: \(model.document.preferences.population)", value: Binding(get: { model.document.preferences.population }, set: { number in model.mutate { $0.preferences.population = number }; model.rebuildScene() }), in: PlazaCore.Preferences.populationRange, step: 10)
-                        Button("Fill the plaza") {
+                        PlazaButton("Fill the plaza") {
                             model.mutate { $0.preferences.population = PlazaCore.Preferences.defaultPopulation }
                             model.rebuildScene()
                         }.help("Gather 160 Miis around your app icons.")
@@ -200,7 +219,7 @@ struct PreferencesView: View {
                 if selectedCategory == .appearance {
                     Section("Plaza resource pack") {
                         HStack {
-                            Button("Import Plaza Resource Pack…") { model.importResourcePack() }
+                            PlazaButton("Import Plaza Resource Pack…") { model.importResourcePack() }
                                 .disabled(model.resourcePackBusy || ffl.importing || bodies.importing)
                             if model.resourcePackBusy { ProgressView().controlSize(.small) }
                         }
@@ -208,18 +227,18 @@ struct PreferencesView: View {
                             .font(.caption).foregroundStyle(.secondary)
                         if let message = model.resourcePackMessage { Text(message).font(.caption).textSelection(.enabled) }
                         if let backup = model.resourcePackBackup {
-                            Button("Show Resource Backup") { NSWorkspace.shared.open(backup) }
+                            PlazaButton("Show Resource Backup") { NSWorkspace.shared.open(backup) }
                         }
                     }
                     Section("Wii U Mii renderer") {
                         Text(ffl.message).font(.caption).textSelection(.enabled)
                         HStack {
-                            Button(ffl.installed ? "Replace FFL Resource…":"Import FFLResHigh.dat…") {ffl.importResource()}.disabled(ffl.importing)
-                            if ffl.installed {Button("Use Built-in Characters") {ffl.remove()}}
+                            PlazaButton(ffl.installed ? "Replace FFL Resource…":"Import FFLResHigh.dat…") {ffl.importResource()}.disabled(ffl.importing)
+                            if ffl.installed {PlazaButton("Use Built-in Characters") {ffl.remove()}}
                             if ffl.importing {ProgressView().controlSize(.small)}
                         }
                         Text("Import your Wii U FFLResHigh.dat for original faces and hairstyles. The resource, FFL library and Wii U shader run on this Mac. No renderer service, downloads or uploads are used. Resources stay separate from plaza exports.").font(.caption).foregroundStyle(.secondary)
-                        Button("Renderer Credits & Licenses") {NSWorkspace.shared.open(FFLSurface.assetRoot.appendingPathComponent("NOTICES.txt"))}
+                        PlazaButton("Renderer Credits & Licenses") {NSWorkspace.shared.open(FFLSurface.assetRoot.appendingPathComponent("NOTICES.txt"))}
                         Text("Wii U file: sys/title/0005001b/10056000/content/FFLResHigh.dat").font(.system(size:10,design:.monospaced)).textSelection(.enabled)
                     }
                 }
@@ -227,8 +246,8 @@ struct PreferencesView: View {
                     Section("Original plaza bodies & animations") {
                         Text(bodies.message).font(.caption).textSelection(.enabled)
                         HStack {
-                            Button(bodies.installed ? "Replace Men2.pack…":"Import Men2.pack…") {bodies.importResource()}.disabled(bodies.importing || !ffl.installed)
-                            if bodies.installed {Button("Use Authored Motion") {bodies.remove()}}
+                            PlazaButton(bodies.installed ? "Replace Men2.pack…":"Import Men2.pack…") {bodies.importResource()}.disabled(bodies.importing || !ffl.installed)
+                            if bodies.installed {PlazaButton("Use Authored Motion") {bodies.remove()}}
                             if bodies.importing {ProgressView().controlSize(.small)}
                         }
                         Text("The original male/female body meshes, body atlas and skeletal curves run locally with your FFL heads. Import reads data only; no Wii U code is executed. Menu assets stay separate from plaza exports.").font(.caption).foregroundStyle(.secondary)
@@ -238,24 +257,24 @@ struct PreferencesView: View {
                 if selectedCategory == .display {
                     Section("Startup") {
                         Toggle("Start Mac Plaza as wallpaper at login", isOn: Binding(get: { model.loginEnabled }, set: { model.setLogin($0) }))
-                        Button("Open macOS Login Items…") { SMAppService.openSystemSettingsLoginItems() }
+                        PlazaButton("Open macOS Login Items…") { SMAppService.openSystemSettingsLoginItems() }
                         Text("Starts automatically as an interactive wallpaper with your saved music settings. Keep the app in this location. macOS may require approval in Login Items. Safe mode and recovery still open the ordinary window.").font(.caption).foregroundStyle(.secondary)
                     }
                 }
                 if selectedCategory == .data {
                     Section("Your data") {
-                        HStack { Button("Export Plaza…") { model.exportPlaza() }; Button("Import Plaza…") { model.importPlaza() }; Button("Restore Backup") { model.recoverBackup() } }
+                        HStack { PlazaButton("Export Plaza…") { model.exportPlaza() }; PlazaButton("Import Plaza…") { model.importPlaza() }; PlazaButton("Restore Backup") { model.recoverBackup() } }
                         Text("Exports contain characters, notes, drawings and shortcut labels. Installed app paths and bookmarks stay on this Mac. Import replaces the plaza; reconnect app shortcuts with Locate App.").font(.caption).foregroundStyle(.secondary)
-                        Button("Show Data Folder") { NSWorkspace.shared.open(model.storage.url.deletingLastPathComponent()) }
+                        PlazaButton("Show Data Folder") { NSWorkspace.shared.open(model.storage.url.deletingLastPathComponent()) }
                     }
                 }
                 if selectedCategory == .system {
                     Section("Testing & diagnostics") {
                         HStack {
-                            Button("Export Diagnostics…") { model.exportDiagnostics() }
+                            PlazaButton("Export Diagnostics…") { model.exportDiagnostics() }
                                 .disabled(model.diagnosticsExporting)
                             if model.diagnosticsExportURL != nil {
-                                Button("Email Diagnostics…") { model.emailDiagnostics() }
+                                PlazaButton("Email Diagnostics…") { model.emailDiagnostics() }
                                     .disabled(model.diagnosticsExporting)
                             }
                             if model.diagnosticsExporting { ProgressView().controlSize(.small); Text("Collecting reports…").font(.caption) }
@@ -291,16 +310,16 @@ struct PreferencesView: View {
                     Text(music.title(for: track)).font(.caption).foregroundStyle(.secondary).lineLimit(1).truncationMode(.middle).help(music.title(for: track))
                 }
                 Spacer()
-                Button("Import Music…") { audio.stopPreview(); previewError = nil; music.choose(for: track) }.accessibilityLabel("Import \(title) music")
+                PlazaButton("Import Music…") { audio.stopPreview(); previewError = nil; music.choose(for: track) }.accessibilityLabel("Import \(title) music")
                 if music.recordings[track.rawValue] != nil {
-                    Button("Use Default") { audio.stopPreview(); music.discardSelection(for: track); music.restoreDefault(for: track) }.accessibilityLabel("Use default \(title) music")
+                    PlazaButton("Use Default") { audio.stopPreview(); music.discardSelection(for: track); music.restoreDefault(for: track) }.accessibilityLabel("Use default \(title) music")
                 }
             }
             if let selection = music.selections[track.rawValue] {
                 Text("Selected: \(selection.name)").font(.caption).lineLimit(2).textSelection(.enabled)
             }
             HStack {
-                Button {
+                PlazaButton {
                     previewError = nil
                     if audio.previewTrack == track { audio.stopPreview() }
                     else if let url = music.previewURL(for: track) {
@@ -312,9 +331,9 @@ struct PreferencesView: View {
                 }.accessibilityLabel("\(audio.previewTrack == track ? "Stop" : "Preview") \(title) music")
                     .disabled(model.document.preferences.safeMode || model.automaticMusicMuteReason != nil || music.previewURL(for: track) == nil)
                 if music.selections[track.rawValue] != nil {
-                    Button("Use Music") { audio.stopPreview(); music.applySelection(for: track) }
+                    PlazaButton("Use Music") { audio.stopPreview(); music.applySelection(for: track) }
                         .buttonStyle(.borderedProminent).accessibilityLabel("Use selected \(title) music")
-                    Button("Cancel") { audio.stopPreview(); music.discardSelection(for: track) }
+                    PlazaButton("Cancel") { audio.stopPreview(); music.discardSelection(for: track) }
                         .accessibilityLabel("Cancel selected \(title) music")
                 }
                 Spacer()
@@ -361,24 +380,24 @@ struct AppDetailsView: View {
                     LabeledContent("Bundle identity", value: app.bundleID).font(.caption).textSelection(.enabled)
                     if let url = model.resolvedURL(app) { Text(url.path).font(.caption).foregroundStyle(.secondary).textSelection(.enabled).lineLimit(3) }
                     if isPinned { HStack {
-                        Button(model.resolvedURL(app) == nil ? "Locate App…" : "Change App…") { model.pickApp(replacing: app) }
+                        PlazaButton(model.resolvedURL(app) == nil ? "Locate App…" : "Change App…") { model.pickApp(replacing: app) }
                             .help("Choose the app for this shortcut. Its position, label and custom icon are kept.")
-                        Button("Steam Game…") { model.pickSteamGame(replacing: app) }
+                        PlazaButton("Steam Game…") { model.pickSteamGame(replacing: app) }
                     }
                     HStack {
-                        Button("Custom Icon…") { model.setCustomIcon(app) }
-                        if app.customIcon != nil { Button("Use App Icon") { model.setCustomIcon(app, reset:true) } }
-                        Button("Move Earlier") { model.move(app.id, delta: -1) }
-                        Button("Move Later") { model.move(app.id, delta: 1) }
+                        PlazaButton("Custom Icon…") { model.setCustomIcon(app) }
+                        if app.customIcon != nil { PlazaButton("Use App Icon") { model.setCustomIcon(app, reset:true) } }
+                        PlazaButton("Move Earlier") { model.move(app.id, delta: -1) }
+                        PlazaButton("Move Later") { model.move(app.id, delta: 1) }
                     } } else {
                         Text("This app is part of your rotating home screen. Pin it to your saved layout to customize its label or icon.").font(.callout).foregroundStyle(.secondary)
-                        Button("Pin to Saved Layout") { model.pinHomeApp(app) }.disabled(model.resolvedURL(app) == nil)
+                        PlazaButton("Pin to Saved Layout") { model.pinHomeApp(app) }.disabled(model.resolvedURL(app) == nil)
                     }
                     HStack {
-                        if isPinned { Button("Remove Shortcut", role: .destructive) { model.removeApp(app); dismiss() } }
+                        if isPinned { PlazaButton("Remove Shortcut", role: .destructive) { model.removeApp(app); dismiss() } }
                         Spacer()
-                        Button("Open") { model.launch(app) }
-                        if isPinned { Button("Save Label") {
+                        PlazaButton("Open") { model.launch(app) }
+                        if isPinned { PlazaButton("Save Label") {
                             let value = label.trimmingCharacters(in: .whitespacesAndNewlines)
                             model.rememberLayout()
                             model.mutate { doc in if let i = doc.apps.firstIndex(where: { $0.id == appID }) { doc.apps[i].label = value } }

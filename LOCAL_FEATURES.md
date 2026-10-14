@@ -602,6 +602,107 @@ and expanded icon layout: loose groups remained around icons and travelers kept
 moving between them. Code signing and both release ZIP integrity checks passed
 (`.qa/natural-gathering-package.log`).
 
+## Main Mii center preference — 14 October 2026
+
+The chosen primary Mii now uses a loose central home area. It pauses there longer
+than at app gatherings, occasionally visits a gathering and selects a return to
+the middle after an outing. Existing conversations finish normally. The home
+follows the primary UUID across roster reordering and changes, and route updates
+never relocate the crowd. Placement still respects app obstacles and visitor
+spacing. Other Miis keep the existing gathering/traveler distribution and the
+selected total remains unchanged. The Mac scene and shared Windows engine receive
+the chosen primary identity explicitly.
+
+All 32 focused optimized tests passed (`.qa/primary-mii-final-tests.log`), covering
+both real WebKit body renderers, roster continuity, original social playback,
+boot and arrival, blocked-center routing, selection of a primary Mii that is not
+first, and uninterrupted conversations. Two deterministic ten-minute simulations
+kept the main Mii near the center for 544/600 seconds with fallback motion and
+395/600 seconds with original controllers; both visited apps and returned, with
+all 60 Miis retained and continuous movement.
+
+The optimized Mac app and shared engine builds completed successfully
+(`.qa/primary-mii-build.log`, `.qa/primary-mii-shared-engine-build.log`). Windows
+renderer scripts passed syntax checks. The local Mac executable was updated and
+its ad-hoc signature passed strict verification.
+
+The updated local app was restarted and visually checked after the entrance.
+Alex settled in the central area while the rest of the live crowd gathered and
+walked normally. The removed footer labels remained absent.
+
+## Center guest visits — 14 October 2026
+
+Existing group members now occasionally approach the main Mii in the center,
+face one another, complete a normal paired conversation and walk back to their
+original app group. Only one guest is active at a time. The invitation follows
+UUIDs through roster reordering and removes no characters from the 60-member
+crowd. Changing the main Mii or removing a guest cancels stale reservations
+without relocating actors or breaking an existing conversation.
+
+Guests use normal obstacle routes and locomotion. The fallback chooses guests
+with an open exit from their gathering; meeting destinations adjust if the host
+shifts. Original bodies use the original talk/listen transitions and turn-taking.
+Invitations wait for the main Mii to finish an outing and reserve opportunities
+for its own app trips between visits. Pause, boot and new-Mii arrival retain their
+existing simulation-clock behavior. The shared Windows engine uses the same
+updated crowd source.
+
+All 37 focused optimized checks passed (`.qa/center-guest-final-tests.log`),
+including real WebKit rig retention, roster refreshes, boot/arrival, existing
+original social behavior and main-Mii outings. Fifteen-minute observations with
+both controllers, plus completion of any final pending return, produced four
+fallback guest chats/returns and six original-controller guest chats/returns.
+Every step retained all 60 actors, reciprocal partners and continuous movement.
+Changing the primary to an invited guest, removing a guest, reordering the roster
+and pausing were also checked. Ten-minute main-Mii checks retained three fallback
+outings and four original-controller outings while spending about 75% of time
+near the center.
+
+The final optimized Mac and shared-engine builds passed
+(`.qa/center-guest-build.log`, `.qa/center-guest-shared-engine-build.log`). The
+local app executable was updated and passed strict ad-hoc signature verification.
+
+
+## Center guest greetings and farewells — 14 October 2026
+
+Visitors now stop facing the main Mii and wave hello before their central
+conversation. After chatting they wave goodbye, then walk back to their own app
+group. Both waves finish before the next phase begins. Original bodies play the
+existing Handwaving entrance, two loops and exit, followed by the idle blend;
+fallback bodies use their configured full wave duration. The separate hello
+replaces the fallback conversation's embedded greeting so it does not repeat.
+The same 60 identities remain in the plaza, and other Miis keep simulating.
+Pause freezes the visit and animation clocks. Changing the host or removing app
+groups clears an unfinished wave reservation without relocating the visitor.
+
+All 38 focused optimized checks passed (`.qa/center-guest-wave-tests.log`),
+including hello/chat/goodbye/return order, original wave entrance and exit clips,
+pause continuity, real WebKit rig retention, primary outings, boot and arrival.
+Fifteen-minute observations plus pending returns completed four fallback and
+seven original-controller visits without adding or dropping actors. The shared
+Windows engine builds successfully with the same crowd source
+(`.qa/center-guest-wave-shared-engine-build.log`). The optimized Mac build
+passed (`.qa/center-guest-wave-build.log`); the local app executable was updated
+and passed strict ad-hoc signature verification.
+
+## Main Mii returned waves — 14 October 2026
+
+The main Mii now answers the visitor's hello and goodbye waves after a short
+quarter-second response delay. Both Miis face one another and stay in place
+until both gestures finish. Original animation clocks begin when each Mii's
+wave clip actually starts, so an outgoing animation cannot shorten its reply.
+The full original entrances, loops, exits and idle blends finish before chatting
+or walking resumes. Fallback bodies also finish both configured wave durations.
+Participant timing follows UUIDs through roster reordering. Removing the visitor,
+changing the main Mii or removing app groups clears both gesture reservations.
+
+All 39 focused optimized checks passed (`.qa/center-returned-wave-tests.log`),
+covering both returned gestures and their complete original clips, response
+delay, pause, roster changes and cancellation, plus 60-Mii consistency, ordinary
+social behavior, main-Mii outings, boot and arrival. The shared Windows engine
+build passed (`.qa/center-returned-wave-shared-engine-build.log`).
+The optimized Mac build passed (`.qa/center-returned-wave-build.log`); the local
+app executable was updated and passed strict ad-hoc signature verification.
 
 ## Background speech listener music correction — 12 October 2026
 
@@ -906,11 +1007,239 @@ rejection, visitor merging and private-note preservation. Logs are in
 .qa/public-identity-migration.
 
 
-## Audio resource crash fix — 0.19.1, 14 October 2026
+## Tester crash: missing soundtrack bundle — 14 October 2026
 
-Eight tester crash reports across 0.16–0.19 showed the same SwiftPM resource-bundle assertion while starting/resuming audio. PlazaResources replaces the fatal Bundle.module fallback with optional lookups confined to the installed app, while development/tests can use adjacent resource bundles. Missing recordings use synthesized playback; absent arrival effects are skipped. Renderer assets use the same safe resolver. Custom music, muting and crossfades are preserved. Build 28 is a focused hotfix above 0.19.0.
+The supplied tester folder contains eight crash reports across versions 0.16.0/build 21, 0.17.0/build 24 and 0.19.0/build 27. All eight trap in Swift's assertionFailure → static NSBundle.module initializer → PlazaAudio.soundtrackURL → PlazaAudio.update. Three stacks enter through OtherAudioMonitor.refresh; others enter through music/lifecycle view updates. The distribution app omits most optional recording files and does not ship SwiftPM's MacPlaza_MacPlaza.bundle. Falling back to Bundle.module then looks for that absent bundle, including an absolute build-machine path, and calls fatalError. Developer builds hid this because that build bundle exists locally. The evidence establishes a resource-packaging trap, rather than an audio-driver stack crash. A minimal stack classification is saved in .qa/audio-resource-crash-evidence.json; full private reports were not copied into the source tree.
+
+PlazaResources now resolves direct app resources and optional in-app module bundles without invoking SwiftPM's fatal accessor. CLI/tests can find adjacent SwiftPM resources; installed apps only search inside their app. Missing audio returns nil, allowing the existing synthesized loop; absent arrival effects are skipped. FFLSurface uses the same safe lookup for bundled renderer files, removing the other fatal accessor and forced unwrap. Imported music, crossfades, playhead restoration and audio-activity suppression are retained.
+
+All 23 targeted resource fallback, audio transition, automatic music and custom-import checks passed (.qa/audio-resource-crash-tests.log). New checks cover an installed-app fixture without recordings/module bundle or access to a sibling developer bundle, still-present recordings and renderer assets, and 18 repeated interruptions across all six missing soundtrack roles. Existing checks cover imported music, real external-player detection, call suppression, saved mute, preview cleanup and crossfades. The optimized local app rebuilt (.qa/audio-resource-crash-release.log). A distribution build with all optional recordings removed also launched in an isolated demo, and its Music & Sound controls rendered without the missing-bundle crash while external audio suppression remained active.
+
+A fixed tester-style app preserves the Miiverse recording shipped in the existing 0.19.0 ZIP, while its other optional recordings remain omitted. The standalone test ZIP and corresponding source ZIP are packaged under a distinct Audio-Crash-Fix suffix rather than replacing the published release. They retain the 0.19.0/build 27 app version and need manual installation for this test; nothing is published or sent automatically.
+
+Final artifacts are Artifacts/Mac-Plaza-0.19.0-Audio-Crash-Fix.zip and its corresponding -Source.zip. Both archives passed ZIP integrity checks, and the local/tester apps passed deep/strict signature verification. Native QA confirmed Music & Sound renders all six soundtrack controls in an installed-style app with no recording files and no SwiftPM module bundle. The isolated app was closed and archived as .qa/Audio Resource QA.fixture before the main app reopened; the updated local plaza returned to wallpaper mode normally. The supplied friend reports remain unchanged in Downloads.
 
 
-## Resource pack importer release — 14 October 2026
+## GitHub audio hotfix release — 14 October 2026
 
-Version 0.20.2/build 31 adds the Settings → Mii Appearance resource pack importer, streaming bounded format validation, native renderer/audio checks, resource backups and rollback. Existing saved plaza data and music preferences are preserved. Private resource packs remain separate from app/source releases. Scoped from the published 0.19.1 base; unrelated local workspace work is preserved.
+Published v0.19.1/build 28 from an isolated checkout based on v0.19.0, with only the audio/renderer resource resolver fix, its regression tests, version metadata and release documentation. Commit 6f60978 and annotated tag v0.19.1 were pushed to origin/main. All 23 focused checks passed again in that checkout. Distribution app, source ZIP, PKG and DMG were built; signatures, ZIP integrity, source exclusions and DMG integrity were verified. All eight uploaded GitHub assets matched local SHA-256 digests before publication. Release: https://github.com/fr0nkle/mac-plaza/releases/tag/v0.19.1. Miiverse music is retained. Windows remains on its existing 0.2.0 preview release. Other pending workspace work was preserved.
+
+The running host synchronized the published release and reported Signed update ready: v0.19.1. Its health endpoint returned ok; the active manifest, downloaded archive hash and generated appcast were verified as 0.19.1/build 28. The shared workspace retains the matching artifacts and local update staging.
+
+## Seven-day note retention (0.20.0)
+
+Local public/private journal notes and shared Miiverse posts expire seven days
+from original creation. Mac cleanup runs on load, mutation/import/recovery and
+once per minute; Windows cleans every account’s local/cache/pending notes on
+startup, save and once per minute. Drafts, Miis, app layouts and preferences stay
+intact. Expired public payloads are excluded from sync. Composer, journal and
+Miiverse footers disclose the rule, including replies/likes and edit behavior.
+The service runs an indexed deletion on requests and on an idle minute sweep;
+foreign keys cascade removal to likes, replies and activity. Existing creation
+times cannot be extended by edits; future dates are clamped to service time.
+
+Validation: 56 service tests, 18 focused Mac tests and 12 Windows unit tests
+passed. Verified the notice in the running Write Note, Miiverse and Plaza Journal
+windows. Installed local Mac 0.20.0/build 29 and updated the existing local
+service. Saved plaza JSON remained identical (5 Miis, 11 pinned apps, 4 notes);
+all 7 current shared notes and their interactions remained identical because
+none had expired. Pre-install snapshots and verification are in
+.qa/note-retention-migration. No release feed or GitHub publication was made.
+
+## Original Wii U interface sounds (local 0.20.1)
+
+User-supplied numbered menu recordings 00252 and 00253 are assigned to click and
+back feedback. The PCM files are copied byte-for-byte, with provenance/checksums
+in Resources/Audio/UI/SOURCE.txt. PlazaButton preserves native SwiftUI actions,
+roles, styles, disabled state, keyboard shortcuts and accessibility activation;
+custom close/back labels explicitly select the back cue. All local SwiftUI
+buttons use it, including wallpaper controls, app previews, menus and editors.
+
+PlazaUISounds owns a separate bounded pool (at most three players per cue), with
+independent optional uiSoundEffects/uiSoundVolume preferences. Settings → Music &
+Sound includes on/off, volume and Test Click/Test Back controls. Effects do not
+invoke PlazaAudio, change its volume/playhead/preview, or change audio-session
+policy. They run in this process, which the existing other-app audio detector
+excludes. Missing optional recordings are skipped safely. Default distribution
+builds and source archives omit these supplied recordings.
+
+Validation: 27 focused native tests completed with zero failures and one opt-in
+visual fixture skipped; the final four effect checks passed again after startup
+configuration adjustments. Checks cover original short WAVs, layering over a
+running soundtrack and preview, independent mute/volume, bounded rapid clicks,
+missing files and backward-compatible settings validation. In the running app,
+verified both sample buttons and Escape from Music & Sound to categories and
+back to the plaza. Saved plaza JSON remained identical (5 Miis, 11 pinned apps,
+4 notes), and original renderer/imported music hashes were unchanged. Installed
+local 0.20.1/build 30; no publication was performed. Audit/backups:
+.qa/ui-sound-migration/verification.json and plaza-before.
+
+
+## Private Plaza resource pack import — 14 October 2026
+
+Settings → Mii Appearance now offers Import Plaza Resource Pack… for one bounded
+.plazapack file. The importer checks the manifest, allowed file names/roles, sizes,
+SHA-256 hashes, audio decoding, renderer structure and male/female test renders
+before installing. It backs up existing renderer files and the music manifest,
+retains previous managed music files, and rolls back failed writes. Saved Miis,
+notes, apps, account data, preferences and volume settings are not included or
+changed. Imported resources refresh immediately; music uses existing preview,
+replacement, crossfade, mute and audio/call/window suppression behavior. Safe
+mode remains under user control.
+
+Created Artifacts/Private/Wii U Plaza Resources.plazapack (55,464,959 bytes):
+original FFL faces, converted male/female bodies, 172 clips and six soundtracks.
+The generated file and preview app ZIP remain ignored and separate from public
+release artifacts. The reusable local packaging script downloads nothing.
+
+Validation: six resource pack tests passed, including real private-resource
+rendering, music persistence, checksum/truncation/path/version rejection,
+symlink destination rejection, backup and forced rollback after music-manifest
+writes. Six custom-music and three missing-resource regression tests also passed.
+Native QA imported the actual pack through Settings into an isolated demo,
+confirmed 172 animations/six tracks and rendered original Miis in the plaza.
+The distribution-style preview has no recordings bundled; ZIP integrity and
+deep/strict code-signature verification passed. The QA app was closed cleanly
+and archived as .qa/Resource Pack QA.fixture. The regular plaza was restored
+and left at Mii Appearance with its new import button visible. No GitHub upload
+or update-feed publication was performed for this private pack task.
+
+
+## GitHub resource pack importer update — 14 October 2026
+
+Published v0.20.2/build 31 from the isolated codex/resource-pack-import-0202
+branch, based on public v0.19.1. Commit cddc82f506f02bb695f83e0cd971ef0ca285426d
+and annotated v0.20.2 tag are on origin/main. Release:
+https://github.com/fr0nkle/mac-plaza/releases/tag/v0.20.2.
+
+31 focused importer/music tests and all 54 service tests passed in the release
+checkout. App/source ZIP integrity, deep/strict code signature, DMG integrity,
+Sparkle update signature and all eight GitHub asset hashes/sizes were verified.
+The private .plazapack, original renderer files and five optional soundtracks
+are absent from the public release; previously bundled Miiverse music remains.
+Source excludes all recordings and the standalone Discord SDK.
+
+The running host synchronized the published release and reported Signed update
+ready: v0.20.2. Its health endpoint returned ok; the active manifest, archive
+hash and generated appcast match version 0.20.2/build 31. Matching artifacts and
+local update staging were copied back to the shared workspace. Other local
+changes and the running development app were preserved.
+
+
+## Developer ID signing preparation — 14 October 2026
+
+Prepared scripts/build-signed-release.sh, the local signing configuration
+example and scripts/DEVELOPER-ID.md. Signing now selects a Developer ID
+Application identity from an explicitly configured team, preserves nested
+Sparkle helper entitlements, removes debugger access, signs inside-out with
+Hardened Runtime and secure timestamps, and checks stable bundle/team designated
+requirements. The signed workflow notarizes/staples the app, packages the
+stapled update ZIP, signs the installer and notarizes/staples distribution
+containers. Publication checks the actual archived app and installers before
+staging/uploading. Local development can still build ad-hoc previews without
+a configured release identity. Keychain ACLs and existing Sparkle signing keys
+are unchanged; no keys are exported.
+
+Nine focused signing boundary tests passed, all Python tools parsed, shell
+syntax checks passed, and the actual public 0.20.2 ad-hoc app was correctly
+rejected by the Developer ID release verifier. The --check command stopped
+before modifying artifacts because an enrolled signing team is not configured.
+
+Activation remains pending: this Mac has an Apple Development identity but no
+Developer ID Application/Installer identities or MacPlazaNotary credentials.
+The user confirmed they are not enrolled in the paid Apple Developer Program.
+They must complete Apple's enrollment and account-side steps before genuine
+Developer ID signing, notarization and old-to-new update/Keychain testing can
+be performed. No newly signed app or release was built or published; existing
+GitHub downloads, the active update feed and running app remain unchanged.
+
+## Varying simultaneous speech bubbles (local 0.20.2)
+
+Supersedes the earlier one-post limit: active speech intervals request one, two
+or three panels, changing density between intervals. Each panel follows a
+different rendered Mii. Journal notes preserve their private author or public
+primary-Mii identity; guide messages can use other local/decorative Miis. The
+friend interval prioritizes friends and fills spare candidates from journal
+and guide posts. Selection and density stay stable while reading; hovering or
+focusing any panel holds the group’s reading interval. Existing quiet gaps,
+privacy settings and pause controls remain.
+
+The native layout reserves each placed panel before adding the next, keeps
+pointers over moving heads and prefers clearing icons. It can use overhead
+space in front of artwork when needed, while avoiding other speech panels.
+Late renderer anchors can fill remaining slots. A selected speaker is retained
+throughout the interval instead of swapping whenever they walk offscreen.
+Candidate bridge traffic remains bounded to six targets and at most three
+panels are visible. This change affects the local Mac client.
+
+Verification: 24 targeted native tests completed with zero failures and three
+opt-in visual fixtures skipped. New checks cover all three counts, duplicate
+author suppression, non-overlap, pointer tracking, filling late anchors and
+batch guide selection without changing authors or saves. The running 0.20.2
+process matched the built executable UUID. Observed two simultaneous speech
+panels for different Miis in the live plaza, then restored wallpaper mode.
+Saved plaza JSON remained identical, as did renderer resources and imported
+music. Audit/backups: .qa/multiple-bubbles-migration/verification.json.
+
+
+### Endless floor at the screen edges — 14 October 2026
+
+The plaza floor now draws outside the actors/controls clip, continuing beneath wallpaper safe margins to every window edge. Its overscan includes the complete menu-bar and Dock insets and follows the same zoom, pan, app-focus and arrival camera transforms as the plaza. Normal-window mode clips only the floor extension to its content viewport so header/footer controls remain intact. Native control hit surfaces and the existing actor/input clip are unchanged.
+
+Checker rows now include negative projected Y coordinates, extending the pattern above the original viewport instead of leaving a flat strip at the top. The soft perspective haze starts beyond the visible top edge, keeping the texture continuous without an on-screen horizon boundary. The floor remains a single batched Canvas fill and ignores mouse events.
+
+
+## Full-screen wandering and connected edges — 14 October 2026
+
+The Mac crowd now uses the visible camera area, including wallpaper margins and the extra ground exposed at 75% zoom. A 1.75× character render surface preserves the app layout's world scale and keeps Miis visible across that area. Speech anchors convert back into the logical app viewport.
+
+Left/right edge portals participate in the obstacle-aware shortest-path graph. A visitor choosing that route walks completely offscreen, re-enters at the opposite side at the same depth, and continues toward its destination. Heading, walking phase, speed and identity survive the crossing; collision calculations never receive a screen-width teleport as a velocity. Camera changes reroute without moving actors or interrupting conversations. Top/bottom extend the walking area without vertical wrapping.
+
+Roaming visitors can explore the whole floor. Other unassigned visitors occasionally change app gatherings, retaining the current visit by identity across roster refreshes. Explicit Discord/app affinity and the primary Mii's central home remain respected.
+
+Verification covers both edge directions with original and fallback locomotion, reaching the destination after crossing, obstacle detours, full-area exploration, camera changes, and render/speech coordinate continuity.
+
+## Unified Miiverse posts — 14 October 2026
+
+Miiverse replaces the separate Plaza Journal view. Menu-bar commands, Command-J,
+plaza post bubbles, app previews, character notes and activity links all use the
+same Miiverse browser, including its communities, search, sorting and soundtrack.
+The wallpaper uses its existing floating Miiverse panel. Post links retain their
+selected note and mark local posts read without changing their visibility.
+
+The composer has an explicit Public/Private picker and defaults new posts to
+Public. Public means the existing authorized Plaza friends audience; Private
+stays on this computer. Existing private posts remain private when opened or
+edited. Drafts persist an optional visibility choice, so an unfinished private
+post stays private when resumed; older drafts default to Public. The shared core
+and Windows portable format retain this choice across export/import. Windows
+also removes its separate journal panel and routes bubbles, friends and activity
+links into Miiverse, with refresh, pending-sync status and deletion undo retained.
+
+Native checks completed with 35 passes, one opt-in visual-render check skipped,
+and no failures (`.qa/unified-miiverse-tests.log`). The 11 Windows catalog,
+portable-format and core checks passed (`.qa/unified-miiverse-windows-tests.log`),
+along with JavaScript syntax and renderer selector checks. Optimized Mac and
+shared Windows engine builds passed (`.qa/unified-miiverse-build.log`,
+`.qa/unified-miiverse-shared-engine-build.log`). The Mac build used an isolated
+scratch directory while another chat held the shared SwiftPM lock.
+
+The local app executable was updated, passed strict ad-hoc signature verification
+and was restarted. Live UI inspection confirmed the unified Miiverse browser,
+Public selected for a new post, and an available Private choice with its local
+visibility label. The empty composer was closed without submitting a post;
+Miiverse remains open for review.
+
+
+## Notification sounds preserve music — 14 October 2026
+
+The audio monitor excludes Notification Center and macOS system-sound output from music suppression. A local silent AudioServices probe confirmed Core Audio identifies the system sound service as `systemsoundserverd`. Notification Center overlays also no longer trigger the window-coverage music rule.
+
+Other apps' output must remain active in the same process for two seconds before interrupting the soundtrack. Short chimes and separated bursts do not accumulate into a pause. Microphone activity still interrupts immediately, and the existing 1.5-second quiet period, safe queue release, saved mute and playhead restoration remain. Unknown samples preserve confirmed interruptions while resetting unconfirmed output candidates. Process identity changes restart the output confirmation period.
+
+Regression checks cover notification services, repeated Discord-like chimes, sustained output, calls, unknown samples, process changes, overlays and continuous music playhead advancement.
+
+
+## Consolidated Mac-only release — 14 October 2026
+
+Version 0.21.0 (build 35) gathers today’s Mac work. Historical Windows notes above describe local experiments; Windows distribution and its release workflow remain removed from GitHub and the public website. The Mac release includes direct Discord authorization and encrypted account-scoped offline delivery. Its live outage check loaded 226 friends after direct sign-in and after a cold start with the service address unreachable. The shared service and bot have not been migrated to an always-on host or to peer-to-peer hosting. The public preview deliberately retains ad-hoc signing while Apple enrollment is pending, with an explicit preview verification path; the default Developer ID publishing guard remains active.

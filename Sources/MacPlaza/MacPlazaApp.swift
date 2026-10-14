@@ -28,50 +28,50 @@ struct MacPlazaApp: App {
         .commands {
             CommandGroup(after: .appInfo) { CheckForPlazaUpdates() }
             CommandGroup(replacing: .newItem) {
-                Button("Add Application…") { show(); model.pickApp() }.keyboardShortcut("n", modifiers: .command)
-                Button("Add Steam Game…") { present(.steamGames(nil)) }
-                Button("New Local Note…") { present(.compose(nil)) }.keyboardShortcut("n", modifiers: [.command, .shift])
+                PlazaButton("Add Application…") { show(); model.pickApp() }.keyboardShortcut("n", modifiers: .command)
+                PlazaButton("Add Steam Game…") { present(.steamGames(nil)) }
+                PlazaButton("New Miiverse Post…") { present(.compose(nil)) }.keyboardShortcut("n", modifiers: [.command, .shift])
             }
             CommandGroup(replacing: .appSettings) {
-                Button("Preferences…") { present(.preferences) }.keyboardShortcut(",", modifiers: .command)
+                PlazaButton("Preferences…") { present(.preferences) }.keyboardShortcut(",", modifiers: .command)
             }
             CommandMenu("Plaza") {
-                Button("Show Plaza") { show() }.keyboardShortcut("1", modifiers: .command)
-                Button("Change Apps") { if !model.wallpaperEnabled { show() }; model.beginChangingApps() }
+                PlazaButton("Show Plaza") { show() }.keyboardShortcut("1", modifiers: .command)
+                PlazaButton("Change Apps") { if !model.wallpaperEnabled { show() }; model.beginChangingApps() }
                 wallpaperControls
                 Divider()
-                Button("Plaza Journal") { if !model.wallpaperEnabled { show() }; model.openJournal() }.keyboardShortcut("j", modifiers: .command)
-                Button("Your Character Profile") { present(.profile(model.document.primaryAvatar)) }.keyboardShortcut("e", modifiers:[.command,.shift])
-                Button("Friends") { present(.friends) }.keyboardShortcut("f", modifiers: [.command, .shift])
-                Button("Characters") { present(.characters) }.keyboardShortcut("e", modifiers: .command)
-                Button(model.listMode ? "Show Animated Plaza" : "Show Accessible List") { show(); model.listMode.toggle() }.keyboardShortcut("l", modifiers: .command)
-                Button(model.document.preferences.pauseMotion ? "Resume Motion" : "Pause Motion") { model.mutate { $0.preferences.pauseMotion.toggle() } }.keyboardShortcut("p", modifiers: .command)
+                PlazaButton("Miiverse") { if !model.wallpaperEnabled { show() }; model.openMiiverse() }.keyboardShortcut("j", modifiers: .command)
+                PlazaButton("Your Character Profile") { present(.profile(model.document.primaryAvatar)) }.keyboardShortcut("e", modifiers:[.command,.shift])
+                PlazaButton("Friends") { present(.friends) }.keyboardShortcut("f", modifiers: [.command, .shift])
+                PlazaButton("Characters") { present(.characters) }.keyboardShortcut("e", modifiers: .command)
+                PlazaButton(model.listMode ? "Show Animated Plaza" : "Show Accessible List") { show(); model.listMode.toggle() }.keyboardShortcut("l", modifiers: .command)
+                PlazaButton(model.document.preferences.pauseMotion ? "Resume Motion" : "Pause Motion") { model.mutate { $0.preferences.pauseMotion.toggle() } }.keyboardShortcut("p", modifiers: .command)
                 Divider()
-                Button("Undo Layout Change") { model.undoLayout() }.keyboardShortcut("z", modifiers: .command)
+                PlazaButton("Undo Layout Change") { model.undoLayout() }.keyboardShortcut("z", modifiers: .command)
             }
         }
         MenuBarExtra("Mac Plaza", systemImage: "sun.max") {
-            Button("Open Plaza in Window") { show() }
+            PlazaButton("Open Plaza in Window") { show() }
             wallpaperControls
             Divider()
-            Button(model.document.preferences.pauseMotion ? "Resume Motion" : "Pause Motion") { model.mutate { $0.preferences.pauseMotion.toggle() } }
-            Button("Plaza Journal") { if !model.wallpaperEnabled { show() }; model.openJournal() }
-            Button("Friends…") { present(.friends) }
-            Button("Characters…") { present(.characters) }
-            Button("Preferences…") { present(.preferences) }
+            PlazaButton(model.document.preferences.pauseMotion ? "Resume Motion" : "Pause Motion") { model.mutate { $0.preferences.pauseMotion.toggle() } }
+            PlazaButton("Miiverse") { if !model.wallpaperEnabled { show() }; model.openMiiverse() }
+            PlazaButton("Friends…") { present(.friends) }
+            PlazaButton("Characters…") { present(.characters) }
+            PlazaButton("Preferences…") { present(.preferences) }
             CheckForPlazaUpdates()
             Divider()
-            Button("Quit Mac Plaza") { NSApp.terminate(nil) }.keyboardShortcut("q")
+            PlazaButton("Quit Mac Plaza") { NSApp.terminate(nil) }.keyboardShortcut("q")
         }
     }
     @ViewBuilder private var wallpaperControls: some View {
         Toggle("Use as Wallpaper", isOn: Binding(get: { model.wallpaperEnabled }, set: { enabled in
             if enabled { model.desktop.enable() } else { model.desktop.disable() }
         })).disabled(!model.loaded)
-        Button("Interact with Plaza") { model.desktop.interact() }.disabled(!model.loaded || model.sheet != nil)
-        Button("Return to Desktop (Escape)") { model.desktop.returnToDesktop() }.disabled(!model.desktopInteractive)
+        PlazaButton("Interact with Plaza") { model.desktop.interact() }.disabled(!model.loaded || model.sheet != nil)
+        PlazaButton("Return to Desktop (Escape)") { model.desktop.returnToDesktop() }.disabled(!model.desktopInteractive)
         if let reason = model.automaticMusicMuteReason { Text(reason) }
-        Button(model.document.preferences.ambientSound == false ? "Unmute Music" : "Mute Music") {
+        PlazaButton(model.document.preferences.ambientSound == false ? "Unmute Music" : "Mute Music") {
             model.mutate { $0.preferences.ambientSound = !($0.preferences.ambientSound ?? true) }
             model.updateAudio()
             if model.document.preferences.ambientSound == false { model.audio.stopPreview() }

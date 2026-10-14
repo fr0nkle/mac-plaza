@@ -1,0 +1,8 @@
+*
+!Dockerfile
+!requirements.txt
+!server.py
+!presence_bot.py
+!updates.py
+!downloads.py
+!public_releases.py

@@ -15,7 +15,7 @@ struct SharedNoteInteractions: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             HStack {
-                Button {
+                PlazaButton {
                     guard let thread else { return }
                     Task {
                         if !(await model.social.like(noteID: thread.id, liked: !(thread.liked ?? false))) {
@@ -26,14 +26,20 @@ struct SharedNoteInteractions: View {
                     Label("\(thread?.liked == true ? "Liked" : "Like") (\(thread?.likeCount ?? 0))",
                           systemImage: thread?.liked == true ? "heart.fill" : "heart")
                 }.foregroundStyle(thread?.liked == true ? Color.pink : PlazaStyle.teal)
-                Button("\(showReplies ? "Reply" : "Replies") (\(thread?.replies?.count ?? 0))") {
-                    if showReplies { replying = true } else { model.openJournal(note: note.id) }
+                PlazaButton("\(showReplies ? "Reply" : "Replies") (\(thread?.replies?.count ?? 0))") {
+                    if showReplies { replying = true } else { model.openMiiverse(note: note.id) }
                 }
                     .disabled((thread?.replies?.count ?? 0) >= 50)
                 Spacer()
                 if thread == nil { Text(model.social.connected ? "Syncing public thread…" : "Connect to Plaza to interact").foregroundStyle(.secondary) }
             }.font(.caption).buttonStyle(.borderless).disabled(thread == nil || busy)
             if let error { Text(error).font(.caption).foregroundStyle(.red) }
+            if social.pendingInteractionCount > 0 {
+                Text("Saved on this Mac · \(social.pendingInteractionCount) change(s) waiting for delivery.")
+                    .font(.caption).foregroundStyle(.secondary)
+            } else if !social.connected, thread != nil {
+                Text("Saved discussion · likes and replies will queue on this Mac.").font(.caption).foregroundStyle(.secondary)
+            }
             if showReplies {
             ForEach(thread?.replies ?? []) { reply in
                 HStack(alignment: .top, spacing: 10) {
@@ -44,10 +50,10 @@ struct SharedNoteInteractions: View {
                     }
                     Spacer()
                     if reply.ownerID == model.social.account?.id {
-                        Button("Edit") { editing = reply }.disabled(busy)
+                        PlazaButton("Edit") { editing = reply }.disabled(busy)
                     }
                     if reply.ownerID == model.social.account?.id || model.isOwnNote(note) {
-                        Button(role: .destructive) {
+                        PlazaButton(role: .destructive) {
                             guard let thread else { return }
                             Task {
                                 if !(await model.social.deleteReply(noteID: thread.id, replyID: reply.id)) {

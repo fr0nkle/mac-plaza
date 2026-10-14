@@ -2,6 +2,20 @@ import XCTest
 @testable import PlazaCore
 
 final class MiiverseCatalogTests: XCTestCase {
+    func testNewPostDraftsDefaultToPublicAndKeepAnExplicitPrivateChoice() throws {
+        XCTAssertTrue(NoteDraft().isPublic)
+        let oldDraft = try JSONDecoder().decode(NoteDraft.self, from: Data(#"{"text":"Unfinished","drawing":[],"description":""}"#.utf8))
+        XCTAssertTrue(oldDraft.isPublic)
+        var draft=oldDraft;draft.shared=false
+        let restored=try JSONDecoder().decode(NoteDraft.self, from: JSONEncoder().encode(draft))
+        XCTAssertFalse(restored.isPublic)
+        XCTAssertEqual(restored,draft)
+        var oldPrivate=LocalNote(authorID:UUID(),author:"You",appID:nil,text:"Keep private")
+        XCTAssertEqual(oldPrivate.shared,true)
+        oldPrivate.shared=nil
+        let restoredNote=try JSONDecoder().decode(LocalNote.self,from:JSONEncoder().encode(oldPrivate))
+        XCTAssertNil(restoredNote.shared,"Existing notes without a public flag keep their original private visibility")
+    }
     func testAllNotesPreservesUnknownAppTopicsAndDeduplicatesOwnSyncedNotes() {
         let account = UUID().uuidString, friend = UUID().uuidString
         let author = Avatar(name: "You"), visitor = Avatar(name: "Friend")

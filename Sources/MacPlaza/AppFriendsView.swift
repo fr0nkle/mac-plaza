@@ -17,7 +17,7 @@ struct AppFriendsView: View {
                         Divider().opacity(0.5)
                         Text("Friends around this app").font(.system(size: 12, weight: .semibold))
                         ForEach(visitors) { visitor in
-                            Button {
+                            PlazaButton {
                                 close(); model.openCharacter(visitor.friend.avatar)
                             } label: {
                                 HStack(spacing: 10) {

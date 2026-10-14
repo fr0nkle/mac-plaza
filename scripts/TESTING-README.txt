@@ -1,4 +1,4 @@
-MAC PLAZA — PRIVATE FRIEND TEST
+MAC PLAZA 0.21 — TESTING PREVIEW
 
 Requires an Apple silicon Mac and macOS 15 or later.
 
@@ -19,9 +19,10 @@ Updates: automatic checks begin after Discord sign-in. Preferences lets you
 change automatic download/install. The Mac Plaza menu also has Check for
 Updates. Updates preserve local Miis, journals and settings.
 
-This test service is hosted on the developer's Mac. Sign-in, Mii sharing,
-custom status/game lookup, and updates need that Mac awake with the service
-and Tailscale Funnel running. The connection address remains the same when
+Direct Discord sign-in, friends and availability run on your own Mac.
+Shared Mii/note delivery, bot status lookup and in-app updates still use
+the shared service. Saved discussions remain readable while it is offline;
+new likes, replies and profile changes retry when it returns. The connection address remains the same when
 the tunnel restarts. Your friend does not need Tailscale installed.
 The local plaza continues working offline.
 

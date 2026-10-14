@@ -8,12 +8,51 @@ struct DiscordSDKCredentials: Codable {
     var accessToken: String
     var refreshToken: String
     var expiresAt: Double
+    var localAuthorization: Bool?
+    var displayName: String?
     func validated() throws -> Self {
         guard let app = UInt64(applicationID), app > 0, let user = UInt64(discordID), user > 0,
               (1...4096).contains(accessToken.count), (1...4096).contains(refreshToken.count),
               expiresAt.isFinite, expiresAt > 0 else { throw PlazaError.invalid("Invalid Discord friends authorization.") }
         return self
     }
+}
+
+@MainActor
+final class DiscordLocalAuthorization {
+    private var pending: CheckedContinuation<DiscordSDKCredentials, Error>?
+    private var timer: Timer?
+    private var deadline = Date()
+    func authorize(applicationID: String, expectedUserID: String? = nil, refreshToken: String? = nil) async throws -> DiscordSDKCredentials {
+        guard let app = UInt64(applicationID), app > 0, pending == nil else {
+            throw PlazaError.invalid("Enter the Discord Application ID and finish any pending sign-in first.")
+        }
+        return try await withCheckedThrowingContinuation { continuation in
+            pending = continuation; deadline = Date().addingTimeInterval(180)
+            MPDiscordAuthorizeLocal(app, expectedUserID.flatMap(UInt64.init) ?? 0, refreshToken ?? "")
+            timer = Timer.scheduledTimer(withTimeInterval: 0.1, repeats: true) { [weak self] _ in
+                Task { @MainActor in self?.pump() }
+            }
+        }
+    }
+    private func pump() {
+        MPDiscordPump()
+        if let pointer = MPDiscordTakeAuthorizationResult() {
+            let data = Data(String(cString: pointer).utf8); MPDiscordFreeString(pointer)
+            do {
+                struct Failure: Decodable { var error: String }
+                if let failure = try? JSONDecoder().decode(Failure.self, from: data) { throw PlazaError.invalid(failure.error) }
+                finish(.success(try JSONDecoder().decode(DiscordSDKCredentials.self, from: data).validated()))
+            } catch { finish(.failure(error)) }
+        } else if Date() >= deadline { finish(.failure(PlazaError.invalid("Discord sign-in timed out. Try again."))) }
+    }
+    private func finish(_ result: Result<DiscordSDKCredentials, Error>) {
+        let continuation = pending; pending = nil
+        timer?.invalidate(); timer = nil; MPDiscordCancelAuthorization()
+        continuation?.resume(with: result)
+    }
+    func cancel() { finish(.failure(CancellationError())) }
+    deinit { timer?.invalidate(); pending?.resume(throwing: CancellationError()) }
 }
 
 @MainActor

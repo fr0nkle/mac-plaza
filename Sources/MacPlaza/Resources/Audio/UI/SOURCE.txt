@@ -1,0 +1,5 @@
+click.wav: 00252 - WAV_252_GUESS_BANK_MEN.wav
+SHA-256: a09116db18720c2be0266de553ef4396962976425a5861ea728d41e10235725b
+back.wav: 00253 - WAV_253_GUESS_BANK_MEN.wav
+SHA-256: c1b7f9625cc1348a407e00541f1a9f60e4aca0dfd4ab372c011ae6c78b7aa317
+User-supplied Wii U menu recordings, 14 October 2026. Original PCM files copied byte-for-byte; no pitch, speed or envelope changes. Numbered source files contain no event labels; the short rising/falling pair is assigned to click/back. Rights remain with Nintendo and the original rights holders. Used in the local app; omitted from default distribution and source archives.

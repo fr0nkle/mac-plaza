@@ -58,7 +58,7 @@ struct UpdateSettingsView: View {
             Toggle("Automatically check for updates", isOn: Binding(get: { updater.automaticChecks }, set: updater.setAutomaticChecks))
             Toggle("Automatically download and install updates", isOn: Binding(get: { updater.automaticDownloads }, set: updater.setAutomaticDownloads))
                 .disabled(!updater.automaticChecks)
-            Button("Check for Updates…", action: updater.check).disabled(!updater.canCheck)
+            PlazaButton("Check for Updates…", action: updater.check).disabled(!updater.canCheck)
             Text(updater.signedIn ? "Updates come from the private testing channel and are verified before installation. Your Miis and settings stay on this Mac." : "Connect Discord to enable private testing updates.")
                 .font(.caption).foregroundStyle(.secondary)
         }
@@ -67,5 +67,5 @@ struct UpdateSettingsView: View {
 
 struct CheckForPlazaUpdates: View {
     @ObservedObject private var updater = PlazaUpdater.shared
-    var body: some View { Button("Check for Updates…", action: updater.check).disabled(!updater.canCheck) }
+    var body: some View { PlazaButton("Check for Updates…", action: updater.check).disabled(!updater.canCheck) }
 }

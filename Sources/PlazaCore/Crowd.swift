@@ -30,6 +30,7 @@ public struct CrowdWalker: Equatable, Sendable {
     public var activityDuration=0.0
     public var activityDelay=0.0
     public var exchangeDuration=0.0
+    public var exchangeGreeting=0.0
     public var stuck=0.0
     public var path:[CrowdPoint]=[]
     public var originalSocialAction=25
@@ -46,10 +47,54 @@ public struct CrowdWalker: Equatable, Sendable {
 public struct CrowdSimulation: Sendable {
     public private(set) var walkers:[CrowdWalker]=[]
     public var islands:[CrowdPoint]=[] {didSet {buildNavigation()}}
+    /// The host supplies the visible ground plus a body-width offscreen margin.
+    /// Opt-in keeps other hosts and original-controller fixtures unchanged.
+    public var endlessWandering=false
+    public private(set) var navigationBounds=CrowdNavigationBounds()
+    public mutating func setNavigationBounds(_ bounds:CrowdNavigationBounds) {
+        guard bounds != navigationBounds else{return}
+        navigationBounds=bounds;buildNavigation()
+        for i in walkers.indices where walkers[i].partner == nil && i != arrivalIndex {
+            // Camera changes update routes without teleporting existing actors.
+            walkers[i].target=bounds.clamped(walkers[i].target)
+            walkers[i].path=route(from:walkers[i].position,to:walkers[i].target)
+        }
+    }
     public var worldAspect=1.0
     public var worldWidth=24.0
     public var minimumSpacing=0.058
     public var groupsBelowIslands=false
+    public private(set) var primaryAvatarID:UUID?
+    private enum CenterVisitStage:Sendable {case approach,hello,chat,goodbye,returning}
+    private struct CenterVisit:Sendable {
+        var host:UUID;var guest:UUID;var home:Int;var goal:CrowdPoint
+        var began:Double;var stage:CenterVisitStage = .approach
+        var didGreet=false;var waveBegan:[UUID:Double]=[:];var replyStarted=false
+    }
+    private var centerVisit:CenterVisit?
+    private var nextCenterVisit=18.0
+    private var nextPrimaryOuting=120.0
+    private var lastCenterGuest:UUID?
+    // Internal observations for native continuity/behavior verification.
+    var centerGuestID:UUID? {centerVisit?.guest}
+    var centerGuestReturning:Bool {centerVisit?.stage == .returning}
+    var centerGuestGreeting:Bool {centerVisit?.stage == .hello}
+    var centerGuestFarewell:Bool {centerVisit?.stage == .goodbye}
+    private(set) var completedCenterChats=0
+    /// The primary Mii has a home in the center, independent of roster order.
+    /// Changing it updates routes without moving actors or breaking social pairs.
+    public mutating func setPrimaryAvatar(_ identity:UUID?) {
+        guard primaryAvatarID != identity else{return}
+        let previous=primaryAvatarID;primaryAvatarID=identity;nextPrimaryOuting=elapsed+120
+        if usesOriginalControllers {synchronizeOriginalGroups()}
+        guard placed,entranceElapsed == nil else{return}
+        for i in walkers.indices where roster.indices.contains(i) && (roster[i]==identity || roster[i]==previous) {
+            guard walkers[i].partner == nil,i != arrivalIndex else{continue}
+            let goal=isPrimary(i) ? centerDestination(i):destination(i)
+            walkers[i].target=goal;walkers[i].path=route(from:walkers[i].position,to:goal)
+            walkers[i].wait=0
+        }
+    }
     public private(set) var gatheringIslands: [Int: Int] = [:]
     /// Host-supplied app affinity. Retarget walkers without moving their current position.
     public mutating func setGatheringIslands(_ assignments: [Int: Int]) {
@@ -59,6 +104,7 @@ public struct CrowdSimulation: Sendable {
         if usesOriginalControllers {synchronizeOriginalGroups()}
         if placed {
             for i in changed where walkers.indices.contains(i) {
+                if isPrimary(i) {continue}
                 if walkers[i].partner == nil {
                     walkers[i].target = destination(i)
                     walkers[i].path = route(from: walkers[i].position, to: walkers[i].target)
@@ -80,6 +126,7 @@ public struct CrowdSimulation: Sendable {
             walkers[i].gaitScale=min(1.30,max(0.50,values[i]))
         }
     }
+    private(set) var visitingIslands:[UInt64:Int]=[:]
     private var navigation:[CrowdPoint]=[]
     private var navigationEdges:[[Double]]=[]
     private var placed=false
@@ -220,6 +267,7 @@ public struct CrowdSimulation: Sendable {
         }
         arrivalIndex=arriving.flatMap {indices[$0]}
         if arrivalIndex == nil {arrivalElapsed=nil}
+        if let visit=centerVisit,indices[visit.guest] == nil {finishCenterWaves();centerVisit=nil;nextCenterVisit=elapsed+30}
         if retainedActors.count>1000 {
             for id in retainedActors.keys.sorted(by:{$0.uuidString<$1.uuidString}) where indices[id] == nil {
                 retainedActors.removeValue(forKey:id)
@@ -243,7 +291,11 @@ public struct CrowdSimulation: Sendable {
         }
         return idle
     }
-    private mutating func destinationWait(_ i:Int)->Double {
+    private mutating func destinationWait(_ i:Int,at point:CrowdPoint?=nil)->Double {
+        if reservedForCenterChat(i) {return 4}
+        if isPrimary(i) {
+            return nearCenter(point ?? walkers[i].target) ? 22+random.unit()*20:7+random.unit()*9
+        }
         if usesWalkways(i) { return 2+random.unit()*7 }
         // Original destination refresh, 0x0218a8f8. Source destination search
         // uses native world bounds; visibility routes adapt Mac controls.
@@ -346,13 +398,17 @@ public struct CrowdSimulation: Sendable {
         if blocked(a) {return obstacleDepth(b)<obstacleDepth(a)-1e-10}
         return !blocked(b) && clear(a,b)
     }
+    private func withinOrReturning(_ from:CrowdPoint,_ to:CrowdPoint)->Bool {
+        navigationBounds.contains(to) || (!navigationBounds.contains(from) &&
+            distance(to,navigationBounds.clamped(to)) < distance(from,navigationBounds.clamped(from)))
+    }
     private func escapeDestination(_ p:CrowdPoint)->CrowdPoint? {
         var candidates:[CrowdPoint]=[]
         for c in islands where abs(p.x-c.x)<islandHalfWidth && p.y>c.y-islandTopClearance && p.y<c.y+islandBottomClearance {
             candidates += [CrowdPoint(c.x-islandHalfWidth-0.01,p.y),CrowdPoint(c.x+islandHalfWidth+0.01,p.y),
                 CrowdPoint(p.x,c.y-islandTopClearance-0.01),CrowdPoint(p.x,c.y+islandBottomClearance+0.01)]
         }
-        return candidates.filter {(0.05...0.95).contains($0.x) && (0.20...0.95).contains($0.y) && !blocked($0)}
+        return candidates.filter {navigationBounds.contains($0) && !blocked($0)}
             .min {distance(p,$0)<distance(p,$1)}
     }
     private var aspect:Double {min(4,max(0.25,worldAspect))}
@@ -394,23 +450,33 @@ public struct CrowdSimulation: Sendable {
         navigation=[]
         for c in islands {for x in [c.x-islandHalfWidth-0.013,c.x+islandHalfWidth+0.013] {for y in [c.y-islandTopClearance-0.013,c.y+islandBottomClearance+0.013] {
             let p=CrowdPoint(x,y)
-            if (0.05...0.95).contains(x) && (0.20...0.95).contains(y) && !blocked(p) {navigation.append(p)}
+            if navigationBounds.contains(p) && !blocked(p) {navigation.append(p)}
         }}}
-        navigationEdges=navigation.map {a in navigation.map {b in clear(a,b) ? distance(a,b):Double.infinity}}
+        if endlessWandering {
+            // Paired portals connect the left and right edges at the same depth.
+            // They are ordinary visibility nodes around app obstacles.
+            for row in 0...12 {
+                let y=navigationBounds.minY+(navigationBounds.maxY-navigationBounds.minY)*Double(row)/12
+                let left=CrowdPoint(navigationBounds.minX,y),right=CrowdPoint(navigationBounds.maxX,y)
+                if !blocked(left) && !blocked(right) {navigation += [left,right]}
+            }
+        }
+        navigationEdges=navigation.map {a in navigation.map {b in portalPair(a,b) ? 0:clear(a,b) ? distance(a,b):Double.infinity}}
         // Initial placement is spaced around app groups, not a synchronized march
         // from random positions. Subsequent routing never relocates a walker.
         if !placed && !islands.isEmpty && !walkers.isEmpty {
             for i in walkers.indices {
                 let p=destination(i);walkers[i].position=p;walkers[i].target=p
                 walkers[i].angle=i<localCount ? (random.unit()-0.5)*0.6:random.unit()*2 * .pi
-                if usesWalkways(i) {walkers[i].wait=2+random.unit()*7}
+                if isPrimary(i) {walkers[i].wait=destinationWait(i,at:p)}
+                else if usesWalkways(i) {walkers[i].wait=2+random.unit()*7}
             }
             placed=true
         }
     }
     /// Small visibility graph, evaluated only when choosing a new destination.
-    private func route(from start:CrowdPoint,to end:CrowdPoint) -> [CrowdPoint] {
-        if clear(start,end) {return [end]}
+    func route(from start:CrowdPoint,to end:CrowdPoint) -> [CrowdPoint] {
+        if !endlessWandering && clear(start,end) {return [end]}
         let points=[start,end]+navigation,n=points.count
         var costs=Array(repeating:Double.infinity,count:n),previous=Array(repeating:-1,count:n),visited=Array(repeating:false,count:n);costs[0]=0
         for _ in 0..<n {
@@ -425,6 +491,25 @@ public struct CrowdSimulation: Sendable {
         var path:[CrowdPoint]=[],i=1
         while i>0 {path.insert(points[i],at:0);i=previous[i];if i<0 {return []}}
         return path
+    }
+    private func portalPair(_ a:CrowdPoint,_ b:CrowdPoint)->Bool {
+        endlessWandering && abs(a.y-b.y)<1e-9 &&
+            ((abs(a.x-navigationBounds.minX)<1e-9 && abs(b.x-navigationBounds.maxX)<1e-9) ||
+             (abs(a.x-navigationBounds.maxX)<1e-9 && abs(b.x-navigationBounds.minX)<1e-9))
+    }
+    private mutating func crossEdgeIfReady(_ i:Int) {
+        let w=walkers[i]
+        guard w.partner == nil,w.path.count>=2,portalPair(w.path[0],w.path[1]),
+              distance(w.position,w.path[0]) < (usesOriginalControllers ? 6/sourceWidth:0.004) else{return}
+        let entry=w.path[1].x+(w.path[1].x == navigationBounds.minX ? 0.0001:-0.0001)
+        let dx=entry-w.position.x
+        walkers[i].position.x=entry
+        walkers[i].path.removeFirst(2)
+        // Shift the locomotion filter with the actor, preserving walking speed,
+        // heading and animation phase across the seam.
+        walkers[i].originalMotion.target.x+=Float(dx*sourceWidth)
+        walkers[i].originalMotion.displacement = .init(0,0)
+        if walkers[i].path.isEmpty {walkers[i].target=walkers[i].position}
     }
     // Mix the visitor index so roaming roles do not repeat at the same icons
     // when their count shares a divisor with the crowd's distribution.
@@ -442,7 +527,7 @@ public struct CrowdSimulation: Sendable {
         return value ^ (value >> 27)
     }
     private func usesWalkways(_ i:Int)->Bool {
-        guard groupsBelowIslands,gatheringIslands[i]==nil else{return false}
+        guard groupsBelowIslands,!isPrimary(i),!isCenterGuest(i),gatheringIslands[i]==nil else{return false}
         return actorPattern(i)%100<15
     }
     private func groupCenter(_ slot:Int)->CrowdPoint {
@@ -469,12 +554,54 @@ public struct CrowdSimulation: Sendable {
         p.y+=(Double((ordinal >> 20)%101)/100-0.5)*0.0036*aspect
         return p
     }
+    private func isPrimary(_ i:Int)->Bool {
+        guard let primaryAvatarID,roster.indices.contains(i) else{return false}
+        return roster[i]==primaryAvatarID
+    }
+    private func nearCenter(_ p:CrowdPoint)->Bool {
+        hypot((p.x-PlazaArrival.center.x)/0.10,(p.y-PlazaArrival.center.y)/0.085)<=1
+    }
+    private mutating func centerDestination(_ i:Int)->CrowdPoint {
+        var best=walkers[i].position,bestScore = -Double.infinity
+        // Prefer open spots in a loose central patch, with the same separation
+        // and obstacle checks used by the other visitors.
+        for attempt in 0..<160 {
+            let radius=sqrt(random.unit()),angle=random.unit()*2 * .pi
+            let spread=attempt<80 ? 1.0:2.5
+            let p=CrowdPoint(PlazaArrival.center.x+cos(angle)*radius*0.065*spread,
+                             PlazaArrival.center.y+sin(angle)*radius*0.05*spread)
+            guard validGroupPoint(p),!placed || blocked(walkers[i].position) || !route(from:walkers[i].position,to:p).isEmpty else{continue}
+            var spacing=0.12
+            for j in walkers.indices where j != i {
+                spacing=min(spacing,distance(p,walkers[j].position),distance(p,walkers[j].target))
+            }
+            let score=min(spacing,minimumSpacing)*8-hypot(p.x-PlazaArrival.center.x,p.y-PlazaArrival.center.y)*0.4
+            if score>bestScore {best=p;bestScore=score}
+            if attempt<80 && spacing>minimumSpacing*0.91 {return p}
+        }
+        return best
+    }
     private mutating func destination(_ i:Int) -> CrowdPoint {
         let current=walkers[i].position
+        if let visit=centerVisit {
+            if isCenterGuest(i) && visit.stage == .approach {return visit.goal}
+            if reservedForCenterChat(i) {return current}
+        }
+        let primary=isPrimary(i)
+        // Every outing ends with a return. While home, spend most destination
+        // choices nearby and occasionally visit an app gathering.
+        if primary && (!placed || !nearCenter(current) || (elapsed<nextPrimaryOuting && random.unit()<0.75)) {return centerDestination(i)}
+        if primary {nextPrimaryOuting=elapsed+120+random.unit()*90}
+        if endlessWandering,placed,!primary,!isCenterGuest(i),gatheringIslands[i] == nil,
+           !usesWalkways(i),islands.count>1,random.unit()<0.24 {
+            let home=visitingIslands[actorOrdinal(i)] ?? Int(actorOrdinal(i)%UInt64(islands.count))
+            visitingIslands[actorOrdinal(i)]=(home+1+Int(random.unit()*Double(islands.count-1)))%islands.count
+            if usesOriginalControllers {synchronizeOriginalGroups()}
+        }
         if usesOriginalControllers,let p=originalGroupTarget(i),!blocked(p) {return p}
         let gathering = gatheringIslands[i].flatMap { islands.indices.contains($0) ? $0 : nil }
         let roaming=usesWalkways(i)
-        if gathering == nil && usesOriginalControllers && !groupsBelowIslands {
+        if !primary && gathering == nil && usesOriginalControllers && !groupsBelowIslands {
             let circles=islands.map { c in OriginalLounge.NavigationObstacle(
                 center:sourcePoint(CrowdPoint(c.x,c.y+(islandBottomClearance-islandTopClearance)/2)),radius:Float(max(islandHalfWidth,(islandTopClearance+islandBottomClearance)/2/aspect)*sourceWidth)) }
             // Source item circles guide destination selection. Mac controls use
@@ -483,7 +610,7 @@ public struct CrowdSimulation: Sendable {
                 if let chosen=OriginalLounge.destination(from:sourcePoint(current),role:i<localCount ? 1:0,
                     halfWidth:Float(0.45*sourceWidth),halfDepth:Float(0.375*sourceWidth/aspect),obstacles:circles,random:&originalRandom) {
                     let p=hostPoint(chosen)
-                    if (0.05...0.95).contains(p.x),(0.20...0.95).contains(p.y),!blocked(p) {return p}
+                    if navigationBounds.contains(p),!blocked(p) {return p}
                 }
             }
             if !blocked(current) {return current}
@@ -491,14 +618,18 @@ public struct CrowdSimulation: Sendable {
         }
         var best=current,bestScore = -Double.infinity
         let wander=gathering == nil && !groupsBelowIslands && placed && random.unit()<0.16
-        let home=gathering ?? Int(actorOrdinal(i)%UInt64(max(1,islands.count)))
+        let returningHome=isCenterGuest(i) && centerVisit?.stage == .returning ? centerVisit?.home:nil
+        let home=returningHome ?? gathering ?? visitingIslands[actorOrdinal(i)] ?? (primary ? Int(random.unit()*Double(max(1,islands.count))):Int(actorOrdinal(i)%UInt64(max(1,islands.count))))
         let slot=wander && !islands.isEmpty ? Int(random.unit()*Double(islands.count)):home
         for _ in 0..<(roaming ? 120:60) {
             var p:CrowdPoint
             if roaming {
                 // Open ground between gatherings, rather than another tiny
                 // app circle. Exclude group cores so the lanes remain visible.
-                if islands.count>1 {
+                if endlessWandering && random.unit()<0.65 {
+                    p=CrowdPoint(navigationBounds.minX+random.unit()*(navigationBounds.maxX-navigationBounds.minX),
+                                 navigationBounds.minY+random.unit()*(navigationBounds.maxY-navigationBounds.minY))
+                } else if islands.count>1 {
                     let a=Int(random.unit()*Double(islands.count))
                     let b=(a+1+Int(random.unit()*Double(islands.count-1)))%islands.count
                     let from=groupCenter(a),to=groupCenter(b),t=0.25+random.unit()*0.5
@@ -507,33 +638,37 @@ public struct CrowdSimulation: Sendable {
                 } else {p=CrowdPoint(0.07+random.unit()*0.86,0.23+random.unit()*0.69)}
                 if islands.indices.contains(where:{distance(p,groupCenter($0))<0.065}) {continue}
                 if placed && distance(current,p)<0.08 {continue}
-            } else if gathering == nil && i<localCount && !groupsBelowIslands && random.unit()<0.75 {
+            } else if !primary && gathering == nil && i<localCount && !groupsBelowIslands && random.unit()<0.75 {
                 p=CrowdPoint(0.34+random.unit()*0.32,0.71+random.unit()*0.17)
             }
             else if !islands.isEmpty {
                 let c=islands[min(islands.count-1,slot)],theta=random.unit()*2 * .pi
                 if groupsBelowIslands {
                     let center=groupCenter(min(islands.count-1,slot)),spread=groupSpread(slot)
-                    let radius=sqrt(random.unit()),y=sin(theta)*radius*spread.y
-                    p=CrowdPoint(center.x+cos(theta)*radius*spread.x+y*sin(Double(slot)*1.7)*0.3,center.y+y)
+                    let approach=primary && !usesOriginalControllers
+                    let heading=approach ? atan2((current.y-center.y)/spread.y,(current.x-center.x)/spread.x)+(random.unit()-0.5)*1.8:theta
+                    let radius=approach ? 0.85+random.unit()*0.2:sqrt(random.unit()),y=sin(heading)*radius*spread.y
+                    p=CrowdPoint(center.x+cos(heading)*radius*spread.x+y*sin(Double(slot)*1.7)*0.3,center.y+y)
                 } else {
                     p=CrowdPoint(c.x+cos(theta)*(0.035+random.unit()*0.13),c.y+(c.y<0.67 ? 0.29:-0.17)+sin(theta)*(0.025+random.unit()*0.09))
                 }
-            } else {p=CrowdPoint(0.10+random.unit()*0.8,0.25+random.unit()*0.65)}
-            guard (0.05...0.95).contains(p.x),(0.20...0.95).contains(p.y),!blocked(p) else{continue}
+            } else {p=CrowdPoint(navigationBounds.minX+random.unit()*(navigationBounds.maxX-navigationBounds.minX),
+                                     navigationBounds.minY+random.unit()*(navigationBounds.maxY-navigationBounds.minY))}
+            guard navigationBounds.contains(p),!blocked(p) else{continue}
             var spacing=0.12
             for j in walkers.indices where j != i {
                 spacing=min(spacing,distance(p,walkers[j].position),distance(p,walkers[j].target))
             }
-            let score=min(spacing,minimumSpacing)*8-(placed ? distance(current,p)*0.07:0)
+            let requiredSpacing=primary && !usesOriginalControllers ? max(minimumSpacing,0.028):minimumSpacing
+            let score=min(spacing,requiredSpacing)*8-(placed ? distance(current,p)*0.07:0)
             if score>bestScore {best=p;bestScore=score}
-            if spacing>minimumSpacing*0.91 {return p}
+            if spacing>requiredSpacing*0.91 {return p}
         }
         // Short windows can leave no room directly beneath a foreground tile.
         // Recover into an open walkway instead of returning a blocked origin.
         if !bestScore.isFinite {
             for _ in 0..<256 {
-                let p=CrowdPoint(0.05+random.unit()*0.90,0.20+random.unit()*0.75)
+                let p=CrowdPoint(navigationBounds.minX+random.unit()*(navigationBounds.maxX-navigationBounds.minX),navigationBounds.minY+random.unit()*(navigationBounds.maxY-navigationBounds.minY))
                 if !blocked(p) { return p }
             }
         }
@@ -616,13 +751,13 @@ public struct CrowdSimulation: Sendable {
             canStart:originalMayWalk(i),animation:player.animation,
             animationComplete:player.complete(catalog) && player.blendWeight>=1,random:&originalRandom)
         if originalMayWalk(i) && w.originalMotion.state == .rest {
-            if !w.path.isEmpty {w.path.removeFirst()}
+            if !w.path.isEmpty && !(w.path.count>=2 && portalPair(w.path[0],w.path[1])) {w.path.removeFirst()}
             if w.path.isEmpty {w.target=w.position}
         }
         if delta.x != 0 || delta.z != 0 {
             turn(&w,toward:Double(atan2(w.originalMotion.direction.x,w.originalMotion.direction.z)),dt:dt,gain:0.2,limit:0.4,fallbackRate:3.5)
             let next=hostPoint(.init(position.x+delta.x,position.z+delta.z))
-            if traversable(w.position,next),(0.05...0.95).contains(next.x),(0.20...0.95).contains(next.y) {
+            if traversable(w.position,next),withinOrReturning(w.position,next) {
                 w.phase+=hypot(Double(delta.x),Double(delta.z))/40/(max(0.05,strideLength)*w.gaitScale)*2 * .pi
                 w.position=next;w.stuck=0
                 let newForward=OriginalLounge.GroundPoint(Float(sin(w.angle)),Float(cos(w.angle)))
@@ -668,7 +803,7 @@ public struct CrowdSimulation: Sendable {
             let move=collision.integrate(contact,opposed:opposed,forward:inputs[i].forward,
                 stature:Float(walkers[i].gaitScale),blocked:inputs[i].restrictions & 2 != 0)
             let next=hostPoint(.init(p.x+move.x,p.z+move.z))
-            if move != .init(0,0),traversable(walkers[i].position,next),(0.05...0.95).contains(next.x),(0.20...0.95).contains(next.y) {walkers[i].position=next}
+            if move != .init(0,0),traversable(walkers[i].position,next),withinOrReturning(walkers[i].position,next) {walkers[i].position=next}
             walkers[i].originalMotion.collision=collision
             if let j=dominant,walkers[i].originalMotion.state == .rest,walkers[i].path.isEmpty,
                walkers[i].partner==nil,!(81...84).contains(inputs[i].animation),!(34...45).contains(inputs[i].animation),
@@ -687,8 +822,10 @@ public struct CrowdSimulation: Sendable {
         }
     }
     private func groupSlot(_ i:Int)->Int? {
-        guard !islands.isEmpty else{return nil}
+        guard !islands.isEmpty,!isPrimary(i) else{return nil}
+        if let visit=centerVisit,isCenterGuest(i) {return visit.stage == .returning && islands.indices.contains(visit.home) ? visit.home:nil}
         if let g=gatheringIslands[i],islands.indices.contains(g) {return g}
+        if endlessWandering,let g=visitingIslands[actorOrdinal(i)],islands.indices.contains(g) {return g}
         return groupsBelowIslands && !usesWalkways(i) ? Int(actorOrdinal(i)%UInt64(islands.count)):nil
     }
     private func originalGroupTarget(_ i:Int)->CrowdPoint? {
@@ -697,7 +834,7 @@ public struct CrowdSimulation: Sendable {
         return validGroupPoint(p) && (!groupsBelowIslands || insideGathering(p,slot:g)) ? p:nil
     }
     private func validGroupPoint(_ p:CrowdPoint)->Bool {
-        (0.05...0.95).contains(p.x) && (0.20...0.95).contains(p.y) && !blocked(p)
+        navigationBounds.contains(p) && !blocked(p)
     }
     /// The 397-node databases retain occupancy across layout and roster updates.
     /// Admission, app membership and one-group-per-tick scheduling are Mac host
@@ -796,9 +933,227 @@ public struct CrowdSimulation: Sendable {
         }
         _=OriginalLounge.groupNeighbor(slots:slots,random:&originalRandom)
     }
+    private func isCenterGuest(_ i:Int)->Bool {
+        guard let visit=centerVisit,roster.indices.contains(i) else{return false}
+        return roster[i]==visit.guest
+    }
+    private func reservedForCenterChat(_ i:Int)->Bool {
+        guard let visit=centerVisit,[.approach,.hello,.goodbye].contains(visit.stage),roster.indices.contains(i) else{return false}
+        return roster[i]==visit.guest || roster[i]==visit.host
+    }
+    private func centerWavePartner(_ i:Int)->Int? {
+        guard let visit=centerVisit,centerGuestGreeting || centerGuestFarewell,roster.indices.contains(i) else{return nil}
+        if roster[i]==visit.guest {return roster.firstIndex(of:visit.host)}
+        if roster[i]==visit.host {return roster.firstIndex(of:visit.guest)}
+        return nil
+    }
+    private func centerWaveParticipant(_ i:Int)->Bool {
+        centerWavePartner(i) != nil && (isCenterGuest(i) || centerVisit?.replyStarted == true)
+    }
+    private var centerWaveLeadDuration:Double {
+        guard let catalog=originalCatalog,let loop=catalog.clip(animation:110) else{return timing.wave}
+        let entry=catalog.clip(animation:110,stage:.entrance).map {Double(catalog.clips[$0].frames)} ?? 0
+        return (entry+Double(catalog.clips[loop].frames)*2+5)/controllerTicksPerSecond
+    }
+    private func centerWaveShouldPlay(_ i:Int)->Bool {
+        guard let visit=centerVisit,centerWaveParticipant(i) else{return false}
+        return visit.waveBegan[roster[i]].map {elapsed-$0<centerWaveLeadDuration} ?? true
+    }
+    private mutating func finishCenterWaves() {
+        guard let visit=centerVisit,centerGuestGreeting || centerGuestFarewell else{return}
+        for id in [visit.guest,visit.host] {
+            guard let i=roster.firstIndex(of:id) else{continue}
+            walkers[i].greeting=0;walkers[i].activity = .rest;walkers[i].state=0
+            walkers[i].activityTime=0;walkers[i].activityDuration=0
+        }
+    }
+    private mutating func startCenterWave(_ i:Int) {
+        if !usesOriginalControllers {centerVisit?.waveBegan[roster[i]]=elapsed}
+        walkers[i].path=[];walkers[i].target=walkers[i].position
+        walkers[i].speed=0;walkers[i].originalMotion.state = .rest
+        walkers[i].originalMotion.walking=false;walkers[i].originalMotion.speed=0
+        walkers[i].activity = .wave;walkers[i].activityTime=0
+        walkers[i].animationTime=0;walkers[i].activityDuration=timing.wave
+        walkers[i].greeting=1;walkers[i].state=3;walkers[i].wait=4
+    }
+    private mutating func beginCenterWave(_ stage:CenterVisitStage) {
+        guard var visit=centerVisit,let guest=roster.firstIndex(of:visit.guest) else{return}
+        visit.stage=stage;visit.waveBegan=[:];visit.replyStarted=false
+        centerVisit=visit
+        startCenterWave(guest)
+    }
+    private func readyForCenterChat(_ i:Int)->Bool {
+        let w=walkers[i]
+        return w.partner == nil && w.state==0 && w.activity == .rest && w.cooldown<=0 &&
+            w.greeting<=0 && w.cue<=0 && originalMaySocialize(i)
+    }
+    private mutating func returnCenterGuest() {
+        guard var visit=centerVisit else{return}
+        finishCenterWaves()
+        if visit.guest==primaryAvatarID {
+            centerVisit=nil;nextCenterVisit=elapsed+30;return
+        }
+        visit.stage = .returning;centerVisit=visit
+        if usesOriginalControllers {synchronizeOriginalGroups()}
+        if let guest=roster.firstIndex(of:visit.guest),walkers[guest].partner == nil {
+            let goal=destination(guest)
+            walkers[guest].target=goal;walkers[guest].path=route(from:walkers[guest].position,to:goal)
+            walkers[guest].wait=0
+        }
+        if let host=roster.firstIndex(of:visit.host),walkers[host].partner == nil {
+            walkers[host].wait=destinationWait(host,at:walkers[host].position)
+        }
+    }
+    /// Native invitation pacing; movement and the conversation itself use the
+    /// normal routes/controllers. One guest retains its identity and home group.
+    private mutating func advanceCenterVisits() {
+        if var visit=centerVisit {
+            guard let guest=roster.firstIndex(of:visit.guest) else {
+                centerVisit=nil;nextCenterVisit=elapsed+30;return
+            }
+            if islands.isEmpty {
+                finishCenterWaves()
+                centerVisit=nil;nextCenterVisit=elapsed+30;return
+            }
+            if visit.guest==primaryAvatarID && visit.stage != .chat {
+                finishCenterWaves()
+                centerVisit=nil;nextCenterVisit=elapsed+30;return
+            }
+            if visit.home>=islands.count {visit.home%=islands.count;centerVisit=visit;returnCenterGuest();return}
+            if visit.stage == .returning {
+                let w=walkers[guest]
+                // Rejoining the loose gathering completes the visit. Original
+                // collision impulses can leave feet just outside a node's oval.
+                if w.partner == nil && distance(w.position,groupCenter(visit.home))<0.10 && distance(w.position,w.target)<0.025 {
+                    centerVisit=nil;nextCenterVisit=elapsed+30+random.unit()*30
+                }
+                return
+            }
+            guard let host=roster.firstIndex(of:visit.host) else {returnCenterGuest();return}
+            if [.hello,.goodbye].contains(visit.stage) {
+                if arrivalIndex != nil || primaryAvatarID != visit.host {returnCenterGuest();return}
+                walkers[host].wait=max(4,walkers[host].wait)
+                walkers[host].originalFacingTarget=facing(walkers[host].position,walkers[guest].position)
+                if let catalog=originalCatalog {
+                    for i in [guest,host] where centerWaveParticipant(i) && visit.waveBegan[roster[i]] == nil {
+                        let sample=originalPlayers[i].sample
+                        if catalog.clips[sample.clip].name.hasPrefix("Handwaving") {visit.waveBegan[roster[i]]=elapsed}
+                    }
+                    centerVisit=visit
+                }
+                // Answer a quarter-second after the visitor actually starts,
+                // even if an original outgoing animation delayed that wave.
+                if !visit.replyStarted,let began=visit.waveBegan[visit.guest],elapsed-began>=0.25 {
+                    visit.replyStarted=true;centerVisit=visit;startCenterWave(host)
+                    visit=centerVisit!
+                }
+                let finished=visit.replyStarted && [guest,host].allSatisfy {i in
+                    if usesOriginalControllers {
+                        let player=originalPlayers[i]
+                        return !centerWaveShouldPlay(i) && player.animation==10 && player.stage == .main && player.blendWeight>=1
+                    }
+                    return visit.waveBegan[roster[i]].map {elapsed-$0>=timing.wave} ?? false
+                }
+                if finished {
+                    finishCenterWaves()
+                    if visit.stage == .goodbye {returnCenterGuest()}
+                    else {
+                        visit.didGreet=true;visit.stage = .approach;visit.began=elapsed
+                        centerVisit=visit
+                    }
+                }
+                return
+            }
+            if visit.stage == .chat {
+                if walkers[guest].partner != host || walkers[host].partner != guest {
+                    completedCenterChats+=1
+                    if primaryAvatarID==visit.host && primaryAvatarID != visit.guest {beginCenterWave(.goodbye)}
+                    else {returnCenterGuest()}
+                }
+                return
+            }
+            guard primaryAvatarID==visit.host,arrivalIndex == nil,nearCenter(walkers[host].position),
+                  walkers[host].partner == nil,walkers[guest].partner == nil,elapsed-visit.began<(usesOriginalControllers ? 90:150) else {
+                returnCenterGuest();return
+            }
+            walkers[host].wait=max(4,walkers[host].wait)
+            let a=walkers[host].position,b=walkers[guest].position
+            let separation=distance(a,b),reach=usesOriginalControllers ? 17.8/sourceWidth:0.065
+            if separation>=reach,walkers[guest].state==0 {
+                // Collisions may shift the waiting host. Walk toward its new
+                // position instead of waiting forever at the old meeting spot.
+                let radius=usesOriginalControllers ? 11/sourceWidth:0.052
+                let goal=CrowdPoint(a.x+(b.x-a.x)/separation*radius,a.y+(b.y-a.y)/separation*radius)
+                let path=route(from:b,to:goal)
+                if validGroupPoint(goal),!path.isEmpty {
+                    visit.goal=goal;centerVisit=visit
+                    walkers[guest].target=goal;walkers[guest].path=path;walkers[guest].wait=4
+                }
+            }
+            guard separation<reach,clear(a,b),walkers[guest].state==0 else{return}
+            walkers[guest].wait=max(4,walkers[guest].wait)
+            let hostFacing=facing(a,b),guestFacing=facing(b,a)
+            walkers[host].originalFacingTarget=hostFacing;walkers[guest].originalFacingTarget=guestFacing
+            func aligned(_ angle:Double,_ desired:Double)->Bool {abs(atan2(sin(desired-angle),cos(desired-angle)))<0.3}
+            guard aligned(walkers[host].angle,hostFacing),aligned(walkers[guest].angle,guestFacing),
+                  readyForCenterChat(host),readyForCenterChat(guest) else{return}
+            if !visit.didGreet {beginCenterWave(.hello);return}
+            if let catalog=originalCatalog {
+                guard OriginalLounge.acceptsPartner(partnerInput(host),at:sourcePoint(b)),
+                      OriginalLounge.acceptsPartner(partnerInput(guest),at:sourcePoint(a)),
+                      let talk=OriginalLounge.socialTransition(action:1,catalog:catalog,random:&originalRandom) else{return}
+                setOriginalPair(host,guest,transition:talk)
+            } else {startFallbackPair(host,guest,includeGreeting:false)}
+            visit.stage = .chat;centerVisit=visit
+            return
+        }
+        guard elapsed>=nextCenterVisit,elapsed<nextPrimaryOuting,arrivalIndex == nil,!islands.isEmpty,let primaryAvatarID,
+              let host=roster.firstIndex(of:primaryAvatarID),nearCenter(walkers[host].position),
+              nearCenter(walkers[host].target),walkers[host].path.isEmpty,readyForCenterChat(host) else{return}
+        let candidates=walkers.indices.filter {i in
+            guard i != host,readyForCenterChat(i),let group=groupSlot(i) else{return false}
+            guard insideGathering(walkers[i].position,slot:group),
+                  distance(walkers[i].position,walkers[host].position)<(usesOriginalControllers ? 0.45:0.35) else{return false}
+            if usesOriginalControllers {return true}
+            // Invite someone with an open way out of the gathering. The
+            // fallback yields to standing neighbors instead of pushing through.
+            let p=walkers[i].position,path=route(from:p,to:walkers[host].position)
+            guard let first=path.first else{return false}
+            var length=0.0,previous=p
+            for point in path {length+=distance(previous,point);previous=point}
+            guard length<0.42 else{return false}
+            let dx=first.x-p.x,dy=(first.y-p.y)/aspect,d=max(0.000001,hypot(dx,dy))
+            return !walkers.indices.contains {j in
+                guard j != i,j != host else{return false}
+                let x=walkers[j].position.x-p.x,y=(walkers[j].position.y-p.y)/aspect
+                let forward=(x*dx+y*dy)/d,side=(x*dy-y*dx)/d
+                return forward>0 && forward<0.035 && abs(side)<minimumSpacing*0.9
+            }
+        }
+        let fresh=candidates.filter {roster[$0] != lastCenterGuest},pool=fresh.isEmpty ? candidates:fresh
+        guard !pool.isEmpty else{nextCenterVisit=elapsed+5;return}
+        let guest=pool[min(pool.count-1,Int(random.unit()*Double(pool.count)))],home=groupSlot(guest)!
+        let center=walkers[host].position,radius=usesOriginalControllers ? 11/sourceWidth:0.052
+        let phase=random.unit()*2 * .pi
+        for side in 0..<8 {
+            let angle=phase+Double(side)*Double.pi/4
+            let goal=CrowdPoint(center.x+cos(angle)*radius,center.y+sin(angle)*radius*aspect)
+            guard validGroupPoint(goal),clear(center,goal) else{continue}
+            let path=route(from:walkers[guest].position,to:goal)
+            guard !path.isEmpty else{continue}
+            centerVisit=CenterVisit(host:primaryAvatarID,guest:roster[guest],home:home,goal:goal,began:elapsed)
+            lastCenterGuest=roster[guest]
+            walkers[guest].target=goal;walkers[guest].path=path;walkers[guest].wait=4
+            walkers[host].target=center;walkers[host].path=[];walkers[host].wait=4
+            return
+        }
+        nextCenterVisit=elapsed+5
+    }
     private mutating func stepFrame(_ delta:Double) {
         guard delta.isFinite,delta>0 else {return};let dt=min(0.05,delta);elapsed+=dt
         if let time=arrivalElapsed {arrivalElapsed=time+dt}
+        for i in walkers.indices where i != arrivalIndex {crossEdgeIfReady(i)}
+        advanceCenterVisits()
         if usesOriginalControllers {advanceOriginalGroups()}
         for i in walkers.indices where i != arrivalIndex && blocked(walkers[i].position) {
             if let escape=escapeDestination(walkers[i].position) {
@@ -819,6 +1174,15 @@ public struct CrowdSimulation: Sendable {
             let oldAngle=w.angle
             if w.cue>0 {
                 w.cue=max(0,w.cue-dt);w.state=w.activityTime<0 ? 0:4;w.mood=1;w.speed=0;w.motion*=max(0,1-dt*8)
+            } else if let other=centerWavePartner(i) {
+                // Hold both Miis face-to-face through their complete waves,
+                // including the original exits, before chatting or walking.
+                w.target=w.position;w.path=[];w.speed=0;w.motion*=max(0,1-dt*8)
+                w.originalMotion.walking=false;w.originalMotion.state = .rest;w.originalMotion.speed=0
+                let waving=centerWaveParticipant(i)
+                w.state=waving ? 3:0;w.greeting=waving ? 1:0;w.mood=1;w.lookYaw=0;w.wait=4
+                turn(&w,toward:facing(w.position,walkers[other].position),dt:dt,gain:0.2,limit:0.4,fallbackRate:2.2)
+                activity(waving ? .wave:.rest,&w)
             } else if let j=w.partner, before.indices.contains(j),w.conversation>0 {
                 w.conversation=max(0,w.conversation-dt);w.greeting=max(0,w.greeting-dt);w.speed=0;w.motion*=max(0,1-dt*8)
                 if usesOriginalControllers {
@@ -832,7 +1196,7 @@ public struct CrowdSimulation: Sendable {
                     if let dance=OriginalLounge.dancePosition(action:w.originalSocialAction,position:sourcePoint(w.position),
                         partner:sourcePoint(before[j].position),mainFrame:frame,length:length) {
                         let next=hostPoint(dance.position)
-                        if !blocked(next),(0.05...0.95).contains(next.x),(0.20...0.95).contains(next.y) {w.position=next;w.target=next}
+                        if !blocked(next),navigationBounds.contains(next) {w.position=next;w.target=next}
                         if dance.tangent.x != 0 || dance.tangent.z != 0 {
                             turn(&w,toward:Double(atan2(dance.tangent.x,dance.tangent.z)),dt:dt,gain:dance.headingGain,limit:1,fallbackRate:2.2)
                         }
@@ -845,7 +1209,7 @@ public struct CrowdSimulation: Sendable {
                     walkers[i]=w;continue
                 }
                 w.angle=turned(w.angle,toward:facing(w.position,before[j].position),dt:dt,rate:2.2)
-                let t=w.exchangeDuration-w.conversation,hello=0.6+timing.wave+0.18
+                let t=w.exchangeDuration-w.conversation,hello=w.exchangeGreeting
                 if t<hello {
                     if t<0.6+w.activityDelay {activity(.rest,&w);w.state=0;w.mood=0}
                     else {activity(.wave,&w);w.state=3;w.mood=1}
@@ -860,8 +1224,8 @@ public struct CrowdSimulation: Sendable {
                 if w.conversation<=0 {w.partner=nil;w.cooldown=12+random.unit()*12;w.wait=4+random.unit()*8;w.state=0;w.mood=0;activity(.rest,&w)}
             } else {
                 w.partner=nil;w.mood=0
-                if !usesOriginalControllers,let first=w.path.first,distance(w.position,first)<0.004 {w.path.removeFirst()}
-                if usesOriginalControllers,!w.originalMotion.walking,let first=w.path.first,distance(w.position,first)<6/sourceWidth {
+                if !usesOriginalControllers,let first=w.path.first,!(w.path.count>=2 && portalPair(first,w.path[1])),distance(w.position,first)<0.004 {w.path.removeFirst()}
+                if usesOriginalControllers,!w.originalMotion.walking,let first=w.path.first,!(w.path.count>=2 && portalPair(first,w.path[1])),distance(w.position,first)<6/sourceWidth {
                     w.path.removeFirst()
                     if w.path.isEmpty {w.target=w.position}
                 }
@@ -902,7 +1266,9 @@ public struct CrowdSimulation: Sendable {
                         let clearance=min(0.033,minimumSpacing*0.95)
                         if separation>0.0001 && separation<clearance {let push=(clearance-separation)/clearance*dt*0.018*steering;next.x+=sx/separation*push;next.y+=sy/separation*push*aspect}
                     }}}
-                    next.x=min(0.95,max(0.05,next.x));next.y=min(0.95,max(0.20,next.y))
+                    // An actor outside newly resized bounds walks back in naturally.
+                    let limited=navigationBounds.clamped(next)
+                    if navigationBounds.contains(w.position) {next=limited}
                     if traversable(w.position,next) {
                         let travel=hypot((next.x-w.position.x)*worldWidth,(next.y-w.position.y)*worldWidth/min(4,max(0.25,worldAspect)))
                         w.phase+=travel/(max(0.05,strideLength)*w.gaitScale)*2 * .pi;w.position=next
@@ -931,7 +1297,7 @@ public struct CrowdSimulation: Sendable {
                     w.lookYaw=sin(w.animationTime*0.43+Double(i)*1.9)*0.20
                     if w.wait<=0 && w.activity == .rest {
                         w.target=destination(i);w.path=route(from:w.position,to:w.target)
-                        if w.path.isEmpty {w.target=w.position};w.wait=destinationWait(i)
+                        if w.path.isEmpty {w.target=w.position};w.wait=destinationWait(i,at:w.target)
                     }
                 }
             }
@@ -945,12 +1311,12 @@ public struct CrowdSimulation: Sendable {
             // the nearest visitor or a probabilistic per-second match. Native
             // index order replaces the menu's spatial database iteration order.
             let inputs=walkers.indices.map {partnerInput($0)}
-            for i in walkers.indices where walkers[i].partner==nil && (10...25).contains(inputs[i].animation) {
+            for i in walkers.indices where !reservedForCenterChat(i) && walkers[i].partner==nil && (10...25).contains(inputs[i].animation) {
                 let input=inputs[i],p=walkers[i].position,cx=Int(p.x/0.055),cy=Int(p.y/0.055)
                 var candidates:[Int]=[]
                 // Wider depth window covers aspect ratios up to four.
                 for y in (cy-2)...(cy+2) {for x in (cx-1)...(cx+1) {candidates += cells[key(x,y)] ?? []}}
-                for j in candidates.sorted() where j>i && walkers[j].partner==nil {
+                for j in candidates.sorted() where j>i && !reservedForCenterChat(j) && walkers[j].partner==nil {
                     let other=inputs[j]
                     if OriginalLounge.acceptsPartner(input,at:other.position),
                        OriginalLounge.acceptsPartner(other,at:input.position),clear(walkers[i].position,walkers[j].position) {
@@ -964,18 +1330,22 @@ public struct CrowdSimulation: Sendable {
             return
         }
         // Resource-free fallback.
-        for i in walkers.indices where walkers[i].partner==nil && walkers[i].state==0 && walkers[i].activity == .rest && walkers[i].cooldown<=0 && walkers[i].wait>2.5 && originalMaySocialize(i) {
+        for i in walkers.indices where !reservedForCenterChat(i) && walkers[i].partner==nil && walkers[i].state==0 && walkers[i].activity == .rest && walkers[i].cooldown<=0 && walkers[i].wait>2.5 && originalMaySocialize(i) {
             guard random.unit()<dt*0.7 else {continue}
             let p=walkers[i].position,cx=Int(p.x/0.055),cy=Int(p.y/0.055)
             var nearest:Int?,best=0.085
-            for y in (cy-2)...(cy+2) {for x in (cx-2)...(cx+2) {for j in cells[key(x,y)] ?? [] where j>i && walkers[j].partner==nil && walkers[j].state==0 && walkers[j].activity == .rest && walkers[j].cooldown<=0 && walkers[j].wait>2.5 && originalMaySocialize(j) {
+            for y in (cy-2)...(cy+2) {for x in (cx-2)...(cx+2) {for j in cells[key(x,y)] ?? [] where j>i && !reservedForCenterChat(j) && walkers[j].partner==nil && walkers[j].state==0 && walkers[j].activity == .rest && walkers[j].cooldown<=0 && walkers[j].wait>2.5 && originalMaySocialize(j) {
                 let d=distance(p,walkers[j].position);if d>0.043 && d<best && clear(p,walkers[j].position) {nearest=j;best=d}
             }}}
             if let j=nearest {
-                let duration=0.6+timing.wave+0.18+timing.talk*Double(2+Int(random.unit()*3))+timing.bow
-                for k in [i,j] {walkers[k].partner=k==i ? j:i;walkers[k].conversation=duration;walkers[k].exchangeDuration=duration;walkers[k].greeting=0.6+timing.wave+0.18;walkers[k].activityDelay=k==i ? 0:0.18;walkers[k].animationTime=0;walkers[k].activity = .rest;walkers[k].activityTime=0;walkers[k].path=[];walkers[k].target=walkers[k].position}
+                startFallbackPair(i,j)
             }
         }
+    }
+    private mutating func startFallbackPair(_ i:Int,_ j:Int,includeGreeting:Bool=true) {
+        let hello=includeGreeting ? 0.6+timing.wave+0.18:0
+        let duration=hello+timing.talk*Double(2+Int(random.unit()*3))+timing.bow
+        for k in [i,j] {walkers[k].partner=k==i ? j:i;walkers[k].conversation=duration;walkers[k].exchangeDuration=duration;walkers[k].exchangeGreeting=hello;walkers[k].greeting=hello;walkers[k].activityDelay=includeGreeting && k==j ? 0.18:0;walkers[k].animationTime=0;walkers[k].activity = .rest;walkers[k].activityTime=0;walkers[k].path=[];walkers[k].target=walkers[k].position}
     }
     private mutating func setOriginalPair(_ leader:Int,_ follower:Int,transition:OriginalLounge.SocialTransition) {
         for k in [leader,follower] {
@@ -1017,6 +1387,7 @@ public struct CrowdSimulation: Sendable {
             let w=walkers[i]
             var requested:Int?
             if w.cue>0 && w.activityTime>=0 {requested=126}
+            else if centerWavePartner(i) != nil {requested=centerWaveShouldPlay(i) ? 110:10}
             else if w.partner != nil {requested=OriginalLounge.socialAnimation(action:w.originalSocialAction)}
             else if w.greeting>0 {
                 switch w.activity {
@@ -1036,6 +1407,7 @@ public struct CrowdSimulation: Sendable {
                 if (3...7).contains(requested) {originalPlayers[i].setRate(rate)}
             } else {
                 var context=OriginalLounge.IdleContext()
+                context.preventsLyingDown=reservedForCenterChat(i)
                 context.groupDensity=walkers.reduce(0) {count,other in count+(distance(w.position,other.position)<0.10 ? 1:0)}-1
                 originalIdles[i].step(playback:&originalPlayers[i],catalog:catalog,random:&originalRandom,context:context)
             }

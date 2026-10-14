@@ -65,7 +65,7 @@ struct SettingsCategoryTile: View {
     @FocusState private var focused: Bool
 
     var body: some View {
-        Button(action: select) {
+        PlazaButton(action: select) {
             VStack(spacing: height < 110 ? 8 : 14) {
                 Image(systemName: category.symbol).symbolRenderingMode(.hierarchical)
                     .font(.system(size: height < 110 ? 28 : height < 130 ? 36 : 48, weight: .medium))

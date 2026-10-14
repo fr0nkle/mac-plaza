@@ -1,6 +1,7 @@
 #!/bin/zsh
 set -euo pipefail
 cd "${0:A:h:h}"
+source scripts/release-config.zsh
 version=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' scripts/Info.plist)
 app="${PLAZA_APP_PATH:-$PWD/Artifacts/Mac Plaza.app}"
 staging=$(mktemp -d /tmp/macplaza-installer.XXXXXX)
@@ -11,7 +12,7 @@ pkgbuild --root "$staging/root" --identifier org.squidproductions.macplaza.insta
   --version "$version" --install-location / --component-plist scripts/installer-component.plist "$staging/component.pkg"
 productbuild --distribution scripts/installer-distribution.xml --package-path "$staging" "$staging/Mac-Plaza-$version.pkg"
 if [[ -n "${PLAZA_INSTALLER_IDENTITY:-}" ]]; then
-  productsign --sign "$PLAZA_INSTALLER_IDENTITY" "$staging/Mac-Plaza-$version.pkg" "Artifacts/Mac-Plaza-$version.pkg"
+  productsign --timestamp --sign "$PLAZA_INSTALLER_IDENTITY" "$staging/Mac-Plaza-$version.pkg" "Artifacts/Mac-Plaza-$version.pkg"
 else
   cp "$staging/Mac-Plaza-$version.pkg" "Artifacts/Mac-Plaza-$version.pkg"
 fi
@@ -22,4 +23,5 @@ cp "Artifacts/Mac-Plaza-$version-Source.zip" "$staging/image/Corresponding Sourc
 cp scripts/TESTING-README.txt "$staging/image/START HERE.txt"
 hdiutil create -volname "Mac Plaza $version" -srcfolder "$staging/image" -ov -format UDZO "Artifacts/Mac-Plaza-$version.dmg"
 shasum -a 256 "Artifacts/Mac-Plaza-$version.dmg" > "Artifacts/Mac-Plaza-$version.dmg.sha256"
+shasum -a 256 "Artifacts/Mac-Plaza-$version.pkg" > "Artifacts/Mac-Plaza-$version.pkg.sha256"
 echo "Installer: Artifacts/Mac-Plaza-$version.dmg"

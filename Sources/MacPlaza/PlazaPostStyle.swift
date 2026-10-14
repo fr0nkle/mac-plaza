@@ -68,11 +68,13 @@ struct PlazaNameTab: View {
     }
 }
 
-/// One post at a time, with quiet intervals between the journal and friends.
+/// One to three posts per interval, with quiet gaps between journal and friends.
 /// Elapsed time is advanced only while the plaza can present posts.
 struct PlazaPostCadence {
     enum Presentation { case quiet, journal, friends }
     private(set) var elapsed: TimeInterval = 0
+    private(set) var bubbleCount = 1
+    private var hasPresented = false
     var presentation: Presentation {
         let phase = elapsed.truncatingRemainder(dividingBy: 52)
         if (12..<22).contains(phase) { return .journal }
@@ -81,6 +83,15 @@ struct PlazaPostCadence {
     }
     mutating func advance(by seconds: TimeInterval, held: Bool = false) {
         guard !held, seconds.isFinite, seconds > 0 else { return }
+        let previous = presentation
         elapsed = (elapsed + seconds.truncatingRemainder(dividingBy: 52)).truncatingRemainder(dividingBy: 52)
+        if presentation != .quiet, presentation != previous {
+            // Pick a different density each time, rather than always filling all slots.
+            if !hasPresented { bubbleCount = Int.random(in: 1...3); hasPresented = true }
+            else {
+                let choice = Int.random(in: 1...2)
+                bubbleCount = choice >= bubbleCount ? choice + 1 : choice
+            }
+        }
     }
 }

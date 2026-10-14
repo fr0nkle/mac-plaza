@@ -21,6 +21,8 @@ manifest = dict(version=version, build=build, archive=archive.name, source=sourc
                 sourceSHA256=hashlib.sha256(source.read_bytes()).hexdigest())
 installer = root / 'Artifacts' / ('Mac-Plaza-' + version + '.dmg')
 manifest['installerSHA256'] = hashlib.sha256(installer.read_bytes()).hexdigest()
+package = root / 'Artifacts' / ('Mac-Plaza-' + version + '.pkg')
+manifest['packageSHA256'] = hashlib.sha256(package.read_bytes()).hexdigest()
 destination = root / 'Server/.updates'; destination.mkdir(mode=0o700, exist_ok=True)
 for asset in (archive, source):
     temporary = destination / (asset.name + '.tmp')

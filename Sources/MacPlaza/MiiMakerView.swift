@@ -38,12 +38,12 @@ struct MiiMakerView: View {
                     }
                     Spacer(minLength: 20)
                     HStack(spacing: 20) {
-                        Button {
+                        PlazaButton(sound: .back) {
                             if screen == .menu { if let onClose {onClose()} else {dismiss()} } else { navigate(.menu) }
                         } label: { Label(screen == .menu ? "Back to plaza" : "Back", systemImage: "arrow.uturn.backward") }
                             .buttonStyle(MakerPillStyle()).keyboardShortcut(.cancelAction)
                         Spacer()
-                        Button { model.mutate { $0.preferences.ambientSound = !(model.document.preferences.ambientSound ?? true) } } label: {
+                        PlazaButton { model.mutate { $0.preferences.ambientSound = !(model.document.preferences.ambientSound ?? true) } } label: {
                             Image(systemName: model.document.preferences.ambientSound ?? true ? "speaker.wave.1" : "speaker.slash")
                         }.buttonStyle(.plain).accessibilityLabel(model.document.preferences.ambientSound ?? true ? "Mute music" : "Play music")
                         Slider(value: Binding(get: { model.document.preferences.makerMusicVolume ?? 0.10 }, set: { value in model.mutate { $0.preferences.makerMusicVolume = value } }), in: 0...0.35)
@@ -67,14 +67,14 @@ struct MiiMakerView: View {
     private var menu: some View {
         VStack(spacing: 20) {
             HStack(spacing: 24) {
-                Button { navigate(.create) } label: {
+                PlazaButton { navigate(.create) } label: {
                     VStack(spacing: 20) {
                         Image(systemName: "person.crop.circle.badge.plus").font(.system(size: 70, weight: .light)).foregroundStyle(Color(red: 0.30, green: 0.55, blue: 0.25))
                         Text("Create Mii").font(.system(size: 28, weight: .medium, design: .rounded))
                     }.frame(width: 242, height: 214)
                         .background(LinearGradient(colors: [.white.opacity(0.6), Color(red: 0.75, green: 0.91, blue: 0.49).opacity(0.6)], startPoint: .top, endPoint: .bottom), in: RoundedRectangle(cornerRadius: 26))
                 }.buttonStyle(MakerTileStyle()).disabled(model.document.avatars.count >= PlazaDocument.maximumCustomMiis)
-                Button { fileOptions = false; navigate(.library) } label: {
+                PlazaButton { fileOptions = false; navigate(.library) } label: {
                     VStack(spacing: 17) {
                         HStack(spacing: -14) {
                             ForEach(Array(model.document.avatars.prefix(3))) { avatar in
@@ -86,8 +86,8 @@ struct MiiMakerView: View {
                         .background(LinearGradient(colors: [.white.opacity(0.6), Color(red: 0.97, green: 0.82, blue: 0.60).opacity(0.5)], startPoint: .top, endPoint: .bottom), in: RoundedRectangle(cornerRadius: 26))
                 }.buttonStyle(MakerTileStyle())
             }
-            Button(action: importMii) { Label("Import Mii from File…", systemImage: "square.and.arrow.down").frame(width: 474) }.buttonStyle(MakerPillStyle()).disabled(model.document.avatars.count >= PlazaDocument.maximumCustomMiis)
-            Button { fileOptions = true; navigate(.library) } label: { Label("Mii Files & Portraits", systemImage: "photo.on.rectangle.angled").frame(width: 474) }.buttonStyle(MakerPillStyle())
+            PlazaButton(action: importMii) { Label("Import Mii from File…", systemImage: "square.and.arrow.down").frame(width: 474) }.buttonStyle(MakerPillStyle()).disabled(model.document.avatars.count >= PlazaDocument.maximumCustomMiis)
+            PlazaButton { fileOptions = true; navigate(.library) } label: { Label("Mii Files & Portraits", systemImage: "photo.on.rectangle.angled").frame(width: 474) }.buttonStyle(MakerPillStyle())
             Text(model.document.avatars.count >= PlazaDocument.maximumCustomMiis ? "Your Mii library is full. Select a Mii to edit it." : "Your creations will join you in the middle of the plaza.")
                 .font(.system(size: 13)).foregroundStyle(.secondary).padding(.top, 4)
         }
@@ -97,7 +97,7 @@ struct MiiMakerView: View {
             Text("Choose a starting Mii.").font(.system(size: 25, weight: .medium, design: .rounded))
             HStack(spacing: 30) {
                 ForEach(0..<2) { gender in
-                    Button {
+                    PlazaButton {
                         var avatar = Avatar(name: "New Mii", outfit: gender == 0 ? 0 : 1)
                         avatar.features.gender = gender; avatar.hair = gender == 0 ? 33 : 12
                         draft = avatar; editingID = nil; navigate(.editor)
@@ -119,7 +119,7 @@ struct MiiMakerView: View {
             ScrollView {
                 LazyVGrid(columns: Array(repeating: GridItem(.fixed(160), spacing: 16), count: 4), spacing: 16) {
                     ForEach(model.document.avatars) { avatar in
-                        Button {
+                        PlazaButton {
                             editingID = avatar.id; draft = nil; navigate(.editor)
                         } label: {
                             VStack(spacing: 7) {

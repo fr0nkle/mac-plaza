@@ -54,7 +54,7 @@ struct FriendsMenuView: View {
                     .font(.callout).foregroundStyle(.secondary)
             }
             Spacer()
-            Button("Discord & Friends…") { model.sheet = .social }.buttonStyle(.bordered)
+            PlazaButton("Discord & Friends…") { model.sheet = .social }.buttonStyle(.bordered)
                 .help("Manage your Discord connection and sharing")
         }.padding(.horizontal, 38).padding(.top, 30)
     }
@@ -66,7 +66,7 @@ struct FriendsMenuView: View {
                 TextField("Search friends", text: $search).textFieldStyle(.plain)
                     .accessibilityLabel("Search friends")
                 if !search.isEmpty {
-                    Button { search = "" } label: { Image(systemName: "xmark.circle.fill") }
+                    PlazaButton { search = "" } label: { Image(systemName: "xmark.circle.fill") }
                         .buttonStyle(.plain).accessibilityLabel("Clear friend search")
                 }
             }.padding(12).background(.white.opacity(0.85), in: RoundedRectangle(cornerRadius: 14))
@@ -75,7 +75,7 @@ struct FriendsMenuView: View {
             ScrollView {
                 LazyVStack(spacing: 8) {
                     ForEach(friends) { friend in
-                        Button { selectedID = friend.id } label: {
+                        PlazaButton { selectedID = friend.id } label: {
                             HStack(spacing: 12) {
                                 AvatarPortrait(avatar: friend.avatar).frame(width: 40, height: 52)
                                     .accessibilityHidden(true)
@@ -135,7 +135,7 @@ struct FriendsMenuView: View {
                 Text("Make room for your friends.").font(.system(size: 24, weight: .medium, design: .rounded))
                 Text("Connect Discord to see your friends’ Miis and availability. Choose a friend to assign a Mii from your library.")
                     .multilineTextAlignment(.center).foregroundStyle(.secondary)
-                Button("Connect Discord & Friends…") { model.sheet = .social }
+                PlazaButton("Connect Discord & Friends…") { model.sheet = .social }
                     .buttonStyle(.borderedProminent).tint(PlazaStyle.teal)
             }.padding(42)
         } else {
@@ -167,14 +167,14 @@ struct FriendsMenuView: View {
 
     private var footer: some View {
         HStack(spacing: 18) {
-            Button { if let onClose { onClose() } else { dismiss() } } label: {
+            PlazaButton(sound: .back) { if let onClose { onClose() } else { dismiss() } } label: {
                 Label("Back to plaza", systemImage: "arrow.uturn.backward")
                     .font(.system(size: 18, weight: .medium, design: .rounded))
                     .padding(.horizontal, 20).padding(.vertical, 13)
                     .background(.white.opacity(0.85), in: Capsule())
             }.buttonStyle(.plain).keyboardShortcut(.cancelAction)
             Spacer()
-            Button { model.mutate { $0.preferences.ambientSound = !(model.document.preferences.ambientSound ?? true) } } label: {
+            PlazaButton { model.mutate { $0.preferences.ambientSound = !(model.document.preferences.ambientSound ?? true) } } label: {
                 Image(systemName: model.document.preferences.ambientSound ?? true ? "speaker.wave.1" : "speaker.slash")
             }.buttonStyle(.plain).accessibilityLabel(model.document.preferences.ambientSound ?? true ? "Mute music" : "Play music")
             Slider(value: Binding(get: { model.document.preferences.friendsMusicVolume ?? 0.10 }, set: { value in

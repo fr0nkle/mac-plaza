@@ -4,6 +4,8 @@ const send = (type, value) => window.webkit.messageHandlers.ffl.postMessage({typ
 const bytes = s => Uint8Array.from(atob(s), c => c.charCodeAt(0));
 let ffl, renderer, scene, camera, mode, models = new Map(), rigs = [];
 let generation = 0;
+let plazaRenderScale=1;
+function setRenderScale(scale){plazaRenderScale=Math.max(1,Math.min(2,Number(scale)||1));resize();}
 let noteTargets=[];
 function setNoteTargets(indices){noteTargets=indices.filter(i=>Number.isInteger(i)&&i>=0&&i<200).slice(0,6);if(renderer)draw();}
 function fail(e) { const message=String(e?.message || e); document.getElementById('error').style.display='block';document.getElementById('error').textContent='FFL renderer: '+message;send('error',message+(e?.stack?"\n"+e.stack:"")); }
@@ -184,7 +186,7 @@ function draw(){if(renderer){scene.updateMatrixWorld(true);updateBodies();render
   if(mode==='plaza'&&noteTargets.length){const anchors=[];for(const i of noteTargets){const r=rigs[i];if(!r)continue;const p=r.head.getWorldPosition(new THREE.Vector3());p.y+=.42;p.project(camera);anchors.push([i,(p.x+1)/2,(1-p.y)/2]);}send('noteAnchors',anchors);}
 }}
 function resize(){if(!renderer)return;const w=Math.max(1,innerWidth),h=Math.max(1,innerHeight);renderer.setSize(w,h,false);
-  if(mode==='plaza'){const half=24*h/w;camera.left=-24;camera.right=24;camera.top=half;camera.bottom=-half;camera.position.set(0,16,22);camera.lookAt(0,0,0);}
+  if(mode==='plaza'){const half=24*plazaRenderScale*h/w;camera.left=-24*plazaRenderScale;camera.right=24*plazaRenderScale;camera.top=half;camera.bottom=-half;camera.position.set(0,16,22);camera.lookAt(0,0,0);}
   else{camera.left=-1.38*w/h;camera.right=1.38*w/h;camera.top=1.38;camera.bottom=-1.38;camera.position.set(0,1.20,6);camera.lookAt(0,1.20,0);}
   camera.updateProjectionMatrix();draw();}
 window.addEventListener('resize',resize);
@@ -237,7 +239,7 @@ function dispose(){++generation;clearRigs();for(const model of models.values())m
 function snapshot(){draw();return renderer.domElement.toDataURL('image/png');}
 function diagnostics(){return {roster:rigs.map(r=>({id:r.identity,root:r.root.uuid,position:r.root.position.toArray(),visible:r.root.visible})),originalBodies:PlazaOriginalBody.active,originalClips:PlazaOriginalBody.clipCount,original:rigs.slice(0,4).map(r=>r.original?.stats()||null),feet:rigs.slice(0,4).map(r=>r.ankles?.map(n=>n.getWorldPosition(new THREE.Vector3()).toArray())||[]),drawCalls:renderer.info.render.calls,rigs:rigs.length,models:models.size,bodyBatches:bodyBatches.size,bodyInstances:Array.from(bodyBatches.values()).reduce((n,b)=>n+b.batch.count,0),masks:rigs.map(r=>({material:r.maskMaterial?.uuid,texture:r.maskMaterial?.map?.uuid,expression:r.expression}))};}
 async function importMenu(data){const pack=PlazaMenuAssets.read(bytes(data));clearRigs();PlazaOriginalBody.load(pack,ffl.module);return JSON.stringify(pack);}
-window.plazaFFL={setNoteTargets,importMenu,initialize,configure,frame,preview,portrait,featureIcon,dispose,diagnostics,snapshot,motion:PlazaMotion.solve};
+window.plazaFFL={setRenderScale,setNoteTargets,importMenu,initialize,configure,frame,preview,portrait,featureIcon,dispose,diagnostics,snapshot,motion:PlazaMotion.solve};
 window.plazaFFL.dispatch=(id,method,args)=>{
   Promise.resolve().then(()=>window.plazaFFL[method](...args)).then(value=>send('reply',{id,value:value??null}),error=>send('reply',{id,error:String(error?.stack||error)}));
 };

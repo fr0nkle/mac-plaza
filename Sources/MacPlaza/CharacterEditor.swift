@@ -72,7 +72,7 @@ struct CharacterEditor: View {
             HStack(spacing:0) {
                 ForEach(FeatureTab.main,id:\.self) {item in
                     let selected=tab==item || (item == .glasses && FeatureTab.accessories.contains(tab)) || (item == .body && tab == .profile)
-                    Button {tab=item} label: {
+                    PlazaButton {tab=item} label: {
                         MiiFeatureIcon(kind:item.symbol).frame(width:44,height:44)
                             .foregroundStyle(selected ? MiiEditorStyle.darkGreen:.white)
                             .frame(maxWidth:.infinity).frame(height:74)
@@ -87,7 +87,7 @@ struct CharacterEditor: View {
             .clipShape(RoundedRectangle(cornerRadius:22))
             .overlay(RoundedRectangle(cornerRadius:22).strokeBorder(.white.opacity(0.7),lineWidth:2))
             .shadow(color:MiiEditorStyle.green.opacity(0.20),radius:2,y:3)
-            Button(action:exportPortrait) {MiiFeatureIcon(kind:.camera).frame(width:42,height:42).foregroundStyle(MiiEditorStyle.green).frame(width:92,height:74)}
+            PlazaButton(action:exportPortrait) {MiiFeatureIcon(kind:.camera).frame(width:42,height:42).foregroundStyle(MiiEditorStyle.green).frame(width:92,height:74)}
                 .buttonStyle(MiiControlStyle()).padding(.leading,12).help("Export a portrait PNG").accessibilityLabel("Export Portrait PNG")
                 .disabled(model.document.preferences.safeMode)
         }.padding(.horizontal,20).padding(.top,14)
@@ -103,20 +103,20 @@ struct CharacterEditor: View {
                     .gesture(DragGesture().onChanged {value in angle=dragAngle+CGFloat(value.translation.width)*0.015}.onEnded {_ in dragAngle=angle})}
             }.frame(height:380)
             HStack(spacing:12) {
-                Button {angle -= .pi/4;dragAngle=angle} label:{Image(systemName:"arrow.counterclockwise").frame(width:52,height:38)}.accessibilityLabel("Rotate Mii left")
-                Button {angle=0;dragAngle=0} label:{Text("Front").frame(width:70,height:38)}
-                Button {angle += .pi/4;dragAngle=angle} label:{Image(systemName:"arrow.clockwise").frame(width:52,height:38)}.accessibilityLabel("Rotate Mii right")
+                PlazaButton {angle -= .pi/4;dragAngle=angle} label:{Image(systemName:"arrow.counterclockwise").frame(width:52,height:38)}.accessibilityLabel("Rotate Mii left")
+                PlazaButton {angle=0;dragAngle=0} label:{Text("Front").frame(width:70,height:38)}
+                PlazaButton {angle += .pi/4;dragAngle=angle} label:{Image(systemName:"arrow.clockwise").frame(width:52,height:38)}.accessibilityLabel("Rotate Mii right")
             }.buttonStyle(MiiControlStyle()).font(.system(size:14,weight:.medium))
             Text("Drag your Mii to turn").font(.system(size:11)).foregroundStyle(.secondary)
             HStack {
                 Picker("Pose",selection:$pose) {Text("Stand").tag(0);Text("Walk").tag(1);Text("Wave").tag(3);Text("Celebrate").tag(4);Text("React").tag(5)}.frame(width:145)
                 Menu("More") {
-                    Menu("Presets") {ForEach(0..<4) {i in Button(["Classic","Friendly","Thoughtful","Creative"][i]) {preset(i)}}}
-                    Button("Shuffle") {shuffle()}
-                    Button("Reset") {let id=avatar.id;avatar=Avatar(name:avatar.name);avatar.id=id}
+                    Menu("Presets") {ForEach(0..<4) {i in PlazaButton(["Classic","Friendly","Thoughtful","Creative"][i]) {preset(i)}}}
+                    PlazaButton("Shuffle") {shuffle()}
+                    PlazaButton("Reset") {let id=avatar.id;avatar=Avatar(name:avatar.name);avatar.id=id}
                     Divider()
-                    Menu("Saved Miis") {ForEach(model.document.avatars) {saved in Button(saved.name) {suppressHistory=true;avatar=saved;isNew=false;history.removeAll();message="";page=0}}}
-                    Button("New Mii") {suppressHistory=true;avatar=Avatar(name:"New Mii",outfit:0);isNew=true;history.removeAll()}.disabled(model.document.avatars.count>=PlazaDocument.maximumCustomMiis)
+                    Menu("Saved Miis") {ForEach(model.document.avatars) {saved in PlazaButton(saved.name) {suppressHistory=true;avatar=saved;isNew=false;history.removeAll();message="";page=0}}}
+                    PlazaButton("New Mii") {suppressHistory=true;avatar=Avatar(name:"New Mii",outfit:0);isNew=true;history.removeAll()}.disabled(model.document.avatars.count>=PlazaDocument.maximumCustomMiis)
                 }.menuStyle(.borderlessButton).frame(width:80)
             }.font(.system(size:12))
         }
@@ -127,9 +127,9 @@ struct CharacterEditor: View {
                 Text(tab == .profile ? "Mii information":tab.rawValue).font(.system(size:22,weight:.medium,design:.rounded))
                 Spacer()
                 if optionCount>12 {
-                    Button {page=max(0,page-1)} label:{Image(systemName:"chevron.left").frame(width:38,height:32)}.disabled(page==0).accessibilityLabel("Previous feature page")
+                    PlazaButton {page=max(0,page-1)} label:{Image(systemName:"chevron.left").frame(width:38,height:32)}.disabled(page==0).accessibilityLabel("Previous feature page")
                     Text("\(page+1) / \((optionCount+11)/12)").font(.system(size:14)).monospacedDigit()
-                    Button {page=min((optionCount-1)/12,page+1)} label:{Image(systemName:"chevron.right").frame(width:38,height:32)}.disabled((page+1)*12>=optionCount).accessibilityLabel("Next feature page")
+                    PlazaButton {page=min((optionCount-1)/12,page+1)} label:{Image(systemName:"chevron.right").frame(width:38,height:32)}.disabled((page+1)*12>=optionCount).accessibilityLabel("Next feature page")
                 }
             }.buttonStyle(MiiControlStyle()).frame(height:34)
             if tab == .face {faceTabs}
@@ -152,7 +152,7 @@ struct CharacterEditor: View {
     private var faceTabs: some View {
         HStack(spacing:8) {
             ForEach(0..<3) {index in
-                Button {faceSection=index;page=0} label: {
+                PlazaButton {faceSection=index;page=0} label: {
                     HStack(spacing:6) {MiiFeatureIcon(kind:[.face,.makeup,.wrinkles][index]).frame(width:25,height:25);Text(["Shape","Makeup","Wrinkles"][index]).font(.system(size:12,weight:.medium))}.frame(maxWidth:.infinity).frame(height:39)
                 }.buttonStyle(MiiControlStyle(selected:faceSection==index)).accessibilityLabel(["Face shapes","Face makeup","Face wrinkles"][index])
             }
@@ -161,7 +161,7 @@ struct CharacterEditor: View {
     private var accessoryTabs: some View {
         HStack(spacing:8) {
             ForEach(FeatureTab.accessories,id:\.self) {item in
-                Button {tab=item} label: {
+                PlazaButton {tab=item} label: {
                     VStack(spacing:2) {MiiFeatureIcon(kind:item.symbol).frame(width:28,height:28);Text(item.rawValue).font(.system(size:10))}.frame(maxWidth:.infinity).frame(height:47)
                 }.buttonStyle(MiiControlStyle(selected:tab==item)).accessibilityLabel("\(item.rawValue) category")
             }
@@ -170,7 +170,7 @@ struct CharacterEditor: View {
     private var adjustmentRail: some View {
         VStack(spacing:6) {
             ForEach(tab.adjustments,id:\.self) {title in
-                Button {adjustment=title} label: {Image(systemName:adjustmentIcon(title)).font(.system(size:22,weight:.semibold)).frame(width:51,height:51)}
+                PlazaButton {adjustment=title} label: {Image(systemName:adjustmentIcon(title)).font(.system(size:22,weight:.semibold)).frame(width:51,height:51)}
                     .buttonStyle(MiiControlStyle(selected:adjustment==title)).accessibilityLabel("Adjust \(title)").help(title)
             }
         }.padding(6).background(LinearGradient(colors:[MiiEditorStyle.lime,.yellow.opacity(0.48)],startPoint:.top,endPoint:.bottom),in:RoundedRectangle(cornerRadius:16))
@@ -183,13 +183,13 @@ struct CharacterEditor: View {
             VStack(spacing:12) {
                 LazyVGrid(columns:[GridItem(.fixed(34)),GridItem(.fixed(34))],spacing:10) {
                     ForEach(colors.values.indices,id:\.self) {i in
-                        Button {colors.binding.wrappedValue=i} label:{RoundedRectangle(cornerRadius:6).fill(Color(nsColor:colors.values[i])).frame(width:34,height:34).padding(4)}
+                        PlazaButton {colors.binding.wrappedValue=i} label:{RoundedRectangle(cornerRadius:6).fill(Color(nsColor:colors.values[i])).frame(width:34,height:34).padding(4)}
                             .buttonStyle(MiiControlStyle(selected:colors.binding.wrappedValue==i))
                             .accessibilityLabel("\(colors.title) \(i+1)").accessibilityAddTraits(colors.binding.wrappedValue==i ? .isSelected:[])
                     }
                 }
                 if tab == .hair {
-                    Button {avatar.features.flipHair.toggle()} label:{Image(systemName:"arrow.left.and.right.righttriangle.left.righttriangle.right").font(.system(size:23)).frame(width:76,height:42)}
+                    PlazaButton {avatar.features.flipHair.toggle()} label:{Image(systemName:"arrow.left.and.right.righttriangle.left.righttriangle.right").font(.system(size:23)).frame(width:76,height:42)}
                         .buttonStyle(MiiControlStyle(selected:avatar.features.flipHair)).accessibilityLabel("Mirror hair")
                 }
             }.frame(width:86).padding(.top,4)
@@ -228,15 +228,15 @@ struct CharacterEditor: View {
     }
     private var editorFooter: some View {
         HStack(spacing:15) {
-            Button(action:closeEditor) {Label("Cancel",systemImage:"arrow.uturn.backward").frame(width:126,height:47)}.keyboardShortcut(.cancelAction)
-            Button {if let last=history.popLast() {suppressHistory=true;avatar=last}} label:{Image(systemName:"arrow.uturn.backward.circle").font(.system(size:22)).frame(width:47,height:47)}.disabled(history.isEmpty).accessibilityLabel("Undo Mii change")
+            PlazaButton(sound: .back, action:closeEditor) {Label("Cancel",systemImage:"arrow.uturn.backward").frame(width:126,height:47)}.keyboardShortcut(.cancelAction)
+            PlazaButton {if let last=history.popLast() {suppressHistory=true;avatar=last}} label:{Image(systemName:"arrow.uturn.backward.circle").font(.system(size:22)).frame(width:47,height:47)}.disabled(history.isEmpty).accessibilityLabel("Undo Mii change")
             filesMenu.font(.system(size:14)).frame(width:80)
             Text(message).font(.system(size:11)).foregroundStyle(.secondary).lineLimit(2).frame(maxWidth:.infinity,alignment:.leading)
             if tab == .profile {
-                Button {tab = .body} label:{Text("Back").frame(width:70,height:47)}
-                if !isNew {Button {if save() {model.mutate {$0.primaryAvatarID=avatar.id};message="Primary Mii updated."}} label:{Text("Make Primary").font(.system(size:12)).frame(width:100,height:47)}}
+                PlazaButton {tab = .body} label:{Text("Back").frame(width:70,height:47)}
+                if !isNew {PlazaButton {if save() {model.mutate {$0.primaryAvatarID=avatar.id};message="Primary Mii updated."}} label:{Text("Make Primary").font(.system(size:12)).frame(width:100,height:47)}}
             }
-            Button {if tab == .profile {save()} else {tab = .profile}} label: {
+            PlazaButton {if tab == .profile {save()} else {tab = .profile}} label: {
                 HStack(spacing:12) {Text(tab == .profile ? "Save Mii":"Next");Image(systemName:tab == .profile ? "checkmark":"arrow.right").font(.system(size:22,weight:.semibold))}.frame(width:155,height:47)
             }.keyboardShortcut(.defaultAction)
         }.buttonStyle(MiiControlStyle()).font(.system(size:17,weight:.medium,design:.rounded))
@@ -245,18 +245,18 @@ struct CharacterEditor: View {
     private func closeEditor() {if let onClose {onClose()} else {dismiss()}}
     private var filesMenu: some View {
         Menu {
-                    Button("Use Console Face Layout") {
+                    PlazaButton("Use Console Face Layout") {
                         avatar.eyeSpacing=2.0/12;avatar.featureHeight=0.5
                         avatar.features.eyeY=12.0/18;avatar.features.browY=7.0/15;avatar.features.browSpacing=2.0/12
                         avatar.features.noseY=9.0/18;avatar.features.mouthY=13.0/18
                         avatar.features.glassesY=10.0/20
                         message="Console face positions applied. Save Mii to keep them."
                     }
-                    if !isNew && model.document.avatars.count>1 { Button("Delete Character",role:.destructive) { let id=avatar.id; model.mutate { $0.avatars.removeAll { $0.id==id }; if $0.primaryAvatarID==id { $0.primaryAvatarID=$0.avatars.first?.id } }; suppressHistory=true; avatar=model.document.primaryAvatar; model.rebuildScene() } }
-                    Button("Import Mii or Character JSON…") { importCharacter() }
-                    Button("Export Wii U / 3DS Mii…") { exportCharacter(binary:true) }
-                    Button("Export Character JSON…") { exportCharacter(binary:false) }
-                    Button("Export Portrait PNG…") { exportPortrait() }
+                    if !isNew && model.document.avatars.count>1 { PlazaButton("Delete Character",role:.destructive) { let id=avatar.id; model.mutate { $0.avatars.removeAll { $0.id==id }; if $0.primaryAvatarID==id { $0.primaryAvatarID=$0.avatars.first?.id } }; suppressHistory=true; avatar=model.document.primaryAvatar; model.rebuildScene() } }
+                    PlazaButton("Import Mii or Character JSON…") { importCharacter() }
+                    PlazaButton("Export Wii U / 3DS Mii…") { exportCharacter(binary:true) }
+                    PlazaButton("Export Character JSON…") { exportCharacter(binary:false) }
+                    PlazaButton("Export Portrait PNG…") { exportPortrait() }
                 } label:{Text("Files").frame(width:80,height:47)}
                 .menuStyle(.borderlessButton)
     }
@@ -278,7 +278,7 @@ struct CharacterEditor: View {
     private var catalog: some View {
         LazyVGrid(columns:Array(repeating:GridItem(.flexible(),spacing:8),count:3),spacing:8) {
             ForEach(shownOptions,id:\.self) { index in
-                Button { selection.wrappedValue=index } label: {
+                PlazaButton { selection.wrappedValue=index } label: {
                     FeatureThumbnail(avatar:option(index),safe:model.document.preferences.safeMode,feature:MiiTileFeature(tab:tab)).frame(height:64).padding(3).frame(maxWidth:.infinity)
                 }.buttonStyle(MiiControlStyle(selected:selection.wrappedValue==index)).accessibilityLabel("\(tab.rawValue) style \(index+1)").accessibilityAddTraits(selection.wrappedValue==index ? .isSelected:[])
             }
@@ -321,9 +321,9 @@ struct CharacterEditor: View {
         VStack(alignment:.leading,spacing:10) {
             Text(title).font(.system(size:13,weight:.medium))
             HStack(spacing:14) {
-                Button {value.wrappedValue=max(0,value.wrappedValue-0.05)} label:{Image(systemName:"minus").font(.system(size:18,weight:.semibold)).frame(width:44,height:40)}.accessibilityLabel("Decrease \(title)")
+                PlazaButton {value.wrappedValue=max(0,value.wrappedValue-0.05)} label:{Image(systemName:"minus").font(.system(size:18,weight:.semibold)).frame(width:44,height:40)}.accessibilityLabel("Decrease \(title)")
                 Slider(value:value,in:0...1).tint(MiiEditorStyle.green).accessibilityLabel(title)
-                Button {value.wrappedValue=min(1,value.wrappedValue+0.05)} label:{Image(systemName:"plus").font(.system(size:18,weight:.semibold)).frame(width:44,height:40)}.accessibilityLabel("Increase \(title)")
+                PlazaButton {value.wrappedValue=min(1,value.wrappedValue+0.05)} label:{Image(systemName:"plus").font(.system(size:18,weight:.semibold)).frame(width:44,height:40)}.accessibilityLabel("Increase \(title)")
             }.buttonStyle(MiiControlStyle())
         }.padding(12).background(.white.opacity(0.65),in:RoundedRectangle(cornerRadius:16))
     }
@@ -399,7 +399,7 @@ struct SheetHeader: View {
     var body: some View {
         VStack(alignment:.leading,spacing:14) {
             if let backToPlaza {
-                Button(action:backToPlaza) { Label("Back to Plaza",systemImage:"chevron.left") }
+                PlazaButton(sound: .back, action:backToPlaza) { Label("Back to Plaza",systemImage:"chevron.left") }
                     .buttonStyle(.plain).font(.system(size:13,weight:.semibold))
                     .foregroundStyle(PlazaStyle.teal)
             }
@@ -409,7 +409,7 @@ struct SheetHeader: View {
                     Text(subtitle).font(.system(size:12)).foregroundStyle(.secondary)
                 }
                 Spacer()
-                Button(action:close) {
+                PlazaButton(sound: .back, action:close) {
                     Image(systemName:"xmark").font(.system(size:12,weight:.semibold))
                         .padding(8).background(.black.opacity(0.05),in:Circle())
                 }.buttonStyle(.plain).keyboardShortcut(.cancelAction).help("Close").accessibilityLabel("Close")

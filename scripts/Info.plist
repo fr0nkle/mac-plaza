@@ -20,18 +20,22 @@
 			<key>UTTypeDescription</key>
 			<string>Plaza Resource Pack</string>
 			<key>UTTypeConformsTo</key>
-			<array><string>public.data</string></array>
+			<array>
+				<string>public.data</string>
+			</array>
 			<key>UTTypeTagSpecification</key>
 			<dict>
 				<key>public.filename-extension</key>
-				<array><string>plazapack</string></array>
+				<array>
+					<string>plazapack</string>
+				</array>
 			</dict>
 		</dict>
 	</array>
 	<key>CFBundleShortVersionString</key>
-	<string>0.20.2</string>
+	<string>0.21.0</string>
 	<key>CFBundleVersion</key>
-	<string>31</string>
+	<string>35</string>
 	<key>CFBundleURLTypes</key>
 	<array>
 		<dict>
@@ -58,6 +62,8 @@
 	<true/>
 	<key>PlazaServiceURL</key>
 	<string>https://mac-plaza.tail1400d.ts.net</string>
+	<key>PlazaDiscordApplicationID</key>
+	<string>1559211138175213749</string>
 	<key>SUFeedURL</key>
 	<string>https://mac-plaza.tail1400d.ts.net/updates/appcast.xml</string>
 	<key>SUPublicEDKey</key>

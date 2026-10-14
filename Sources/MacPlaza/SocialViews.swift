@@ -23,7 +23,7 @@ struct SocialConnectionBadge: View {
     @ObservedObject var social: SocialController
     var action: () -> Void
     var body: some View {
-        Button(action: action) {
+        PlazaButton(action: action) {
             Label(social.previewing ? "FRIENDS PREVIEW" : social.connected ? "PLAZA FRIENDS" : "DISCORD & FRIENDS",
                   systemImage: "person.2.fill")
                 .font(.system(size: 10, weight: .bold)).foregroundStyle(PlazaStyle.teal)
@@ -57,7 +57,7 @@ private struct DiscordFriendSearchField: View {
             TextField("Search Discord friends", text: $query)
                 .textFieldStyle(.plain).accessibilityLabel("Search Discord friends")
             if !query.isEmpty {
-                Button { query = "" } label: { Image(systemName: "xmark.circle.fill") }
+                PlazaButton { query = "" } label: { Image(systemName: "xmark.circle.fill") }
                     .buttonStyle(.plain).foregroundStyle(.secondary)
                     .accessibilityLabel("Clear friend search").help("Clear friend search")
             }
@@ -87,24 +87,41 @@ struct SocialSettingsView: View {
                 Section(social.hasSession ? "Discord connection" : "1. Connect your Discord account") {
                     Text(social.message).font(.callout).textSelection(.enabled)
                     if social.previewing {
-                        Button("End Sample Preview") { social.endPreview() }
+                        PlazaButton("End Sample Preview") { social.endPreview() }
                     } else {
                         Text("Sign in, choose your Mii, and share it with your Discord friends. No Plaza invitation codes needed.").font(.callout)
                         DisclosureGroup("Advanced connection settings") {
                             TextField("Plaza service address", text: $social.serverAddress, prompt: Text("https://plaza.example.com"))
                                 .textFieldStyle(.roundedBorder).disabled(social.hasSession || social.busy)
+                            TextField("Discord Application ID", text: $social.discordApplicationID)
+                                .textFieldStyle(.roundedBorder).disabled(social.busy || social.connectingLocally)
+                            Text("For direct sign-in, the app owner enables Public Client and registers http://127.0.0.1/callback in Discord’s Developer Portal once. Each person’s authorization stays in their own Keychain.")
+                                .font(.caption).foregroundStyle(.secondary)
+                        }
+                        HStack {
+                            PlazaButton(social.usesLocalDiscord ? "Reconnect Discord on This Mac" : "Connect Discord on This Mac") { social.connectLocally() }
+                                .disabled(social.busy || social.connectingLocally || (UInt64(social.discordApplicationID) ?? 0) == 0)
+                            if social.hasSession || social.hasDiscordFriendsAuthorization || social.connectingLocally {
+                                PlazaButton("Disconnect This Device") { social.disconnectLocalDiscord() }
+                            }
+                            if social.connectingLocally { ProgressView().controlSize(.small) }
+                        }
+                        Text(social.usesLocalDiscord ? "Discord friends connect directly. The Plaza service is optional for friends and supplies shared delivery and bot activity." : "Direct sign-in keeps Discord friends working when the Plaza service is offline. Service sign-in remains available below.")
+                            .font(.caption).foregroundStyle(.secondary)
+                        if social.pendingInteractionCount > 0 {
+                            Text("\(social.pendingInteractionCount) interaction(s) saved on this Mac, waiting for delivery.").font(.callout)
                         }
                         HStack {
                             if !social.hasSession {
-                                Button("Connect Discord") { social.connect() }.buttonStyle(.borderedProminent).tint(PlazaStyle.teal)
+                                PlazaButton("Connect Discord") { social.connect() }.buttonStyle(.borderedProminent).tint(PlazaStyle.teal)
                                     .disabled(social.serverAddress.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || social.busy)
-                                Button("Preview Sample Friends") { social.preview(); dismiss() }.disabled(social.busy)
+                                PlazaButton("Preview Sample Friends") { social.preview(); dismiss() }.disabled(social.busy)
                             } else {
-                                Button(social.hasDiscordFriendsAuthorization ? "Reconnect Discord Friends" : "Load My Discord Friends") { social.connect() }
+                                PlazaButton(social.hasDiscordFriendsAuthorization ? "Reconnect Discord Friends" : "Load My Discord Friends") { social.connect() }
                                     .buttonStyle(.borderedProminent).tint(PlazaStyle.teal).disabled(social.busy)
-                                Button("Change Service") { social.changeService() }.disabled(social.busy)
-                                Button("Refresh") { Task { await social.refresh() } }.disabled(social.busy)
-                                Button("Unlink & Delete Shared Account…", role: .destructive) { confirmUnlink = true }.disabled(social.busy)
+                                PlazaButton("Change Service") { social.changeService() }.disabled(social.busy)
+                                PlazaButton("Refresh") { Task { await social.refresh() } }.disabled(social.busy)
+                                PlazaButton("Unlink & Delete Shared Account…", role: .destructive) { confirmUnlink = true }.disabled(social.busy)
                             }
                             if social.busy { ProgressView().controlSize(.small) }
                         }
@@ -113,12 +130,13 @@ struct SocialSettingsView: View {
                             .font(.caption).foregroundStyle(.secondary)
                     }
                 }
-                if social.account != nil {
+                if social.account != nil || social.hasDiscordFriendsAuthorization {
+                    if social.account != nil {
                     Section("2. Link your Mii & choose what to share") {
                         Picker("Mii to publish", selection: $selected) {
                             ForEach(model.document.avatars) { avatar in Text(avatar.name).tag(Optional(avatar.id)) }
                         }
-                        Button("Create or edit a Mii…") { model.sheet = .characters }
+                        PlazaButton("Create or edit a Mii…") { model.sheet = .characters }
                         TextField("A little note for your friends", text: $note, axis: .vertical).lineLimit(3...5)
                         Text("\(note.count)/280 characters").font(.caption).foregroundStyle(note.count > 280 ? .red : .secondary)
                         Toggle("Share my chosen Mii and note with my Discord friends", isOn: Binding(get: { sharing && shareDiscordFriends }, set: { sharing = $0; shareDiscordFriends = $0 }))
@@ -127,13 +145,13 @@ struct SocialSettingsView: View {
                         Toggle("Share my current and recently used apps & games", isOn: $shareActivity)
                         Text("Friends without a shared Mii receive a random temporary Mii for each sign-in or app session. Custom status text appears periodically overhead. Remembered Discord games can alternate with it, and shared notes can appear too.").font(.caption).foregroundStyle(.secondary)
                         Text("Optional activity sharing sends foreground application names and bundle IDs while this Mac is awake, including when Plaza is in the background. Friends gather around matching app islands. Shared Plaza app activity expires after 30 minutes; window titles, documents, and app contents are never shared.").font(.caption).foregroundStyle(.secondary)
-                        Button("Save Shared Profile") {
+                        PlazaButton("Save Shared Profile") {
                             if let avatar = model.document.avatars.first(where: { $0.id == selected }) {
                                 social.publish(avatar: avatar, note: note, sharing: sharing, sharePresence: sharePresence, shareActivity: shareActivity, shareDiscordFriends: shareDiscordFriends)
                             }
                         }.disabled(social.busy || selected == nil || note.count > 280)
                         Text(social.discordSharingMessage).font(.caption).foregroundStyle(.secondary)
-                        Text("Saving publishes this Mii’s appearance and note. Birthdays, creator details, private notes, drafts, local replies, app paths and renderer resources stay on your Mac. Public journal notes and their author Miis/drawings share independently with your Discord friends. Discord friends’ availability comes directly from Discord. Custom status text and other games use the optional bot and respect Discord’s server visibility and profile privacy settings.")
+                        Text("Saving publishes this Mii’s appearance and note. Birthdays, creator details, private notes, drafts, local replies, app paths and renderer resources stay on your Mac. Public Miiverse posts and their author Miis/drawings share independently with your Discord friends. Discord friends’ availability comes directly from Discord. Custom status text and other games use the optional bot and respect Discord’s server visibility and profile privacy settings.")
                             .font(.caption).foregroundStyle(.secondary)
                     }
                     Section("Discord custom statuses & games") {
@@ -146,6 +164,7 @@ struct SocialSettingsView: View {
                         Text("Friends’ custom Discord status text appears overhead when visible to the Plaza bot in a server you both share. Discord may hide it based on their profile privacy settings. Generic online, away, busy and offline bubbles are hidden. Game activity still gathers Miis around matching homescreen apps; add the game with the same name Discord displays. No Plaza invitation or linked Mii is needed.").font(.caption).foregroundStyle(.secondary)
                         Text("Only your Discord friend IDs are sent to your Plaza service for this lookup. It returns current server-visible custom statuses and Playing activity; no messages are read. This Mac remembers each friend’s last visible game for up to two hours after play stops, including across relaunches. Friends do not need Plaza. Click an app to see who played recently, or watch for recent-game bubbles alongside custom statuses. History stays on this Mac and clears when you hide or remove a friend, lose shared-server coverage, unlink Discord, or turn this switch off. During connection gaps, remembered games are marked as recent. Hidden or unobserved activity cannot be recovered.").font(.caption).foregroundStyle(.secondary)
                     }
+                    }
                     Section("Discord friends") {
                         Text(social.discordFriendsMessage).font(.callout)
                         DiscordFriendSearchField(query: $friendSearch)
@@ -154,43 +173,44 @@ struct SocialSettingsView: View {
                             HStack {
                                 VStack(alignment: .leading) { Text(friend.displayName); FriendStatusLabel(friend: friend) }
                                 Spacer()
-                                Button(friend.temporaryAvatar == true ? "Assign Mii…" : "View Mii") { model.sheet = .friend(friend) }
-                                Button("Hide Mii") { social.hide(friend.id) }
+                                PlazaButton(friend.temporaryAvatar == true ? "Assign Mii…" : "View Mii") { model.sheet = .friend(friend) }
+                                PlazaButton("Hide Mii") { social.hide(friend.id) }
                             }
                         }
                         if visibleFriends.isEmpty && !social.friends.isEmpty {
                             Text("No friends match your search.").font(.callout).foregroundStyle(.secondary)
                         }
-                        Button("Show All Hidden Miis") { social.showAll() }
+                        PlazaButton("Show All Hidden Miis") { social.showAll() }
                     }
+                    if social.account != nil {
                     DisclosureGroup("Optional shared Mii profiles & Plaza invitations") {
-                    Text("Optional invitations connect Plaza accounts directly. Public journal notes can also reach authorized Discord friends automatically.").font(.caption).foregroundStyle(.secondary)
+                    Text("Optional invitations connect Plaza accounts directly. Public Miiverse posts can also reach authorized Discord friends automatically.").font(.caption).foregroundStyle(.secondary)
                     Section("Invite a friend") {
                         HStack {
-                            Button("Create Invitation") { social.createInvite() }.disabled(social.busy)
+                            PlazaButton("Create Invitation") { social.createInvite() }.disabled(social.busy)
                             if !social.inviteCode.isEmpty {
                                 Text(social.inviteCode).font(.system(.caption, design: .monospaced)).textSelection(.enabled).lineLimit(1)
-                                Button("Copy") { NSPasteboard.general.clearContents(); NSPasteboard.general.setString(social.inviteCode, forType: .string) }
+                                PlazaButton("Copy") { NSPasteboard.general.clearContents(); NSPasteboard.general.setString(social.inviteCode, forType: .string) }
                             }
                         }
                         Text("Send the code to a friend. It expires after 24 hours and one use; you still approve their request.").font(.caption).foregroundStyle(.secondary)
                         HStack {
                             TextField("Friend’s invitation code", text: $friendCode).textFieldStyle(.roundedBorder)
-                            Button("Send Request") { social.requestFriend(friendCode) }.disabled(social.busy || friendCode.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                            PlazaButton("Send Request") { social.requestFriend(friendCode) }.disabled(social.busy || friendCode.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
                         }
                     }
                     if let snapshot = social.snapshot {
                         if !snapshot.incoming.isEmpty {
                             Section("Incoming requests") {
                                 ForEach(snapshot.incoming) { request in
-                                    HStack { Text(request.displayName); Spacer(); Button("Accept") { social.accept(request.id) }; Button("Decline") { social.remove(request.id) } }
+                                    HStack { Text(request.displayName); Spacer(); PlazaButton("Accept") { social.accept(request.id) }; PlazaButton("Decline") { social.remove(request.id) } }
                                 }
                             }.disabled(social.busy)
                         }
                         if !snapshot.outgoing.isEmpty {
                             Section("Sent requests") {
                                 ForEach(snapshot.outgoing) { request in
-                                    HStack { Text(request.displayName); Spacer(); Text("Awaiting approval").font(.caption).foregroundStyle(.secondary); Button("Cancel") { social.remove(request.id) } }
+                                    HStack { Text(request.displayName); Spacer(); Text("Awaiting approval").font(.caption).foregroundStyle(.secondary); PlazaButton("Cancel") { social.remove(request.id) } }
                                 }
                             }.disabled(social.busy)
                         }
@@ -204,28 +224,29 @@ struct SocialSettingsView: View {
                                     else { Text("Mii hidden").font(.caption).foregroundStyle(.secondary) }
                                 }
                                 Spacer()
-                                Button("Remove") { social.remove(contact.id) }
-                                Button("Block") { social.remove(contact.id, block: true) }
+                                PlazaButton("Remove") { social.remove(contact.id) }
+                                PlazaButton("Block") { social.remove(contact.id, block: true) }
                             }
                         }
                         if social.contacts.isEmpty { Text("Accepted friends will appear here once you exchange invitations.").font(.caption).foregroundStyle(.secondary) }
-                        Button("Show All Hidden Miis") { social.showAll() }
+                        PlazaButton("Show All Hidden Miis") { social.showAll() }
                         DisclosureGroup("Blocked accounts", isExpanded: $showBlocks) {
                             ForEach(social.blocks) { blocked in
-                                HStack { Text(blocked.displayName); Spacer(); Button("Unblock") { social.unblock(blocked.id) } }
+                                HStack { Text(blocked.displayName); Spacer(); PlazaButton("Unblock") { social.unblock(blocked.id) } }
                             }
                             if social.blocks.isEmpty { Text("No blocked accounts.").font(.caption).foregroundStyle(.secondary) }
                         }.onChange(of: showBlocks) { _, value in if value { social.loadBlocks() } }
                     }.disabled(social.busy)
                     }
                 }
+                    }
             }.formStyle(.grouped)
         }.frame(width: 680, height: 760)
         .onAppear { restoreDraft() }
         .onChange(of: social.account?.id) { _, _ in restoreDraft() }
         .confirmationDialog("Unlink Discord and delete your shared account?", isPresented: $confirmUnlink, titleVisibility: .visible) {
-            Button("Delete Shared Account", role: .destructive) { social.unlink() }
-        } message: { Text("This removes your published Mii, Plaza note, and friendships from the service. Your local characters and journal remain on this Mac.") }
+            PlazaButton("Delete Shared Account", role: .destructive) { social.unlink() }
+        } message: { Text("This removes your published Mii, Plaza note, and friendships from the service. Your local characters and Miiverse posts remain on this Mac.") }
     }
     private func restoreDraft() {
         selected = model.document.avatars.first(where: { $0.id == social.linkedAvatarID })?.id ?? model.document.primaryAvatarID ?? model.document.avatars.first?.id
@@ -274,10 +295,10 @@ struct FriendProfileView: View {
                 ForEach(Array(friend.activities.filter { $0.isRecent() }.enumerated()), id: \.offset) { _, activity in Text(activity.label).font(.caption).foregroundStyle(.secondary) }
                 if !friend.note.isEmpty { Text(friend.note).textSelection(.enabled).multilineTextAlignment(.center).padding(.horizontal, 28) }
                 HStack {
-                    Button("Hide Mii") { social.hide(friend.id); dismiss() }
+                    PlazaButton("Hide Mii") { social.hide(friend.id); dismiss() }
                     if !social.previewing, social.contacts.contains(where: { $0.id == friend.id }) {
-                        Button("Remove Friend") { social.remove(friend.id); dismiss() }.disabled(social.busy)
-                        Button("Block", role: .destructive) { social.remove(friend.id, block: true); dismiss() }.disabled(social.busy)
+                        PlazaButton("Remove Friend") { social.remove(friend.id); dismiss() }.disabled(social.busy)
+                        PlazaButton("Block", role: .destructive) { social.remove(friend.id, block: true); dismiss() }.disabled(social.busy)
                     }
                 }
             } else { Text("This Mii is no longer shared with you.").foregroundStyle(.secondary) }
@@ -297,13 +318,13 @@ struct SocialFriendList: View {
         VStack(alignment: .leading, spacing: 12) {
             HStack {
                 Text(social.previewing ? "SAMPLE PLAZA FRIENDS" : "PLAZA FRIENDS").font(.caption).foregroundStyle(.secondary)
-                Spacer(); Button("Discord & Friends") { model.sheet = .social }
+                Spacer(); PlazaButton("Discord & Friends") { model.sheet = .social }
             }.padding(.top, 12)
             if !model.document.preferences.privatePresentation {
                 DiscordFriendSearchField(query: $friendSearch)
                 Text("\(visibleFriends.count) of \(social.friends.count) friends").font(.caption).foregroundStyle(.secondary)
                 ForEach(visibleFriends) { friend in
-                    Button { model.sheet = .friend(friend) } label: {
+                    PlazaButton { model.sheet = .friend(friend) } label: {
                         HStack(spacing: 12) {
                             AvatarPortrait(avatar: friend.avatar).frame(width: 36, height: 45)
                             VStack(alignment: .leading, spacing: 4) {

@@ -21,11 +21,15 @@ struct PlazaSpeechPost {
 
 extension PlazaModel {
     func journalPost(at offset: Int = 0) -> PlazaSpeechPost {
-        let guides = ["Make yourself at home. Click an app to take a closer look before opening it.",
-                      "A thought, a sketch, a little spark. Leave a note in your journal.",
-                      "These visitors live on your Mac. Give your own characters a little personality."]
-        let notes = bubbleNotes.filter { note in isOwnNote(note) || homeSharedNotes.contains { $0.id == note.id } }
         let selection = bubbleSelections.indices.contains(offset) ? bubbleSelections[offset] : 0
+        return journalPost(selection: selection)
+    }
+
+    private func journalPost(selection: Int, sourceNotes: [LocalNote]? = nil) -> PlazaSpeechPost {
+        let guides = ["Make yourself at home. Click an app to take a closer look before opening it.",
+                      "A thought, a sketch, a little spark. Share a post on Miiverse.",
+                      "These visitors live on your Mac. Give your own characters a little personality."]
+        let notes = sourceNotes ?? bubbleNotes.filter { note in isOwnNote(note) || homeSharedNotes.contains { $0.id == note.id } }
         let index = max(0, selection) % (notes.count + guides.count)
         if index < notes.count {
             let note = notes[index]
@@ -40,4 +44,29 @@ extension PlazaModel {
         return PlazaSpeechPost(id: "guide-\(index - notes.count)", speaker: document.primaryAvatar,
                                name: document.primaryAvatar.name, text: guides[index - notes.count], destination: .journal(nil))
     }
+    /// Distinct speakers, with extra candidates so the layout can skip a blocked
+    /// Mii. Guide messages may use local/decorative Miis; authored notes never do.
+    func journalPosts() -> [PlazaSpeechPost] {
+        let friendIDs = Set(social.friends.map { $0.avatar.id })
+        let rendered = Set(scene.fflCharacters.map(\.id))
+        let guides = [document.primaryAvatar] + document.avatars.filter { $0.id != document.primaryAvatar.id } +
+            scene.fflCharacters.filter { !friendIDs.contains($0.id) }
+        var speakers = Set<UUID>(), result: [PlazaSpeechPost] = []
+        let notes = bubbleNotes.filter { note in isOwnNote(note) || homeSharedNotes.contains { $0.id == note.id } }
+        let start = bubbleSelections.first ?? 0
+        for offset in 0..<(notes.count + 3) {
+            let post = journalPost(selection: start + offset, sourceNotes: notes)
+            var candidate = post
+            if post.id.hasPrefix("guide-") {
+                guard let guide = guides.first(where: { rendered.contains($0.id) && !speakers.contains($0.id) }) else { continue }
+                candidate = PlazaSpeechPost(id: post.id + "-" + guide.id.uuidString,
+                    speaker: guide, name: guide.name, text: post.text, destination: .journal(nil))
+            }
+            guard rendered.contains(candidate.speaker.id), speakers.insert(candidate.speaker.id).inserted else { continue }
+            result.append(candidate)
+            if result.count == 6 { break }
+        }
+        return result
+    }
+
 }

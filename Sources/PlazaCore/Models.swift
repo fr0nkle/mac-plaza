@@ -92,9 +92,9 @@ public struct Preferences: Codable, Equatable, Sendable {
     public var friendsMusicVolume: Double?
     public var settingsMusicVolume: Double?
     public var writingMusicVolume: Double?
+    public var miiverseMusicVolume: Double?
     public var uiSoundEffects: Bool?
     public var uiSoundVolume: Double?
-    public var miiverseMusicVolume: Double?
     public var rotatingHomeScreen: Bool?
     public init() {}
 }

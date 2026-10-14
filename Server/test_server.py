@@ -21,6 +21,23 @@ def avatar():
 
 
 class ServiceTests(unittest.TestCase):
+    def test_direct_login_verifies_application_scopes_expiry_and_server_identity(self):
+        authorization = dict(application={"id": "client"}, scopes=["identify", "sdk.social_layer_presence"], expires="2099-01-01T00:00:00Z")
+        def discord_request(url, data=None, token=None):
+            self.assertEqual(token, "device-access")
+            self.assertIsNone(data)
+            return authorization if url == "oauth2/@me" else {"id": "100", "username": "Alice"}
+        self.service.discord_request = discord_request
+        result = self.call(None, "POST", "auth/direct", accessToken="device-access", discordID="200")
+        self.assertEqual(self.snapshot(result["token"])["account"]["id"], self.snapshot(self.a)["account"]["id"])
+        self.assertNotIn("device-access", "\n".join(self.service.db.iterdump()))
+        self.assertEqual(self.call(None, "GET", "config")["discordApplicationID"], "client")
+        for field, value in [("application", {"id": "other"}), ("scopes", ["identify"]), ("scopes", [{}]), ("expires", "1970-01-01T00:00:00Z"), ("expires", "bad")]:
+            previous = authorization[field]; authorization[field] = value
+            with self.assertRaises(APIError):
+                self.call(None, "POST", "auth/direct", accessToken="device-access")
+            authorization[field] = previous
+
     def test_public_identity_uses_linked_discord_name_for_legacy_notes_replies_and_activity(self):
         import uuid
         self.befriend()
@@ -143,6 +160,46 @@ class ServiceTests(unittest.TestCase):
         tokens["scope"] = "identify"
         with self.assertRaises(APIError):
             self.call(self.a, "POST", "discord/refresh", refreshToken="old-refresh")
+
+    def test_seven_day_expiry_cascades_and_stale_clients_cannot_restore_posts(self):
+        import uuid
+        self.clock = 2000000
+        self.befriend()
+        note = self.journal_note()
+        self.call(self.a, "PUT", "notes", notes=[note])
+        nid = self.call(self.b, "GET", "notes")["notes"][0]["id"]
+        self.call(self.b, "PUT", "notes/"+nid+"/like", liked=True)
+        author = avatar(); author["id"] = str(uuid.uuid4())
+        self.call(self.b, "PUT", "notes/"+nid+"/replies/"+str(uuid.uuid4()), author=author, text="Reply")
+        self.clock += 7*86400-1
+        self.assertEqual(len(self.call(self.a, "GET", "notes/owned")["notes"]), 1)
+        # Editing at the end of the week cannot reset creation or its deadline.
+        edit = dict(note, text="Edited", created=self.clock)
+        self.call(self.a, "PUT", "notes", notes=[edit])
+        self.assertEqual(self.call(self.a, "GET", "notes/owned")["notes"][0]["created"], note["created"])
+        self.clock += 1
+        self.assertEqual(self.call(self.a, "GET", "notes/owned")["notes"], [])
+        for table in ("journal_notes", "journal_likes", "journal_replies", "journal_activity"):
+            self.assertEqual(self.service.db.execute("SELECT count(*) FROM "+table).fetchone()[0], 0)
+        self.assertEqual(self.call(self.a, "PUT", "notes", notes=[note])["saved"], 0)
+        account = self.service.account(self.a)
+        self.assertFalse(account["share_notes"])
+        self.assertIsNone(account["journal_avatar"])
+        self.assertEqual(self.service.db.execute("SELECT count(*) FROM accounts").fetchone()[0], 3)
+
+    def test_future_note_dates_are_clamped_and_idle_server_sweeps(self):
+        from server import make_server
+        self.clock = 2000000
+        note = self.journal_note(created=self.clock+9999999)
+        self.call(self.a, "PUT", "notes", notes=[note])
+        self.assertEqual(self.call(self.a, "GET", "notes/owned")["notes"][0]["created"], self.clock)
+        server = make_server(self.service, port=0)
+        try:
+            self.clock += 7*86400
+            server.service_actions()
+            self.assertEqual(self.service.db.execute("SELECT count(*) FROM journal_notes").fetchone()[0], 0)
+        finally:
+            server.server_close()
 
     def setUp(self):
         self.clock = 100000

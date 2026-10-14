@@ -1,13 +1,13 @@
 {
-  "version": "0.20.2",
+  "version": "0.21.0",
   "installer": {
-    "url": "https://github.com/fr0nkle/mac-plaza/releases/download/v0.20.2/Mac-Plaza-0.20.2.dmg",
-    "size": 90577926,
-    "sha256": "25847d6a8dfaca099ba39a0a7523937f81927e9ba950d436b567b9e9d3b6aa68"
+    "url": "https://github.com/fr0nkle/mac-plaza/releases/download/v0.21.0/Mac-Plaza-0.21.0.dmg",
+    "size": 87213669,
+    "sha256": "6aea0a0a17edd49eb39694ce34d6a955c81dd422f208935d6fd1d3952aa951a7"
   },
   "source": {
-    "url": "https://github.com/fr0nkle/mac-plaza/releases/download/v0.20.2/Mac-Plaza-0.20.2-Source.zip",
-    "size": 6015288,
-    "sha256": "2d83649f5f2e8fb9059b8d2fa935f63358dc88513f42f22796448d66e0664934"
+    "url": "https://github.com/fr0nkle/mac-plaza/releases/download/v0.21.0/Mac-Plaza-0.21.0-Source.zip",
+    "size": 6098611,
+    "sha256": "5b6c10b43c47019f52053fc09c33aedc0965263e1f46dc6fc88ca98eedc0e212"
   }
 }

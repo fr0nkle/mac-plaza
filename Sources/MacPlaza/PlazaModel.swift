@@ -77,6 +77,7 @@ final class PlazaModel: ObservableObject {
     @Published var lowPower = ProcessInfo.processInfo.isLowPowerModeEnabled
     @Published var loginEnabled = SMAppService.mainApp.status == .enabled
     @Published var bubbleSelections = [0,1,2]
+    @Published private(set) var postBubbleCount = 1
     @Published private(set) var postPresentation = PlazaPostCadence.Presentation.quiet
     private var postCadence = PlazaPostCadence()
     private var nextJournalPost = 0
@@ -94,6 +95,7 @@ final class PlazaModel: ObservableObject {
     private var iconCache: [String: NSImage] = [:]
     private var observations: [NSObjectProtocol] = []
     private var bubbleTimer: Timer?
+    private var lastNoteExpiryCheck: TimeInterval = 0
     private var fullScreenAudioMonitor: FullScreenAudioMonitor?
     private var otherAudioMonitor: OtherAudioMonitor?
     var window: NSWindow?
@@ -138,8 +140,14 @@ final class PlazaModel: ObservableObject {
     func beginWritingNote() { writingNoteDepth += 1; updateAudio() }
     func endWritingNote() { writingNoteDepth = max(0, writingNoteDepth - 1); updateAudio() }
     func updateAudio() {
+        updateUISounds()
         let volume = musicVolume
         audio.update(enabled: (document.preferences.ambientSound ?? true) && audioEligible, volume: volume, track: musicTrack, customURL: music.url(for: musicTrack), allowPreview: sessionActive && automaticMusicMuteReason == nil && (windowVisible || desktopMenuVisible) && !document.preferences.safeMode)
+    }
+    func updateUISounds() {
+        guard observesSystemAppLaunches else { return }
+        PlazaUISounds.shared.configure(enabled: sessionActive && !document.preferences.safeMode && document.preferences.uiSoundEffects != false,
+                                       volume: document.preferences.uiSoundVolume ?? 0.18)
     }
     var filteredApps: [AppIsland] {
         homeApps.filter { search.isEmpty || $0.label.localizedCaseInsensitiveContains(search) }
@@ -147,15 +155,18 @@ final class PlazaModel: ObservableObject {
     var visibleApps: [AppIsland] { Array(filteredApps.dropFirst(page * 12).prefix(12)) }
     var pageCount: Int { max(1, (filteredApps.count + 11) / 12) }
     var receivedNotes: [SharedJournalNote] {
-        guard social.connected else { return [] }
-        return social.visibleSharedJournal.filter { $0.ownerID != social.account?.id && ($0.topic == nil || $0.topic?.match(in: topicApps) != nil) }
+        guard social.hasSession else { return [] }
+        return social.visibleSharedJournal.filter { !NoteRetention.isExpired(Date(timeIntervalSince1970: $0.created)) && $0.ownerID != social.account?.id && ($0.topic == nil || $0.topic?.match(in: topicApps) != nil) }
+    }
+    private var currentSharedNotes: [SharedJournalNote] {
+        social.hasSession ? social.visibleSharedJournal.filter { !NoteRetention.isExpired(Date(timeIntervalSince1970: $0.created)) } : []
     }
     var miiverseCatalog: MiiverseCatalog {
         MiiverseCatalog(notes: document.notes, apps: topicApps,
-            shared: social.connected ? social.visibleSharedJournal : [], accountID: social.account?.id, accountDisplayName: social.account?.displayName)
+            shared: currentSharedNotes, accountID: social.account?.id, accountDisplayName: social.account?.displayName)
     }
     func journalNote(_ id: UUID) -> LocalNote? {
-        document.notes.first { $0.id == id } ?? (social.connected ? social.visibleSharedJournal.first { $0.id == id }?.localNote(apps: topicApps) : nil)
+        document.notes.first { $0.id == id && !NoteRetention.isExpired($0.created) } ?? currentSharedNotes.first { $0.id == id }?.localNote(apps: topicApps)
     }
     var homeSharedNotes: [SharedJournalNote] {
         receivedNotes.filter { $0.topic == nil || $0.topic?.match(in: visibleApps) != nil }
@@ -173,7 +184,7 @@ final class PlazaModel: ObservableObject {
         return (own + shared).sorted { $0.created > $1.created }
     }
     func sharedThread(for note: LocalNote) -> SharedJournalNote? {
-        guard note.shared == true, social.connected else { return nil }
+        guard note.shared == true, social.hasSession else { return nil }
         return social.visibleSharedJournal.first {
             isOwnNote(note) ? ($0.ownerID == social.account?.id && $0.sourceID == note.id) : $0.id == note.id
         }
@@ -218,7 +229,7 @@ final class PlazaModel: ObservableObject {
         social.onActivitySelected = { [weak self] activity in
             guard let self else { return }
             let id = activity.sourceID ?? self.social.sharedJournal.first { $0.id == activity.noteID }?.sourceID
-            self.openJournal(note: id)
+            self.openMiiverse(note: id)
         }
         social.onRosterChanged = { [weak self] in self?.journalRevision &+= 1; self?.refreshHomeForFriendActivity(); self?.rebuildScene() }
         observeLifecycle()
@@ -242,6 +253,10 @@ final class PlazaModel: ObservableObject {
             Task { @MainActor in
                 self?.advanceBubblePresentation(by: elapsed)
                 self?.applyPendingHomeRotation()
+                if let self, now - self.lastNoteExpiryCheck >= 60 {
+                    self.lastNoteExpiryCheck = now
+                    self.expireNotes()
+                }
             }
         }
         Task {
@@ -261,6 +276,8 @@ final class PlazaModel: ObservableObject {
                 }
             } catch { self.error = error.localizedDescription }
             loaded = true
+            updateUISounds()
+            expireNotes()
             if rotatingHomeEnabled { prepareRotatingHome() }
             rebuildScene()
             scene.beginEntrance(enabled: !document.preferences.safeMode && !document.preferences.pauseMotion && !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion)
@@ -271,6 +288,7 @@ final class PlazaModel: ObservableObject {
     func mutate(_ action: (inout PlazaDocument) -> Void) -> Bool {
         guard !recoveryRequired else { error = "Restore a backup or import a plaza before making changes."; return false }
         var next = document; action(&next)
+        NoteRetention.prune(&next)
         let wasSafe=document.preferences.safeMode, previousAvatars=document.avatars
         let wasRotating = rotatingHomeEnabled
         do { document = try next.validated() }
@@ -283,18 +301,29 @@ final class PlazaModel: ObservableObject {
             updateVisibleIslands()
         }
         updateSharedJournal()
+        updateUISounds()
         revision += 1
         let snapshot = document, number = revision
         Task { do { try await storage.save(snapshot, revision: number) } catch { self.error = "Could not save the plaza: \(error.localizedDescription)" } }
         return true
     }
+    func expireNotes(now: Date = Date()) {
+        guard loaded, !recoveryRequired else { return }
+        social.expireJournal(now: now)
+        if document.notes.contains(where: { NoteRetention.isExpired($0.created, now: now) }) {
+            mutate { NoteRetention.prune(&$0, now: now) }
+        }
+    }
     func flush() async {
         guard !recoveryRequired else { return }
+        NoteRetention.prune(&document)
+        updateSharedJournal()
         revision += 1
         do { try await storage.save(document, revision: revision) }
         catch { self.error = "Could not save: \(error.localizedDescription)" }
     }
     func rebuildScene() {
+        updateUISounds()
         updateSharedJournal()
         social.setLocalMiis(document.avatars)
         updateVisibleIslands()
@@ -306,7 +335,7 @@ final class PlazaModel: ObservableObject {
         // A public-note primary Mii takes priority over another profile appearance.
         var unique = Set(document.avatars.map(\.id))
         let roster = (noteAuthors + plazaFriends.map(\.avatar)).filter { unique.insert($0.id).inserted }
-        scene.configure(avatars: document.avatars + roster.prefix(room), population: population, localCount: document.avatars.count)
+        scene.configure(avatars: document.avatars + roster.prefix(room), population: population, localCount: document.avatars.count, primaryAvatarID: document.primaryAvatar.id)
         updateVisibleIslands()
     }
     @discardableResult
@@ -340,14 +369,14 @@ final class PlazaModel: ObservableObject {
         scene.setGathering(assignments, apps: visibleApps.map(\.id))
     }
     func openCharacter(_ avatar: Avatar) {
-        if let note = receivedNotes.first(where: { $0.author.id == avatar.id }) { openJournal(note: note.id); return }
+        if let note = receivedNotes.first(where: { $0.author.id == avatar.id }) { openMiiverse(note: note.id); return }
         if let friend = social.friends.first(where: { $0.avatar.id == avatar.id }) { sheet = .friend(friend) }
         else { sheet = .profile(avatar) }
     }
-    func openJournal(note: UUID? = nil) {
+    func openMiiverse(note: UUID? = nil) {
         selectedNoteID=note
         if let note { mutate { doc in if let i=doc.notes.firstIndex(where:{$0.id==note}) { doc.notes[i].read=true } } }
-        sheet = .feed
+        sheet = .miiverse
     }
     private func seed() {
         let candidates = ["/Applications/DaVinci Resolve/DaVinci Resolve.app", "/Applications/Brave Browser.app", "/Applications/Discord.app", "/System/Applications/Music.app", "/System/Applications/Notes.app", "/System/Applications/Messages.app", "/System/Applications/Calendar.app", "/System/Applications/Photos.app"]
@@ -521,10 +550,11 @@ final class PlazaModel: ObservableObject {
         let next = postCadence.presentation
         guard next != postPresentation else { return }
         if next == .journal {
-            bubbleSelections[0] = nextJournalPost
+            bubbleSelections = (0..<3).map { nextJournalPost + $0 }
             nextJournalPost = (nextJournalPost + 1) % max(1, bubbleNotes.count + 3)
         }
         withAnimation(NSWorkspace.shared.accessibilityDisplayShouldReduceMotion ? nil : .easeInOut(duration: 0.35)) {
+            postBubbleCount = postCadence.bubbleCount
             postPresentation = next
         }
     }
@@ -560,13 +590,13 @@ final class PlazaModel: ObservableObject {
             guard (values.fileSize ?? Int.max) <= 12_000_000 else { throw PlazaError.invalid("Plaza files must be smaller than 12 MB.") }
             let imported = try DocumentStorage.decode(Data(contentsOf: url)).portable()
             // Imported data can never introduce a launchable local path or bookmark.
-            recoveryRequired = false; document = imported; iconCache.removeAll(); page = 0; if rotatingHomeEnabled { prepareRotatingHome() }; rebuildScene()
+            recoveryRequired = false; document = imported; NoteRetention.prune(&document); iconCache.removeAll(); page = 0; if rotatingHomeEnabled { prepareRotatingHome() }; rebuildScene()
             Task { await flush() }; status = "Plaza imported. Use Locate App to reconnect shortcuts."
         } catch { self.error = error.localizedDescription }
     }
     func recoverBackup() {
         Task {
-            do { document = try await storage.recoverBackup(); recoveryRequired = false; if rotatingHomeEnabled { prepareRotatingHome() }; rebuildScene(); await flush(); status = "Backup restored." }
+            do { document = try await storage.recoverBackup(); NoteRetention.prune(&document); recoveryRequired = false; if rotatingHomeEnabled { prepareRotatingHome() }; rebuildScene(); await flush(); status = "Backup restored." }
             catch { self.error = "Backup could not be restored: \(error.localizedDescription)" }
         }
     }
@@ -602,9 +632,9 @@ final class PlazaModel: ObservableObject {
 }
 
 enum PlazaSheet: Identifiable {
-    case characters, friends, compose(UUID?), feed, miiverse, activity, preferences, social, app(AppIsland), profile(Avatar), friend(SharedMii), steamGames(AppIsland?)
+    case characters, friends, compose(UUID?), miiverse, activity, preferences, social, app(AppIsland), profile(Avatar), friend(SharedMii), steamGames(AppIsland?)
     var isFloatingMenu: Bool { ["characters", "friends", "preferences", "compose", "activity", "miiverse"].contains(id) }
     var id: String {
-        switch self { case .steamGames: return "steam-games"; case .friends: return "friends"; case .friend(let friend): return "friend-"+friend.id; case .social: return "social"; case .profile(let avatar): return "profile-"+avatar.id.uuidString; case .characters: return "characters"; case .compose: return "compose"; case .feed: return "feed"; case .miiverse: return "miiverse"; case .activity: return "activity"; case .preferences: return "preferences"; case .app(let app): return app.id.uuidString }
+        switch self { case .steamGames: return "steam-games"; case .friends: return "friends"; case .friend(let friend): return "friend-"+friend.id; case .social: return "social"; case .profile(let avatar): return "profile-"+avatar.id.uuidString; case .characters: return "characters"; case .compose: return "compose"; case .miiverse: return "miiverse"; case .activity: return "activity"; case .preferences: return "preferences"; case .app(let app): return app.id.uuidString }
     }
 }

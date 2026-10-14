@@ -77,7 +77,7 @@ struct PlazaView: View {
                 }
                 Spacer()
                 SocialConnectionBadge(social: model.social) { model.sheet = .social }
-                Button { model.sheet = .preferences } label: { Image(systemName: "slider.horizontal.3").font(.system(size: 17 + (model.document.preferences.largerText == true ? 2 : 0))) }.buttonStyle(.plain).help("Preferences")
+                PlazaButton { model.sheet = .preferences } label: { Image(systemName: "slider.horizontal.3").font(.system(size: 17 + (model.document.preferences.largerText == true ? 2 : 0))) }.buttonStyle(.plain).help("Preferences")
             }
             HStack(spacing: 12) {
                 VStack(alignment: .leading, spacing: 3) {
@@ -88,15 +88,15 @@ struct PlazaView: View {
                 HStack(spacing: 8) {
                     Image(systemName: "magnifyingglass").foregroundStyle(.secondary)
                     TextField("Find an app or note", text: $model.search).textFieldStyle(.plain).frame(width: 155)
-                    if !model.search.isEmpty { Button { model.search = "" } label: { Image(systemName: "xmark.circle.fill") }.buttonStyle(.plain).foregroundStyle(.secondary) }
+                    if !model.search.isEmpty { PlazaButton { model.search = "" } label: { Image(systemName: "xmark.circle.fill") }.buttonStyle(.plain).foregroundStyle(.secondary) }
                 }.padding(10).background(.white.opacity(0.85), in: RoundedRectangle(cornerRadius: 12))
-                Button { model.sheet = .characters } label: {
+                PlazaButton { model.sheet = .characters } label: {
                     HStack(spacing: 6) {
                         Group { if model.document.preferences.safeMode { Image(nsImage: AvatarArtwork.face(model.document.primaryAvatar)).resizable().scaledToFit() } else { AvatarPortrait(avatar:model.document.primaryAvatar) } }.frame(width:25,height:32)
                         Text("Characters")
                     }
-                }.buttonStyle(ToolbarButtonStyle(large:model.document.preferences.largerText == true)).contextMenu { Button("View Your Profile") { model.sheet = .profile(model.document.primaryAvatar) } }
-                Button { model.pickApp() } label: { Label("Add App", systemImage: "plus") }.buttonStyle(ToolbarButtonStyle(prominent:true,large:model.document.preferences.largerText == true)).keyboardShortcut("n", modifiers: .command)
+                }.buttonStyle(ToolbarButtonStyle(large:model.document.preferences.largerText == true)).contextMenu { PlazaButton("View Your Profile") { model.sheet = .profile(model.document.primaryAvatar) } }
+                PlazaButton { model.pickApp() } label: { Label("Add App", systemImage: "plus") }.buttonStyle(ToolbarButtonStyle(prominent:true,large:model.document.preferences.largerText == true)).keyboardShortcut("n", modifiers: .command)
             }
         }.padding(.horizontal, 30).padding(.top, 20).padding(.bottom, 15)
     }
@@ -117,13 +117,11 @@ struct PlazaView: View {
             let arrivalFocus=arrivalTime.map {PlazaViewport.arrivalFocus(elapsed:$0,zoom:normalZoom,offset:normalOffset,size:proxy.size)}
             let zoom=arrivalFocus?.zoom ?? normalZoom
             let offset=arrivalFocus?.offset ?? normalOffset
+            let walkingBounds=PlazaViewport.walkingBounds(size:proxy.size,zoom:plazaZoom,
+                offset:PlazaViewport.offset(plazaOffset,zoom:plazaZoom,size:proxy.size),
+                insets:desktop ? model.desktopInsets:EdgeInsets())
             ZStack {
               ZStack {
-                if !model.document.preferences.safeMode { SceneView(scene:model.scene,moving:model.isMoving && !reduceMotion,onSelect:model.openCharacter).accessibilityHidden(true) }
-                if selected == nil { VStack(spacing: 7) {
-                    Text("MAKE YOURSELF AT HOME").font(.system(size: 9 + (model.document.preferences.largerText == true ? 2 : 0), weight: .semibold)).tracking(2.6).foregroundStyle(PlazaStyle.teal.opacity(0.7))
-                    Text("Miis · \(model.document.preferences.population) in the plaza").font(.system(size: 10 + (model.document.preferences.largerText == true ? 2 : 0))).foregroundStyle(.secondary)
-                }.position(x: proxy.size.width * 0.5, y: proxy.size.height * 0.96).accessibilityHidden(true) }
                 ForEach(Array(model.visibleApps.enumerated()), id: \.element.id) { index, app in
                     IslandView(model: model, app: app, index: index, tileSize: PlazaLayout.tileSize(in: proxy.size), reduceMotion: reduceMotion) {
                         if model.editing { model.sheet = .app(app) }
@@ -143,8 +141,9 @@ struct PlazaView: View {
                     FriendNotesLayer(scene: model.scene, social: model.social, paused: model.document.preferences.pausePosts,
                                      showPosts: model.postPresentation == .friends,
                                      onHoldChanged: { model.holdBubble(1, held: $0) },
-                                     journalPost: model.postPresentation == .journal ? model.journalPost() : nil,
-                                     onSelectJournal: { model.openJournal(note: $0) },
+                                     journalPosts: model.postPresentation == .quiet ? [] : model.journalPosts(),
+                                     maxPosts: model.postBubbleCount,
+                                     onSelectJournal: { model.openMiiverse(note: $0) },
                                      largerText: model.document.preferences.largerText == true, islands: Array(slots.prefix(model.visibleApps.count)),
                                      reserved: [],
                                      onSelect: { model.sheet = .friend($0) }).frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -154,14 +153,9 @@ struct PlazaView: View {
                     VStack(spacing: 15) {
                         Image(systemName: model.search.isEmpty ? "plus.app" : "magnifyingglass").font(.system(size: 35 + (model.document.preferences.largerText == true ? 2 : 0))).foregroundStyle(PlazaStyle.teal)
                         Text(model.search.isEmpty ? "Your plaza starts here." : "No apps found.").font(.title3)
-                        Button("Add an application") { model.pickApp() }.buttonStyle(.borderedProminent).tint(PlazaStyle.teal)
+                        PlazaButton("Add an application") { model.pickApp() }.buttonStyle(.borderedProminent).tint(PlazaStyle.teal)
                     }.padding(28).background(.regularMaterial, in: RoundedRectangle(cornerRadius: 22)).position(x: proxy.size.width / 2, y: proxy.size.height / 2)
                 }
-              }
-              .background {
-                  PlazaGround(viewportSize: proxy.size)
-                      .frame(width: proxy.size.width * 2, height: proxy.size.height * 2)
-                      .accessibilityHidden(true)
               }
               .scaleEffect(zoom)
               .offset(offset)
@@ -209,7 +203,7 @@ struct PlazaView: View {
                       .zIndex(2)
                   VStack {
                       HStack {
-                          Button(action: closePreview) { Label("Back to plaza", systemImage: "chevron.left") }
+                          PlazaButton(sound: .back, action: closePreview) { Label("Back to plaza", systemImage: "chevron.left") }
                               .keyboardShortcut(.cancelAction).buttonStyle(.plain)
                               .font(.system(size: 13, weight: .semibold)).padding(12)
                               .background(.white.opacity(0.95), in: Capsule())
@@ -223,17 +217,35 @@ struct PlazaView: View {
                       Spacer()
                       HStack(spacing:16) {
                           Text("Welcome, \(avatar.name)!").font(.system(size:20,weight:.medium,design:.rounded))
-                          Button("Skip") {model.scene.finishArrival()}.keyboardShortcut(.cancelAction)
+                          PlazaButton("Skip") {model.scene.finishArrival()}.keyboardShortcut(.cancelAction)
                       }.padding(.horizontal,24).padding(.vertical,14)
                           .background(.regularMaterial,in:Capsule())
                   }.padding(.bottom,30).zIndex(4)
               }
             }
-            .background(PlazaGround().accessibilityHidden(true))
             .background(PlazaNavigationInput(enabled: selected == nil && model.sheet == nil && arrivalTime == nil, canPan: !model.editing, zoom: zoom, offset: offset,
                 onZoom: { setPlazaZoom($0, size: proxy.size) },
                 onPan: { plazaOffset = PlazaViewport.offset($0, zoom: plazaZoom, size: proxy.size) }))
             .clipped()
+            // Keep controls in the safe area; floor and walkers continue
+            // beneath the wallpaper margins and beyond the camera edges.
+            .background {
+                ZStack {
+                    plazaFloor(size: proxy.size, zoom: zoom, offset: offset, arrivalTime: arrivalTime)
+                    if !model.document.preferences.safeMode {
+                        SceneView(scene:model.scene,moving:model.isMoving && !reduceMotion,
+                                  onSelect:model.openCharacter,renderScale:PlazaScene.renderScale)
+                            .frame(width:proxy.size.width*PlazaScene.renderScale,height:proxy.size.height*PlazaScene.renderScale)
+                            .scaleEffect(zoom).offset(offset)
+                            .animation(arrivalTime != nil && !reduceMotion ? .linear(duration:1.0/30):nil,value:arrivalTime)
+                            .allowsHitTesting(selected == nil && arrivalTime == nil).accessibilityHidden(true)
+                            .frame(width:proxy.size.width,height:proxy.size.height)
+                            .clipShape(PlazaActorClip(unbounded:desktop))
+                    }
+                }
+            }
+            .onAppear {model.scene.setWalkingBounds(walkingBounds)}
+            .onChange(of:walkingBounds) {_,bounds in model.scene.setWalkingBounds(bounds)}
             .onDrop(of: [.fileURL], isTargeted: nil) { providers in
                 guard model.editing else { return false }
                 for provider in providers {
@@ -247,6 +259,20 @@ struct PlazaView: View {
         }
       }
     }
+    @ViewBuilder
+    private func plazaFloor(size: CGSize, zoom: CGFloat, offset: CGSize, arrivalTime: Double?) -> some View {
+        let horizontalInset = desktop ? model.desktopInsets.leading + model.desktopInsets.trailing : 0
+        let verticalInset = desktop ? model.desktopInsets.top + model.desktopInsets.bottom : 0
+        let ground = PlazaGround(viewportSize: size)
+            .frame(width: (size.width + horizontalInset) * 2, height: (size.height + verticalInset) * 2)
+            .scaleEffect(zoom)
+            .offset(offset)
+            .animation(arrivalTime != nil && !reduceMotion ? .linear(duration: 1.0 / 30) : nil, value: arrivalTime)
+            .allowsHitTesting(false)
+            .accessibilityHidden(true)
+        if desktop { ground }
+        else { ground.frame(width: size.width, height: size.height).clipped() }
+    }
     private func setPlazaZoom(_ value: CGFloat, size: CGSize) {
         withAnimation(reduceMotion ? nil : .timingCurve(0.22,0.61,0.36,1,duration:0.32)) {
             plazaZoom = PlazaViewport.zoom(value)
@@ -256,12 +282,12 @@ struct PlazaView: View {
     }
     private func plazaZoomControls(size: CGSize) -> some View {
         HStack(spacing: 9) {
-            Button { setPlazaZoom(plazaZoom - 0.15, size: size) } label: {
+            PlazaButton { setPlazaZoom(plazaZoom - 0.15, size: size) } label: {
                 Image(systemName: "minus").frame(width: 30, height: 30).contentShape(Rectangle())
             }.disabled(plazaZoom <= PlazaViewport.zoomRange.lowerBound)
                 .accessibilityLabel("Zoom out of plaza").help("Zoom out (⌘−)")
                 .keyboardShortcut("-", modifiers: .command)
-            Button {
+            PlazaButton {
                 setPlazaZoom(1, size: size)
                 plazaOffset = .zero
             } label: {
@@ -271,7 +297,7 @@ struct PlazaView: View {
                 .accessibilityValue("\(Int((plazaZoom * 100).rounded())) percent")
                 .help("Reset zoom (⌘0). Pinch to zoom; drag to explore when zoomed in.")
                 .keyboardShortcut("0", modifiers: .command)
-            Button { setPlazaZoom(plazaZoom + 0.15, size: size) } label: {
+            PlazaButton { setPlazaZoom(plazaZoom + 0.15, size: size) } label: {
                 Image(systemName: "plus").frame(width: 30, height: 30).contentShape(Rectangle())
             }.disabled(plazaZoom >= PlazaViewport.zoomRange.upperBound)
                 .accessibilityLabel("Zoom into plaza").help("Zoom in (⌘+)")
@@ -290,16 +316,7 @@ struct PlazaView: View {
     }
     private var desktopControls: some View {
         HStack(spacing: 14) {
-            if model.pageCount > 1 {
-                Button { model.page = max(0, model.page - 1) } label: { Image(systemName: "chevron.left") }
-                    .disabled(model.page == 0).accessibilityLabel("Previous apps")
-                Text("\(model.page + 1) / \(model.pageCount)").monospacedDigit()
-                Button { model.page = min(model.pageCount - 1, model.page + 1) } label: { Image(systemName: "chevron.right") }
-                    .disabled(model.page + 1 == model.pageCount).accessibilityLabel("Next apps")
-            }
-            Button { model.openJournal() } label: { Image(systemName: "text.bubble") }.help("Plaza journal")
-            Button { model.sheet = .preferences } label: { Image(systemName: "slider.horizontal.3") }.help("Preferences")
-            Button("Return to Desktop · Esc") { model.desktop.returnToDesktop() }
+            PlazaButton("Return to Desktop · Esc") { model.desktop.returnToDesktop() }
         }.font(.system(size: 12, weight: .medium)).buttonStyle(.plain)
             .padding(12).background(.regularMaterial, in: Capsule())
     }
@@ -307,25 +324,25 @@ struct PlazaView: View {
         VStack(spacing: 0) {
             Rectangle().fill(PlazaStyle.ink.opacity(0.07)).frame(height: 1)
             HStack(spacing: 20) {
-                Button { model.openJournal() } label: {
-                    Label("Plaza journal", systemImage: "text.bubble")
+                PlazaButton { model.openMiiverse() } label: {
+                    Label("Miiverse", systemImage: "text.bubble")
                     Text("\(model.document.notes.count)").font(.system(size: 10 + (model.document.preferences.largerText == true ? 2 : 0), weight: .bold)).padding(.horizontal, 6).padding(.vertical, 3).background(PlazaStyle.teal.opacity(0.1), in: Capsule())
                 }
-                Button { model.sheet = .compose(nil) } label: { Label("Leave a note", systemImage: "square.and.pencil") }
+                PlazaButton { model.sheet = .compose(nil) } label: { Label("Leave a note", systemImage: "square.and.pencil") }
                 Spacer(minLength: 8)
                 if model.pageCount > 1 {
-                    Button { model.page = max(0, model.page - 1) } label: { Image(systemName: "chevron.left") }.disabled(model.page == 0)
+                    PlazaButton { model.page = max(0, model.page - 1) } label: { Image(systemName: "chevron.left") }.disabled(model.page == 0)
                     Text("\(model.page + 1) / \(model.pageCount)").monospacedDigit()
-                    Button { model.page = min(model.pageCount - 1, model.page + 1) } label: { Image(systemName: "chevron.right") }.disabled(model.page + 1 == model.pageCount)
+                    PlazaButton { model.page = min(model.pageCount - 1, model.page + 1) } label: { Image(systemName: "chevron.right") }.disabled(model.page + 1 == model.pageCount)
                 }
-                Button { if model.editing { model.editing = false } else { model.beginChangingApps() } } label: { Label(model.editing ? "Done" : "Change Apps", systemImage: model.editing ? "checkmark" : "square.grid.2x2") }
-                if model.editing { Button("Undo") { model.undoLayout() }; Button("Reset Layout") { model.resetLayout() } }
-                Button { model.mutate { $0.preferences.pauseMotion.toggle() } } label: { Label(model.document.preferences.pauseMotion ? "Resume" : "Pause", systemImage: model.document.preferences.pauseMotion ? "play" : "pause") }.help("Pause motion")
-                Button { model.mutate { $0.preferences.ambientSound = !(model.document.preferences.ambientSound ?? true) } } label: {
+                PlazaButton { if model.editing { model.editing = false } else { model.beginChangingApps() } } label: { Label(model.editing ? "Done" : "Change Apps", systemImage: model.editing ? "checkmark" : "square.grid.2x2") }
+                if model.editing { PlazaButton("Undo") { model.undoLayout() }; PlazaButton("Reset Layout") { model.resetLayout() } }
+                PlazaButton { model.mutate { $0.preferences.pauseMotion.toggle() } } label: { Label(model.document.preferences.pauseMotion ? "Resume" : "Pause", systemImage: model.document.preferences.pauseMotion ? "play" : "pause") }.help("Pause motion")
+                PlazaButton { model.mutate { $0.preferences.ambientSound = !(model.document.preferences.ambientSound ?? true) } } label: {
                     Image(systemName: model.document.preferences.ambientSound ?? true ? "speaker.wave.1" : "speaker.slash")
                 }.help(model.document.preferences.ambientSound ?? true ? "Mute plaza music" : "Play quiet plaza music")
                     .accessibilityLabel(model.document.preferences.ambientSound ?? true ? "Mute plaza music" : "Play plaza music")
-                Button { model.listMode.toggle() } label: { Label(model.listMode ? "Plaza" : "List", systemImage: model.listMode ? "sun.max" : "list.bullet") }
+                PlazaButton { model.listMode.toggle() } label: { Label(model.listMode ? "Plaza" : "List", systemImage: model.listMode ? "sun.max" : "list.bullet") }
             }.font(.system(size: 12 + (model.document.preferences.largerText == true ? 2 : 0), weight: .medium)).buttonStyle(.plain).padding(.horizontal, 30).padding(.top, 16)
             HStack {
                 Text(model.status).lineLimit(1)
@@ -390,7 +407,7 @@ struct IslandView: View {
     }
     @ViewBuilder private var button: some View {
         let available = model.resolvedURL(app) != nil
-        Button(action: select) {
+        PlazaButton(action: select) {
             TimelineView(.animation(minimumInterval: 1.0 / 30, paused: !model.isMoving || reduceMotion || model.editing)) { timeline in
                 let phase = timeline.date.timeIntervalSinceReferenceDate * 0.85 + Double(index) * 1.7
                 let floating = !reduceMotion && !model.editing
@@ -421,16 +438,16 @@ struct IslandView: View {
         .help(model.editing ? "Edit \(app.label)" : "Preview \(app.label), then choose Open to launch.")
         .onKeyPress(.space) { select(); return .handled }
         .contextMenu {
-            Button("Preview App") { select() }
-            Button("Open") { model.launch(app) }
-            Button("Details & Rename…") { model.sheet = .app(app) }
-            Button("Leave a note…") { model.sheet = .compose(app.id) }
-            Button("Locate App…") { model.pickApp(replacing: app) }
+            PlazaButton("Preview App") { select() }
+            PlazaButton("Open") { model.launch(app) }
+            PlazaButton("Details & Rename…") { model.sheet = .app(app) }
+            PlazaButton("Leave a note…") { model.sheet = .compose(app.id) }
+            PlazaButton("Locate App…") { model.pickApp(replacing: app) }
             Divider()
-            Button("Move Earlier") { model.move(app.id, delta: -1) }
-            Button("Move Later") { model.move(app.id, delta: 1) }
+            PlazaButton("Move Earlier") { model.move(app.id, delta: -1) }
+            PlazaButton("Move Later") { model.move(app.id, delta: 1) }
             Divider()
-            Button("Remove Shortcut", role: .destructive) { model.removeApp(app) }
+            PlazaButton("Remove Shortcut", role: .destructive) { model.removeApp(app) }
         }
     }
 }
@@ -455,13 +472,13 @@ struct BubbleView: View {
     let offset: Int
     @State private var hovering = false
     @FocusState private var focused: Bool
-    private let guides = ["Make yourself at home. Click an app to take a closer look before opening it.", "A thought, a sketch, a little spark. Leave a note in your journal.", "These visitors live on your Mac. Give your own characters a little personality."]
+    private let guides = ["Make yourself at home. Click an app to take a closer look before opening it.", "A thought, a sketch, a little spark. Share a post on Miiverse.", "These visitors live on your Mac. Give your own characters a little personality."]
     var body: some View {
         let index = model.bubbleSelections[offset] % (model.bubbleNotes.count + guides.count)
         let note = index < model.bubbleNotes.count ? model.bubbleNotes[index] : nil
         let author = note.map { model.noteAvatar($0) } ?? model.document.primaryAvatar
         let large = model.document.preferences.largerText == true
-        Button { model.openJournal(note: note?.id) } label: {
+        PlazaButton { model.openMiiverse(note: note?.id) } label: {
             HStack(alignment: .center, spacing: 9) {
                 MiiHeadIcon(avatar: author).frame(width: 42, height: 42)
                 if let note, !note.drawing.isEmpty {
@@ -479,9 +496,9 @@ struct BubbleView: View {
                     PlazaNameTab(name: note?.author ?? "Plaza Guide", large: large).padding(.leading, 10).offset(y: -7)
                 }
         }.buttonStyle(.plain).focused($focused)
-            .help("Open plaza journal")
+            .help("Open Miiverse")
             .accessibilityLabel("\(note?.author ?? "Plaza Guide"): \(note.map { $0.drawing.isEmpty ? $0.text : $0.drawingDescription } ?? guides[index - model.bubbleNotes.count])")
-            .accessibilityHint("Open this post in the plaza journal")
+            .accessibilityHint("Open this post in the Miiverse")
             .onHover { hovering = $0; model.holdBubble(offset, held:hovering || focused) }
             .onChange(of: focused) { _, value in model.holdBubble(offset, held:hovering || value) }
             .onDisappear { model.holdBubble(offset, held:false) }
@@ -513,14 +530,14 @@ struct AppListView: View {
                             Text(model.resolvedURL(app) == nil ? "Application unavailable · Locate App to reconnect" : "Ready to open").font(.caption).foregroundStyle(.secondary)
                         }
                         Spacer()
-                        Button("Details") { model.sheet = .app(app) }.accessibilityLabel("Details for \(app.label)")
-                        Button(model.resolvedURL(app) == nil ? "Locate App" : "Open") { if model.resolvedURL(app) == nil { model.pickApp(replacing: app) } else { model.launch(app) } }.disabled(model.launching.contains(app.id)).accessibilityLabel("\(model.resolvedURL(app) == nil ? "Locate" : "Open") \(app.label)")
+                        PlazaButton("Details") { model.sheet = .app(app) }.accessibilityLabel("Details for \(app.label)")
+                        PlazaButton(model.resolvedURL(app) == nil ? "Locate App" : "Open") { if model.resolvedURL(app) == nil { model.pickApp(replacing: app) } else { model.launch(app) } }.disabled(model.launching.contains(app.id)).accessibilityLabel("\(model.resolvedURL(app) == nil ? "Locate" : "Open") \(app.label)")
                     }.padding(14).background(.white, in: RoundedRectangle(cornerRadius: 12)).accessibilityElement(children: .contain)
                 }
             SocialFriendList(model: model, social: model.social)
             Text("PLAZA JOURNAL · \(model.visibleNotes.count)").font(.caption).foregroundStyle(.secondary).padding(.top, 10)
                 ForEach(model.visibleNotes) { note in
-                    Button { model.openJournal(note: note.id) } label: {
+                    PlazaButton { model.openMiiverse(note: note.id) } label: {
                         VStack(alignment: .leading, spacing: 4) {
                             Text("\(model.noteDisplayName(note)) · \(model.isOwnNote(note) ? (note.shared == true ? "Public note" : "Private note") : "Friend’s note")").font(.caption).foregroundStyle(PlazaStyle.teal)
                             Text(note.drawing.isEmpty ? note.text : note.drawingDescription).lineLimit(3)
@@ -531,4 +548,11 @@ struct AppListView: View {
           }.padding(.bottom, 20)
         }.padding(.horizontal, 30)
     }
+}
+
+/// Wallpaper actors may cross the safe margins; ordinary windows retain their
+/// header/footer clip while the renderer itself has room beyond the camera.
+private struct PlazaActorClip:Shape {
+    var unbounded:Bool
+    func path(in rect:CGRect)->Path {Path(unbounded ? rect.insetBy(dx:-rect.width,dy:-rect.height):rect)}
 }

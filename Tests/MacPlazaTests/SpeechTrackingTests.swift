@@ -24,6 +24,50 @@ final class SpeechTrackingTests: XCTestCase {
                                                 obstacles: [CGRect(x: 0, y: 0, width: 1280, height: 450)]).isEmpty)
     }
 
+    func testOneTwoAndThreeBubblesUseDistinctWalkingSpeakersWithoutOverlap() throws {
+        let avatars = (0..<4).map { Avatar(name: "Speaker \($0)") }
+        let scene = PlazaScene(size: CGSize(width: 1280, height: 720))
+        scene.configure(avatars: avatars, population: 4, localCount: 4)
+        let view = FriendNotesView(frame: CGRect(x: 0, y: 0, width: 1280, height: 720))
+        defer { view.stop() }
+        let posts = avatars.enumerated().map { PlazaSpeechPost(id: "post-\($0.offset)", speaker: $0.element,
+            name: $0.element.name, text: "Hello", destination: .journal(nil)) }
+        let anchors: [[Double]] = [[0,0.2,0.65], [1,0.5,0.65], [2,0.8,0.65], [3,0.5,0.9]]
+        for count in 1...3 {
+            view.configure(scene: scene, friends: [], paused: false, largerText: false, islands: [], reserved: [],
+                showPosts: false, journalPosts: [posts[0]] + posts, maxPosts: count, onSelect: { _ in })
+            scene.acceptFFLAnchors(anchors)
+            XCTAssertEqual(view.visibleCardCount, count)
+            let visible = view.visiblePosts
+            XCTAssertEqual(Set(visible.map(\.speakerID)).count, count, "Two posts from one author must share one slot")
+            for (i, post) in visible.enumerated() {
+                XCTAssertLessThan(post.frame.maxY, post.head.y)
+                XCTAssertEqual(post.pointerX, post.head.x, accuracy: 0.01)
+                for other in visible.dropFirst(i+1) { XCTAssertFalse(post.frame.intersects(other.frame)) }
+            }
+        }
+        let speakers = Set(view.visiblePosts.map(\.speakerID))
+        scene.acceptFFLAnchors(anchors.map { [$0[0],$0[1]+0.02,$0[2]+0.02] })
+        XCTAssertEqual(Set(view.visiblePosts.map(\.speakerID)), speakers)
+        XCTAssertEqual(view.visibleCardCount, 3)
+    }
+
+    func testLateAnchorsCanFillAllThreeSlots() {
+        let avatars = (0..<3).map { Avatar(name: "Speaker \($0)") }
+        let scene = PlazaScene(size: CGSize(width: 1280, height: 720))
+        scene.configure(avatars: avatars, population: 3, localCount: 3)
+        let view = FriendNotesView(frame: CGRect(x: 0, y: 0, width: 1280, height: 720))
+        defer { view.stop() }
+        let posts = avatars.enumerated().map { PlazaSpeechPost(id: "post-\($0.offset)", speaker: $0.element,
+            name: $0.element.name, text: "Hello", destination: .journal(nil)) }
+        view.configure(scene: scene, friends: [], paused: false, largerText: false, islands: [], reserved: [],
+            showPosts: false, journalPosts: posts, maxPosts: 3, onSelect: { _ in })
+        scene.acceptFFLAnchors([[0,0.2,0.65]])
+        XCTAssertEqual(view.visibleCardCount, 1)
+        scene.acceptFFLAnchors([[0,0.2,0.65],[1,0.5,0.65],[2,0.8,0.65]])
+        XCTAssertEqual(view.visibleCardCount, 3)
+    }
+
     func testJournalUsesItsAuthorAndTracksRendererHeadPositions() throws {
         let author = Avatar(name: "Author"), other = Avatar(name: "Other")
         let scene = PlazaScene(size: CGSize(width: 1280, height: 720))
@@ -87,7 +131,8 @@ final class SpeechTrackingTests: XCTestCase {
         for _ in 0..<200 where !model.loaded { try await Task.sleep(for: .milliseconds(10)) }
         let author = Avatar(name: "Different author")
         model.document.avatars.append(author)
-        let note = LocalNote(authorID: author.id, author: author.name, appID: nil, text: "My own post")
+        var note = LocalNote(authorID: author.id, author: author.name, appID: nil, text: "My own post")
+        note.shared = false
         model.document.notes = [note]
         model.bubbleSelections[0] = 0
         XCTAssertEqual(model.journalPost().speaker.id, author.id)
@@ -98,6 +143,28 @@ final class SpeechTrackingTests: XCTestCase {
         XCTAssertEqual(model.journalPost().speaker.id, model.document.primaryAvatar.id)
         await model.flush()
         try await model.storage.endSession()
+    }
+
+    func testBatchKeepsAuthoredNotesWithTheirSpeakersAndUsesDistinctGuides() async throws {
+        _ = NSApplication.shared
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        let model = PlazaModel(directory: root)
+        defer { model.scene.setMoving(false); model.audio.update(enabled: false); try? FileManager.default.removeItem(at: root) }
+        for _ in 0..<200 where !model.loaded { try await Task.sleep(for: .milliseconds(10)) }
+        let secondary = Avatar(name: "Local author"), guide = Avatar(name: "Guide")
+        var privateNote = LocalNote(authorID: secondary.id, author: secondary.name, appID: nil, text: "Private authored post")
+        privateNote.shared = false
+        let publicNote = LocalNote(authorID: secondary.id, author: secondary.name, appID: nil, text: "Public primary post")
+        XCTAssertTrue(model.mutate { $0.avatars += [secondary,guide]; $0.notes = [privateNote,publicNote] })
+        let original = model.document
+        let posts = model.journalPosts()
+        XCTAssertGreaterThanOrEqual(posts.count, 3)
+        XCTAssertLessThanOrEqual(posts.count, 6)
+        XCTAssertEqual(Set(posts.map { $0.speaker.id }).count, posts.count)
+        XCTAssertEqual(posts.first { $0.id == privateNote.id.uuidString }?.speaker.id, secondary.id)
+        XCTAssertEqual(posts.first { $0.id == publicNote.id.uuidString }?.speaker.id, model.document.primaryAvatar.id)
+        XCTAssertEqual(model.document, original)
+        await model.flush(); try await model.storage.endSession()
     }
 
     func testNativeJournalSpeechFollowsWalkingAuthor() async throws {
@@ -131,7 +198,11 @@ final class SpeechTrackingTests: XCTestCase {
         }
         let notes = try XCTUnwrap(layer)
         let first = try XCTUnwrap(notes.visiblePosts.first)
-        XCTAssertEqual(first.speakerID, author.id)
+        // The planner may show a guide when the author's overhead space is
+        // blocked. Verify the displayed post's own speaker, then follow that
+        // same identity throughout the live interval.
+        let expectedSpeaker = try XCTUnwrap(model.journalPosts().first { $0.id == first.id }).speaker.id
+        XCTAssertEqual(first.speakerID, expectedSpeaker)
         XCTAssertLessThan(first.frame.maxY, first.head.y)
         XCTAssertEqual(first.pointerX, first.head.x, accuracy: 0.01)
         let output = URL(fileURLWithPath: FileManager.default.currentDirectoryPath).appendingPathComponent(".qa")
@@ -143,10 +214,11 @@ final class SpeechTrackingTests: XCTestCase {
         }
         try capture("speech-following-before.png")
         var followed = false
-        for _ in 0..<100 {
+        // Visitors may finish a full idle animation before starting to walk.
+        for _ in 0..<600 {
             try await Task.sleep(for: .milliseconds(100))
-            guard let next = notes.visiblePosts.first else { continue }
-            XCTAssertEqual(next.speakerID, author.id)
+            guard let next = notes.visiblePosts.first(where: { $0.id == first.id }) else { continue }
+            XCTAssertEqual(next.speakerID, first.speakerID)
             XCTAssertLessThan(next.frame.maxY, next.head.y)
             XCTAssertEqual(next.pointerX, next.head.x, accuracy: 0.01)
             if hypot(next.head.x - first.head.x, next.head.y - first.head.y) > 4 &&

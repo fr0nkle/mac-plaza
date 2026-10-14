@@ -17,11 +17,15 @@ import urllib.error
 import urllib.parse
 import urllib.request
 import uuid
+from datetime import datetime
 from updates import ReleaseStore
 from downloads import DownloadStore, byte_range
 from public_releases import current as public_release
 from collections import defaultdict, deque
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+
+
+NOTE_RETENTION_SECONDS = 7 * 24 * 60 * 60
 
 
 class APIError(Exception):
@@ -181,6 +185,7 @@ class PlazaService:
           owner TEXT NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
           id TEXT NOT NULL, payload TEXT NOT NULL, created REAL NOT NULL, PRIMARY KEY(owner,id)
         );
+        CREATE INDEX IF NOT EXISTS journal_note_created ON journal_notes(created);
         CREATE TABLE IF NOT EXISTS journal_likes (
           note_owner TEXT NOT NULL, note_id TEXT NOT NULL,
           actor TEXT NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
@@ -230,6 +235,11 @@ class PlazaService:
             self.db.commit()
 
     def cleanup(self):
+        # SQLite reuses freed pages; avoid a costly VACUUM on ordinary requests.
+        removed = self.db.execute("DELETE FROM journal_notes WHERE created <= ?", (self.now() - NOTE_RETENTION_SECONDS,)).rowcount
+        if removed:
+            self.db.execute("""UPDATE accounts SET share_notes=0,journal_avatar=NULL
+                WHERE share_notes=1 AND NOT EXISTS (SELECT 1 FROM journal_notes WHERE owner=accounts.id)""")
         for table in ("sessions", "logins", "invites"):
             self.db.execute("DELETE FROM " + table + " WHERE expires <= ?", (self.now(),))
         live = {r[0] for r in self.db.execute("SELECT state FROM logins")}
@@ -332,6 +342,33 @@ class PlazaService:
         token = secrets.token_urlsafe(32)
         self.db.execute("INSERT INTO sessions VALUES (?,?,?)", (digest(token), account, self.now() + 30 * 86400))
         return {"token": token}
+
+    def direct_login(self, access_token):
+        """Verify a device-obtained OAuth token. No client secret/refresh token is needed."""
+        if not self.client_id:
+            raise APIError("Discord sign-in is not configured on this service.", 503)
+        access_token = text(access_token, 4096, 1)
+        authorization = self.discord_request("oauth2/@me", token=access_token)
+        scopes = authorization.get("scopes", [])
+        if (str(authorization.get("application", {}).get("id", "")) != self.client_id
+                or not isinstance(scopes, list)
+                or not all(isinstance(scope, str) for scope in scopes)
+                or not {"identify", "sdk.social_layer_presence"}.issubset(scopes)):
+            raise APIError("Discord authorization does not belong to this Plaza application.", 403)
+        try:
+            expires = datetime.fromisoformat(authorization["expires"].replace("Z", "+00:00"))
+            if expires.tzinfo is None or expires.timestamp() <= self.now():
+                raise ValueError()
+        except (KeyError, ValueError, TypeError, AttributeError):
+            raise APIError("Discord authorization expired. Connect Discord again.", 401)
+        user = self.discord_request("users/@me", token=access_token)
+        discord_id = text(user.get("id"), 20, 1)
+        if not discord_id.isascii() or not discord_id.isdigit() or not 0 < int(discord_id) < 2**64:
+            raise APIError("Invalid Discord identity.", 403)
+        name = text(user.get("global_name") or user.get("username"), 80, 1)
+        with self.lock, self.db:
+            self.cleanup()
+            return self.create_session(discord_id, name)
 
     def account(self, token):
         row = self.db.execute("SELECT accounts.* FROM accounts JOIN sessions ON sessions.account=accounts.id WHERE sessions.hash=? AND sessions.expires>?",
@@ -575,6 +612,10 @@ class PlazaService:
         raise APIError("Unknown note action.",404)
 
     def handle(self, method, path, data, token):
+        if method == "GET" and path == "/v1/config":
+            return {"discordApplicationID": self.client_id, "directLogin": True}
+        if method == "POST" and path == "/v1/auth/direct":
+            return self.direct_login(data.get("accessToken"))
         if method == "POST" and path == "/v1/auth/start":
             return self.start_login(data.get("challenge"), boolean(data.get("friendDiscovery", False)))
         if method == "POST" and path == "/v1/auth/finish":
@@ -629,7 +670,13 @@ class PlazaService:
                     raise APIError("Duplicate notes or excessive drawing data.")
                 # Validate the entire replacement before deleting anything. A
                 # single transaction carries edits, private changes and deletions.
-                existing = {r[0] for r in self.db.execute("SELECT id FROM journal_notes WHERE owner=?",(aid,))}
+                existing_dates = {r[0]: r[1] for r in self.db.execute("SELECT id,created FROM journal_notes WHERE owner=?",(aid,))}
+                now = self.now()
+                for note in notes:
+                    # Edits cannot reset a post's age, and future clocks cannot defer expiry.
+                    note["created"] = min(note["created"], existing_dates.get(note["id"], now), now)
+                notes = [note for note in notes if note["created"] > now - NOTE_RETENTION_SECONDS]
+                existing = set(existing_dates)
                 removed = existing - {note["id"] for note in notes}
                 self.db.executemany("DELETE FROM journal_notes WHERE owner=? AND id=?",[(aid,value) for value in removed])
                 self.db.executemany("""INSERT INTO journal_notes VALUES (?,?,?,?)
@@ -926,8 +973,17 @@ class Handler(BaseHTTPRequestHandler):
     do_GET = do_HEAD = do_POST = do_PUT = do_DELETE = dispatch
 
 
+class PlazaHTTPServer(ThreadingHTTPServer):
+    def service_actions(self):
+        now = time.monotonic()
+        if now - getattr(self, "last_cleanup", float("-inf")) >= 60:
+            with self.service.lock, self.service.db:
+                self.service.cleanup()
+            self.last_cleanup = now
+
+
 def make_server(service, host="127.0.0.1", port=8787):
-    server = ThreadingHTTPServer((host, port), Handler)
+    server = PlazaHTTPServer((host, port), Handler)
     server.daemon_threads = True
     server.service = service
     server.rates, server.rate_lock = defaultdict(deque), threading.Lock()

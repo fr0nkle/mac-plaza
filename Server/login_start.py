@@ -14,6 +14,18 @@ AGENT = Path.home() / "Library/LaunchAgents" / (LABEL + ".plist")
 HOST = Path.home() / "Library/Application Support/Mac Plaza Host"
 
 
+def refresh_environment(source, destination):
+    # copytree(dirs_exist_ok=True) still tries to recreate existing symlinks.
+    # Retain matching interpreter links; never copy through them into Xcode.
+    def unchanged_links(directory, names):
+        relative = Path(directory).relative_to(source)
+        return [name for name in names
+                if (Path(directory) / name).is_symlink()
+                and (destination / relative / name).is_symlink()
+                and os.readlink(Path(directory) / name) == os.readlink(destination / relative / name)]
+    shutil.copytree(source, destination, symlinks=True, dirs_exist_ok=True, ignore=unchanged_links)
+
+
 def unload():
     # Only our named agent in the current user's GUI session.
     subprocess.run(["/bin/launchctl", "bootout", "gui/" + str(os.getuid()) + "/" + LABEL],
@@ -52,7 +64,7 @@ def prepare_runtime():
                  "friend_test.py", "login_start.py", "Start Friend Test.command",
                  "Stop Friend Test.command"):
         shutil.copy2(SERVER / name, server / name)
-    shutil.copytree(SERVER / ".venv", server / ".venv", symlinks=True, dirs_exist_ok=True)
+    refresh_environment(SERVER / ".venv", server / ".venv")
     (server / ".tools").mkdir(mode=0o700, exist_ok=True)
     shutil.copy2(SERVER / ".tools/gh", server / ".tools/gh")
     (HOST / "scripts").mkdir(exist_ok=True)

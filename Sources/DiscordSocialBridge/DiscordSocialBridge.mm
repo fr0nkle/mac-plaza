@@ -2,11 +2,22 @@
 #include "DiscordSocialBridge.h"
 #define DISCORDPP_IMPLEMENTATION
 #include "discordpp.h"
+#include "LocalDiscordAuthorization.hpp"
 
 // Every entry point and SDK callback runs on the application's main thread.
 static std::shared_ptr<discordpp::Client> client;
 static uint64_t generation = 0, expectedUser = 0;
 static std::string state = "disconnected";
+static auto authorization = std::make_shared<PlazaDiscordAuthorization>();
+
+void MPDiscordAuthorizeLocal(uint64_t applicationID, uint64_t expectedUserID, const char *refreshToken) {
+    authorization->start(applicationID, expectedUserID, refreshToken ?: "");
+}
+char *MPDiscordTakeAuthorizationResult(void) {
+    auto value = authorization->takeResult();
+    return value.empty() ? nullptr : strdup(value.c_str());
+}
+void MPDiscordCancelAuthorization(void) { authorization->cancel(); }
 
 void MPDiscordDisconnect(void) {
     ++generation;

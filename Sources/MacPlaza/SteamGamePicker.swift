@@ -32,7 +32,7 @@ struct SteamGamePicker: View {
                     ScrollView {
                         LazyVStack(spacing: 6) {
                             ForEach(filtered) { game in
-                                Button {
+                                PlazaButton {
                                     if replacing != nil { selected = [game.id] }
                                     else if !selected.insert(game.id).inserted { selected.remove(game.id) }
                                 } label: {
@@ -60,10 +60,10 @@ struct SteamGamePicker: View {
                     Text("There is room for \(120 - model.document.apps.count) more shortcuts. Select fewer games to continue.").font(.caption).foregroundStyle(.secondary)
                 }
                 HStack {
-                    Button("Refresh") { Task { await refresh() } }.disabled(loading)
+                    PlazaButton("Refresh") { Task { await refresh() } }.disabled(loading)
                     Spacer()
-                    Button("Cancel") { model.returnToPlaza() }
-                    Button(replacing == nil ? "Add to Home Screen" : "Use Game") {
+                    PlazaButton("Cancel") { model.returnToPlaza() }
+                    PlazaButton(replacing == nil ? "Add to Home Screen" : "Use Game") {
                         let urls = games.filter { selected.contains($0.id) && !alreadyAdded($0) }.map(\.applicationURL)
                         model.addApps(urls, replacing: replacing)
                         if model.error == nil {

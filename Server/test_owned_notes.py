@@ -14,7 +14,7 @@ class OwnedNoteTests(unittest.TestCase):
             author = avatar()
             author['id'] = str(uuid.uuid4())
             notes = [dict(id=str(uuid.uuid4()), author=author, text='Note '+str(i), drawing=[],
-                          drawingDescription='', created=i) for i in range(200)]
+                          drawingDescription='', created=service.now()-i) for i in range(200)]
             service.handle('PUT', '/v1/notes', dict(notes=notes), token)
             aid = service.account(token)['id']
             # Simulate many old discussions: the ordinary feed has a 2,000

@@ -219,3 +219,14 @@ history backup remains local, ignored under .qa; never publish that backup.
 Original code uses the MIT license. Build with PLAZA_DISTRIBUTION=1 to exclude local
 Nintendo audio; source packaging always excludes those recordings and the standalone
 Discord SDK. Local files remain on the developer's Mac. See LICENSING.md.
+
+### Private Miiverse music download (0.18.1)
+
+The user-requested private friend build includes Audio/miiverse.m4a. Build it
+with `PLAZA_DISTRIBUTION=1 PLAZA_INCLUDE_MIIVERSE_MUSIC=1`; the latter flag
+retains only that recording. Default distribution builds continue to omit all
+local recordings, and source archives still omit them. `PLAZA_APP_PATH` can
+point build-app.sh, package-release.sh and build-installer.sh at a separate app
+bundle, so private packaging leaves the running local app and its music intact.
+The recording is separate from the source-code license; provenance remains in
+Audio/SOURCE.txt.

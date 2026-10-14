@@ -6,19 +6,23 @@ export SWIFTPM_MODULECACHE_OVERRIDE="$PWD/.build/ModuleCache"
 swift build -c release --disable-sandbox --cache-path .build/cache --config-path .build/config --security-path .build/security
 swift scripts/make-icon.swift Artifacts/PlazaIcon.iconset
 iconutil -c icns Artifacts/PlazaIcon.iconset -o Artifacts/PlazaIcon.icns
-app="$PWD/Artifacts/Mac Plaza.app"
+app="${PLAZA_APP_PATH:-$PWD/Artifacts/Mac Plaza.app}"
 mkdir -p "$app/Contents/MacOS" "$app/Contents/Resources"
 cp .build/release/MacPlaza "$app/Contents/MacOS/MacPlaza"
 cp scripts/Info.plist "$app/Contents/Info.plist"
 ditto .build/release/MacPlaza_MacPlaza.bundle/FFL "$app/Contents/Resources/FFL"
 ditto .build/release/MacPlaza_MacPlaza.bundle/Audio "$app/Contents/Resources/Audio"
 if [[ "${PLAZA_DISTRIBUTION:-0}" == 1 ]]; then
-  # Local soundtrack imports are retained on the developer's Mac, not shipped.
-  python3 - "$app/Contents/Resources/Audio" <<'PY'
+  # A private friend release may explicitly include the user-requested Miiverse track.
+  python3 - "$app/Contents/Resources/Audio" "${PLAZA_INCLUDE_MIIVERSE_MUSIC:-0}" <<'PY'
 from pathlib import Path
 import sys
-for item in Path(sys.argv[1]).iterdir():
-    if item.suffix.lower() in ('.m4a', '.wav'):
+directory = Path(sys.argv[1])
+included = {'miiverse.m4a'} if sys.argv[2] == '1' else set()
+if included and not (directory / 'miiverse.m4a').is_file():
+    raise SystemExit('The requested bundled Miiverse music is missing.')
+for item in directory.iterdir():
+    if item.suffix.lower() in ('.m4a', '.wav') and item.name not in included:
         item.unlink()
 PY
 fi

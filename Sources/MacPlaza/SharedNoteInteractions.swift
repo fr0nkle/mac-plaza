@@ -39,7 +39,7 @@ struct SharedNoteInteractions: View {
                 HStack(alignment: .top, spacing: 10) {
                     MiiHeadIcon(avatar: reply.author).frame(width: 30, height: 30)
                     VStack(alignment: .leading, spacing: 4) {
-                        Text("\(reply.author.name) · Shared reply").font(.caption).foregroundStyle(PlazaStyle.teal)
+                        Text("\(reply.publicDisplayName) · Shared reply").font(.caption).foregroundStyle(PlazaStyle.teal)
                         Text(reply.text).font(.callout).textSelection(.enabled)
                     }
                     Spacer()
@@ -55,7 +55,7 @@ struct SharedNoteInteractions: View {
                                 } else { error = nil }
                             }
                         } label: { Image(systemName: "trash") }
-                        .disabled(busy).accessibilityLabel("Delete shared reply by \(reply.author.name)")
+                        .disabled(busy).accessibilityLabel("Delete shared reply by \(reply.publicDisplayName)")
                     }
                 }.font(.caption).buttonStyle(.borderless).padding(12).modifier(PlazaPostSurface())
             }

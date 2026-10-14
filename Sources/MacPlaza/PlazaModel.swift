@@ -10,7 +10,17 @@ final class PlazaModel: ObservableObject {
     @Published var loaded = false
     @Published var journalRevision = 0
     @Published var recoveryRequired = false
-    @Published var error: String? { didSet { if error != nil { desktop.presentCompanionIfNeeded() } } }
+    @Published var diagnosticsExporting = false
+    @Published var diagnosticsExportMessage: String?
+    @Published var diagnosticsDescriptionDraft = ""
+    @Published var diagnosticsExportURL: URL?
+    @Published private(set) var previousSessionInterrupted = false
+    @Published var diagnosticsRecoveryOfferPending = false
+    var diagnosticsRecoveryAlert: NSAlert?
+    @Published var error: String? { didSet {
+        if error != nil { desktop.presentCompanionIfNeeded() }
+        else { offerDiagnosticsAfterInterruptedSession() }
+    } }
     @Published var status = "Your own little corner of the Mac."
     @Published var launching: Set<UUID> = []
     @Published var search = ""
@@ -32,10 +42,12 @@ final class PlazaModel: ObservableObject {
             if sheet != nil { desktop.presentCompanionIfNeeded() }
             else { desktop.dismissCompanionIfNeeded() }
             updateAudio()
+            if sheet == nil { offerDiagnosticsAfterInterruptedSession() }
         }
     }
     @Published var previewAppID: UUID?
     @Published var makerEditorVisible = false
+    @Published private(set) var writingNoteDepth = 0
     @Published var sessionActive = true
     @Published var windowVisible = true
     @Published var wallpaperEnabled = false
@@ -50,7 +62,12 @@ final class PlazaModel: ObservableObject {
         didSet { if oldValue != otherAppCoversPlaza { updateAudio() } }
     }
     @Published var otherAudioActive = false {
-        didSet { if oldValue != otherAudioActive { updateAudio() } }
+        didSet {
+            if oldValue != otherAudioActive {
+                if otherAudioActive { audio.releaseForAudioInterruption() }
+                updateAudio()
+            }
+        }
     }
     @Published var desktopInsets = EdgeInsets()
     lazy var desktop = DesktopPlazaController(model: self)
@@ -86,8 +103,10 @@ final class PlazaModel: ObservableObject {
         !document.preferences.safeMode && !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
     }
     var musicTrack: PlazaAudio.Track {
+        if writingNoteDepth > 0 || sheet?.id == "compose" { return .writing }
         if sheet?.id == "preferences" { return .settings }
         if sheet?.id == "friends" { return .friends }
+        if sheet?.id == "miiverse" { return .miiverse }
         return sheet?.id == "characters" || makerEditorVisible ? .maker : .plaza
     }
     var musicVolume: Double {
@@ -96,6 +115,8 @@ final class PlazaModel: ObservableObject {
         case .maker: return document.preferences.makerMusicVolume ?? 0.10
         case .friends: return document.preferences.friendsMusicVolume ?? 0.10
         case .settings: return document.preferences.settingsMusicVolume ?? 0.10
+        case .writing: return document.preferences.writingMusicVolume ?? 0.10
+        case .miiverse: return document.preferences.miiverseMusicVolume ?? 0.10
         }
     }
     var automaticMusicMuteReason: String? {
@@ -111,6 +132,8 @@ final class PlazaModel: ObservableObject {
         // the window monitor separately detects a blocked plaza.
         return !listMode && (wallpaperEnabled || windowVisible)
     }
+    func beginWritingNote() { writingNoteDepth += 1; updateAudio() }
+    func endWritingNote() { writingNoteDepth = max(0, writingNoteDepth - 1); updateAudio() }
     func updateAudio() {
         let volume = musicVolume
         audio.update(enabled: (document.preferences.ambientSound ?? true) && audioEligible, volume: volume, track: musicTrack, customURL: music.url(for: musicTrack), allowPreview: sessionActive && automaticMusicMuteReason == nil && (windowVisible || desktopMenuVisible) && !document.preferences.safeMode)
@@ -123,6 +146,13 @@ final class PlazaModel: ObservableObject {
     var receivedNotes: [SharedJournalNote] {
         guard social.connected else { return [] }
         return social.visibleSharedJournal.filter { $0.ownerID != social.account?.id && ($0.topic == nil || $0.topic?.match(in: topicApps) != nil) }
+    }
+    var miiverseCatalog: MiiverseCatalog {
+        MiiverseCatalog(notes: document.notes, apps: topicApps,
+            shared: social.connected ? social.visibleSharedJournal : [], accountID: social.account?.id, accountDisplayName: social.account?.displayName)
+    }
+    func journalNote(_ id: UUID) -> LocalNote? {
+        document.notes.first { $0.id == id } ?? (social.connected ? social.visibleSharedJournal.first { $0.id == id }?.localNote(apps: topicApps) : nil)
     }
     var homeSharedNotes: [SharedJournalNote] {
         receivedNotes.filter { $0.topic == nil || $0.topic?.match(in: visibleApps) != nil }
@@ -147,15 +177,25 @@ final class PlazaModel: ObservableObject {
     }
     func isOwnNote(_ note: LocalNote) -> Bool { document.notes.contains { $0.id == note.id } }
     func noteAvatar(_ note: LocalNote) -> Avatar {
-        document.avatars.first { $0.id == note.authorID } ?? receivedNotes.first { $0.id == note.id }?.author ?? Avatar(name: note.author)
+        if note.shared == true {
+            if isOwnNote(note) { return document.primaryAvatar }
+            if let shared = social.visibleSharedJournal.first(where: { $0.id == note.id }) { return shared.author }
+        }
+        return document.avatars.first { $0.id == note.authorID } ?? Avatar(name: note.author)
+    }
+    func noteDisplayName(_ note: LocalNote) -> String {
+        guard note.shared == true else { return note.author }
+        if isOwnNote(note) { return social.account?.displayName ?? note.author }
+        return social.visibleSharedJournal.first { $0.id == note.id }?.publicDisplayName ?? note.author
     }
     func updateSharedJournal() {
         guard loaded, !recoveryRequired else { return }
-        social.setJournal(notes: document.notes, apps: topicApps, avatars: document.avatars)
+        social.activityPreviewsAllowed = !document.preferences.privatePresentation
+        social.setJournal(notes: document.notes, apps: topicApps, primary: document.primaryAvatar)
     }
 
     var visibleNotes: [LocalNote] {
-        allJournalNotes.filter { search.isEmpty || $0.text.localizedCaseInsensitiveContains(search) || $0.author.localizedCaseInsensitiveContains(search) || $0.drawingDescription.localizedCaseInsensitiveContains(search) }
+        allJournalNotes.filter { search.isEmpty || $0.text.localizedCaseInsensitiveContains(search) || noteDisplayName($0).localizedCaseInsensitiveContains(search) || $0.drawingDescription.localizedCaseInsensitiveContains(search) }
     }
 
     init(directory: URL? = nil) {
@@ -171,6 +211,12 @@ final class PlazaModel: ObservableObject {
             self.audio.playArrivalEffect(cue,volume:self.document.preferences.musicVolume ?? 0.12)
         }
         scene.onArrivalStopped = { [weak self] in self?.audio.stopArrivalEffects() }
+        social.onActivityChanged = { [weak self] in self?.journalRevision &+= 1 }
+        social.onActivitySelected = { [weak self] activity in
+            guard let self else { return }
+            let id = activity.sourceID ?? self.social.sharedJournal.first { $0.id == activity.noteID }?.sourceID
+            self.openJournal(note: id)
+        }
         social.onRosterChanged = { [weak self] in self?.journalRevision &+= 1; self?.refreshHomeForFriendActivity(); self?.rebuildScene() }
         observeLifecycle()
         if directory == nil {
@@ -203,11 +249,19 @@ final class PlazaModel: ObservableObject {
                 recoveryRequired = true
                 self.error = "The saved plaza could not be read. The original file has been preserved. Restore its backup or import an export from Preferences.\n\n\(error.localizedDescription)"
             }
-            do { if try await storage.beginSession() { document.preferences.safeMode=true; status="The previous session ended unexpectedly. Safe mode is on; resume in Preferences." } } catch { self.error=error.localizedDescription }
+            do {
+                previousSessionInterrupted = try await storage.beginSession()
+                diagnosticsRecoveryOfferPending = previousSessionInterrupted
+                if previousSessionInterrupted {
+                    document.preferences.safeMode = true
+                    status = "The previous session ended unexpectedly. Safe mode is on; resume in Preferences."
+                }
+            } catch { self.error = error.localizedDescription }
             loaded = true
             if rotatingHomeEnabled { prepareRotatingHome() }
             rebuildScene()
             scene.beginEntrance(enabled: !document.preferences.safeMode && !document.preferences.pauseMotion && !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion)
+            offerDiagnosticsAfterInterruptedSession()
         }
     }
     @discardableResult
@@ -246,7 +300,7 @@ final class PlazaModel: ObservableObject {
         let plazaFriends = FriendMiiAssignments.plazaFriends(social.friends, capacity: room, retaining: scene.fflCharacters.map(\.id))
         var seen = Set(document.avatars.map(\.id))
         let noteAuthors = homeSharedNotes.map(\.author).filter { seen.insert($0.id).inserted }
-        // Preserve note authors even when they use a different Mii from their profile.
+        // A public-note primary Mii takes priority over another profile appearance.
         var unique = Set(document.avatars.map(\.id))
         let roster = (noteAuthors + plazaFriends.map(\.avatar)).filter { unique.insert($0.id).inserted }
         scene.configure(avatars: document.avatars + roster.prefix(room), population: population, localCount: document.avatars.count)
@@ -478,8 +532,10 @@ final class PlazaModel: ObservableObject {
     }
     var bubbleNotes: [LocalNote] { visibleNotes.sorted { lhs,rhs in if (lhs.read ?? false) != (rhs.read ?? false) { return !(lhs.read ?? false) }; return lhs.created>rhs.created } }
     func storeDraft(_ draft: NoteDraft?) {
-        draftTask?.cancel()
         guard !recoveryRequired else { return }
+        let draft = draft?.hasContent == true ? draft : nil
+        guard document.draft != draft else { return }
+        draftTask?.cancel()
         var next=document; next.draft=draft
         guard (try? next.validated()) != nil else { return }
         document=next; revision+=1; let number=revision,snapshot=next
@@ -543,9 +599,9 @@ final class PlazaModel: ObservableObject {
 }
 
 enum PlazaSheet: Identifiable {
-    case characters, friends, compose(UUID?), feed, preferences, social, app(AppIsland), profile(Avatar), friend(SharedMii), steamGames(AppIsland?)
-    var isFloatingMenu: Bool { id == "characters" || id == "friends" || id == "preferences" }
+    case characters, friends, compose(UUID?), feed, miiverse, activity, preferences, social, app(AppIsland), profile(Avatar), friend(SharedMii), steamGames(AppIsland?)
+    var isFloatingMenu: Bool { ["characters", "friends", "preferences", "compose", "activity", "miiverse"].contains(id) }
     var id: String {
-        switch self { case .steamGames: return "steam-games"; case .friends: return "friends"; case .friend(let friend): return "friend-"+friend.id; case .social: return "social"; case .profile(let avatar): return "profile-"+avatar.id.uuidString; case .characters: return "characters"; case .compose: return "compose"; case .feed: return "feed"; case .preferences: return "preferences"; case .app(let app): return app.id.uuidString }
+        switch self { case .steamGames: return "steam-games"; case .friends: return "friends"; case .friend(let friend): return "friend-"+friend.id; case .social: return "social"; case .profile(let avatar): return "profile-"+avatar.id.uuidString; case .characters: return "characters"; case .compose: return "compose"; case .feed: return "feed"; case .miiverse: return "miiverse"; case .activity: return "activity"; case .preferences: return "preferences"; case .app(let app): return app.id.uuidString }
     }
 }

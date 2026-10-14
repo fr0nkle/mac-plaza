@@ -9,12 +9,23 @@ public struct SharedJournalNote: Codable, Identifiable, Equatable, Sendable {
     public var replies: [SharedJournalReply]?
     public var likeCount: Int?
     public var liked: Bool?
+    public var displayName: String?
+    public var discordID: String?
     public var author: Avatar
     public var text: String
     public var drawing: [InkStroke]
     public var drawingDescription: String
     public var created: Double
     public var topic: SharedNoteTopic?
+    public var publicDisplayName: String { displayName ?? author.name }
+
+    public static func publishing(notes: [LocalNote], apps: [AppIsland], primary: Avatar) -> [Self] {
+        notes.filter { $0.shared == true }.compactMap { note in
+            let app = note.appID.flatMap { id in apps.first { $0.id == id } }
+            guard note.appID == nil || app != nil else { return nil }
+            return Self(note: note, author: primary, app: app)
+        }.sorted { $0.id.uuidString < $1.id.uuidString }
+    }
 
     public init(note: LocalNote, author: Avatar, app: AppIsland?) {
         id = note.id; self.author = author
@@ -25,6 +36,8 @@ public struct SharedJournalNote: Codable, Identifiable, Equatable, Sendable {
     }
     public func validate() throws {
         _ = try author.validated()
+        guard displayName.map({ (1...80).contains($0.count) }) ?? true else { throw PlazaError.invalid("Invalid public note name.") }
+        guard discordID.map({ $0.count <= 24 && (UInt64($0) ?? 0) > 0 }) ?? true else { throw PlazaError.invalid("Invalid public Discord identity.") }
         guard created.isFinite, created >= 0, ownerID.map({ UUID(uuidString: $0) != nil }) ?? true else {
             throw PlazaError.invalid("Invalid shared note identity or date.")
         }
@@ -39,7 +52,7 @@ public struct SharedJournalNote: Codable, Identifiable, Equatable, Sendable {
         _ = try doc.validated()
     }
     public func localNote(apps: [AppIsland]) -> LocalNote {
-        var note = LocalNote(authorID: author.id, author: author.name,
+        var note = LocalNote(authorID: author.id, author: String(publicDisplayName.prefix(24)),
             appID: topic?.match(in: apps)?.id, text: text, drawing: drawing, drawingDescription: drawingDescription)
         note.id = id; note.created = Date(timeIntervalSince1970: created); note.shared = true
         return note
@@ -81,8 +94,11 @@ public struct SharedJournalReply: Codable, Identifiable, Equatable, Sendable {
     public var author: Avatar
     public var text: String
     public var created: Double
+    public var displayName: String? = nil
+    public var publicDisplayName: String { displayName ?? author.name }
     public func validate() throws {
         _ = try author.validated()
+        guard displayName.map({ (1...80).contains($0.count) }) ?? true else { throw PlazaError.invalid("Invalid public reply name.") }
         guard UUID(uuidString: ownerID) != nil, created.isFinite, created >= 0,
               !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty, text.count <= 280 else {
             throw PlazaError.invalid("Invalid shared reply.")

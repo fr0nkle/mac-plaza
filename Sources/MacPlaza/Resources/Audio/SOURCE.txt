@@ -1,7 +1,10 @@
-Wii U Menu music - Home (WaraWara Plaza)
-Source requested by the user: https://www.youtube.com/watch?v=chgpqelL6ZQ
-Retrieved 12 October 2026 for this local Mac Plaza build.
-Music belongs to its original rights holders. This is not an original Mac Plaza composition.
+Wii U Home Menu Ambient Theme [HIGHEST QUALITY ON YOUTUBE]
+Source requested by the user: https://www.youtube.com/watch?v=j0stAz4wrxk
+Uploader: Biological Perfection. Retrieved 13 October 2026 for this local Mac Plaza build.
+warawara-home.m4a: original stereo AAC, 44.1 kHz, 1840.807 seconds (30:40.807).
+Source AAC SHA-256: fdef3ff81dbfc7d3659d7dfab39def154f6f0fbd9eaae38b2c987cc54ba75176
+Replaces the previous 68-second chgpqelL6ZQ recording. No pitch/speed changes or trimming.
+Music belongs to Nintendo and its original rights holders. This is not an original Mac Plaza composition.
 
 Mii Editor - Mii Maker (Wii U) Music
 Source requested by the user: https://www.youtube.com/watch?v=oTu4WcpB9Iw
@@ -50,3 +53,18 @@ Original MP3 SHA-256: 408accc3f3b56ec4890dd26736199b110950e015b9ceedc3c115d9ddf4
 Converted locally with macOS afconvert to stereo AAC at 128 kbps; original speed
 and pitch retained. Looped offline with an independent saved Settings volume.
 Music belongs to Nintendo and its original rights holders.
+
+18. Wii U Chat - Main Menu | Wii U System Soundtrack
+Source requested by the user: https://www.youtube.com/watch?v=vlAE66lQdw0
+Uploader: LuisFerLCC 2. Retrieved 13 October 2026 for local note/reply writing.
+Original 147-second AAC recording, looped offline at original speed and pitch.
+SHA-256: be9c76f373722f966d1bb6f0dfbbabbda7624548ddf50124e3053c98e133acc5
+Music belongs to Nintendo and its original rights holders. Excluded from distributable builds.
+
+Miiverse music, supplied by the user on 14 October 2026:
+Title: 42. Miiverse - Loading | Wii U System Soundtrack
+Source: https://youtu.be/4ShOT1ZKa4U
+Uploader: LuisFerLCC 2
+Duration: 109 seconds (AAC, original format 140, no re-encoding)
+SHA-256: 2887175f70ba9a51591d83c527209da716e82210ac9563ee89e4b41626719ee6
+Included in the user-requested private friend app release from 0.18.1; excluded from default distribution builds and source archives. Rights remain with the original rights holders, separate from the MIT source license.

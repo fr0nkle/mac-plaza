@@ -757,3 +757,150 @@ reply ownership/moderation, revocation, limits, account deletion and service
 restart persistence. The focused Swift suite ran 13 tests with no failures and
 one optional live tracking fixture skipped. Backups are under
 .qa/shared-interactions-migration; logs are .qa/shared-interactions-*-tests.log.
+
+
+### Longer main plaza soundtrack — 13 October 2026
+
+The user-selected https://www.youtube.com/watch?v=j0stAz4wrxk recording replaces the short main theme. The full 1840.807-second stereo AAC (44.1 kHz) is bundled at Audio/warawara-home.m4a, preserving its original duration and quality without re-encoding. The Settings title is Wii U Home Menu · Extended. The existing loop, remembered volume/mute, 1.2-second menu crossfades and automatic suppression continue to apply. Mii Maker, Friends and Settings keep their separate music. Provenance and SHA-256 are recorded in Audio/SOURCE.txt. The native audio decode check now verifies the longer duration.
+
+
+### Resume the main theme after menus — 13 October 2026
+
+PlazaAudio retains the main theme’s playhead after its outgoing 1.2-second fade releases the player. Returning from Friends, Settings, Mii Maker or note writing resumes the same recording at that position with the existing fade-in. The playhead pauses while the menu is open instead of advancing silently. Quick reversals still reuse the active outgoing player. Audio/call/mute/preview interruption during a fade retains the position before stopping its player. Resume state is local to the running session and scoped to the selected source URL; replacing a track starts the new recording from the beginning.
+
+Native playback regressions wait beyond each complete fade and verify resumption after every requested menu, paused time during menu visits, interrupted fades and a fresh start for a replacement recording. Existing custom imports, previews, mute, wallpaper and Settings music checks are included.
+
+
+## Activity badge, writing shortcut and soundtrack — 13 October 2026
+
+A native hit surface now hosts bottom-right Activity and Write Note controls.
+Activity has a live unread badge, an inbox with note navigation and explicit read
+actions, a short in-plaza alert and optional UserNotifications banners/Dock badge.
+No notification permission is requested until Enable macOS notifications is
+chosen. The service stores read flags; account-scoped preferences store delivery
+cursors, with no migration or changes to plaza.json. Initial history is quiet;
+new activity does not replay on polling/relaunch. Blocks, revoked grants,
+withdrawals, self-interactions and duplicate retries are handled by the service.
+Polling continues for activity while hidden and pauses while sleeping/locked.
+
+Writing notes or replies uses the supplied 146.84-second Wii U Chat – Main Menu
+AAC recording locally, with 1.2-second crossfades and a separate default 10%
+volume. Import/preview/volume controls are available in Music settings. The local
+recording is excluded from distributable packages alongside other optional
+recordings; portable plaza exports contain no audio.
+
+All 51 service tests passed. Focused activity/writing/native wallpaper/continuity
+tests passed (10 tests), along with the 18-test music/shared-note regression run.
+Checks include ID ownership, read races, event limits, restart persistence,
+notification delivery cursors, native hit areas and writing music without saved
+document changes. Logs: .qa/activity-*-tests.log. Backups: .qa/activity-migration.
+
+Write Note and Activity now share the native wallpaper panel shell with Settings,
+Friends and Mii Maker. Their close controls return input to the existing wallpaper
+without replacing its renderer or resetting its crowd. Windowed panels keep
+motion active; full-screen panels respect the existing visibility and pause rules.
+An untouched composer no longer writes empty draft metadata or replaces a draft
+for another topic; meaningful draft edits and intentional clearing still save.
+Verified by native panel and save-preservation regressions.
+
+## Miiverse communities and local soundtrack — 14 October 2026
+
+Miiverse opens from a native button directly above Write Note. It shares the
+floating wallpaper panel shell and reuses the journal’s drawing, like, reply,
+edit and undo controls. A read-only catalog groups all authorized shared notes
+and local private/public notes by portable app identity, preserving topic labels
+for uninstalled apps and deduplicating local notes against their shared copies.
+All Notes, My Notes, Friends’ Notes and The Plaza sections accompany app
+communities. Search includes app labels, note text, author and drawing
+descriptions; newest, oldest and most-liked sorting are available. Private notes
+remain local; this feature changes no sharing permissions or service routes.
+
+Miiverse music uses the user-supplied 109-second Wii U Miiverse – Loading AAC
+recording, stored locally at Audio/miiverse.m4a. Independent volume defaults to
+10%, is adjustable in the window, and has the existing Settings import/preview
+controls. Nested writing transitions return to Miiverse music; leaving the window
+resumes the main theme. The optional volume field preserves old saves, validates
+0–35%, and records a value only on explicit adjustment. Distributions omit the
+recording. Catalog tests cover unmatched communities, portable identity, own
+shared-copy deduplication, filtering, searching, sorting and removed apps. Native
+checks cover button hit areas, floating panels, save preservation, offline audio
+decode and crossfades. Logs: .qa/miiverse-*-tests.log.
+
+
+### Discord call-end / music import investigation — 14 October 2026
+
+Reported: a friend on the latest Mac release (download manifest currently 0.17.0) sees a complete quit after leaving a Discord call and problems importing the developer’s music recordings. The friend’s crash report and macOS version have not been provided. The local retired crash reports predate this report and concern QA/startup issues; they do not establish its cause. No real Discord-call crash has been reproduced locally.
+
+Confirmed import defect: validatedCopy used AVAudioPlayer.prepareToPlay as a file-validity check. Preparation acquires playback hardware, so output-route/hardware failure can reject a valid recording. A restricted-output probe reproduced prepareToPlay=false for the valid 1840.807-second theme. MusicFileValidation now parses the audio container/format and reads its first encoded audio packet through AudioFile APIs without opening an output stream. All five user-selected M4A recordings validate in the same restricted environment. This verifies container/packet readability rather than decoding an entire file or guaranteeing future hardware availability. Invalid imports still preserve the existing track, and staged selections for Settings and Writing are now cleared with the other roles.
+
+Confirmed recovery weaknesses, with crash relevance unconfirmed: Core Audio input/output property failures were substituted with false (silence), allowing an incomplete snapshot to start the quiet countdown. Process disappearance/read failures now produce an unknown snapshot, retaining suppression until complete quiet samples arrive. Process-list size/alignment and scalar result sizes are checked. The SDK header explicitly requires releasing kAudioProcessPropertyBundleID’s returned CFObject, so its existing takeRetainedValue is correct and was retained.
+
+Candidate call-end mitigation: other-app audio activity now releases old playback queues while suppressed. After the quiet interval, playback creates a fresh player on the current system route and restores the main playhead (and the interrupted menu’s position). This avoids reusing the pre-call AVAudioPlayer after a possible Bluetooth/USB route change. Playback failures log the role and have up to three delayed retries; mute, previews and further activity cancel retry. Process-monitor and playback events use the local.macplaza.audio OSLog subsystem, without logging friend identities, tokens or music filenames. These changes are not a confirmed fix for the friend’s complete quit until their faulting thread is inspected.
+
+Validation: 28 focused native audio/menu checks passed, including missing call-process properties, eight repeated simulated call suppression/resume cycles with imported audio, saved mute, real external afplay process start/stop, menu crossfades, main-theme position, imports and preview cleanup. No live Discord call or physical Bluetooth-route transition was initiated during testing. Production compilation is checked locally; no installer or public update was published by this investigation.
+
+
+## Tester diagnostics export — 14 October 2026
+
+Settings → System & Recovery now includes Export Diagnostics… with a native ZIP save dialog, progress indicator, completion/error text and Finder reveal. Export runs off the main thread and does not upload anything. It includes a build/macOS/architecture and renderer/recovery summary, a Read Me with reproduction instructions, and up to ten matching Mac Plaza IPS/legacy crash reports from the last 30 days. Both user and system DiagnosticReports directories are considered; unreadable folders are recorded without preventing the summary export. Symlinks, unrelated/mismatched reports, malformed content, old reports and oversized files are skipped. Reads are capped at 5 MB each and report content at 20 MB. Original reports are unchanged; the current user's home path is replaced with ~ in exported copies. Reports can retain other paths and system details, as explained beside the button and in the ZIP.
+
+The exporter never reads the saved plaza document, Miis, journal entries, Discord credentials, custom music or general system logs. A no-crash export still provides the system summary. A temporary private staging directory is removed after either success or failure, and the ZIP destination is replaced atomically.
+
+All three focused diagnostics checks passed (.qa/diagnostics-tests.log), exercising real ZIP creation/extraction, recent/current and legacy report selection, other-app/malformed/old/symlink exclusion, home-path replacement, original-file preservation, bounded report count/bytes, no-report export, and failure preservation.
+
+The optimized app rebuilt successfully in 22.90 seconds (.qa/diagnostics-release.log) and passed deep/strict signature verification. Live native verification opened the floating Settings → System & Recovery panel, found Export Diagnostics, saved .qa/diagnostics-live.zip through the native dialog, and confirmed the success message and readable layout. The ZIP was independently inspected for the expected Summary.json, Read Me.txt and crash-report folder; this Mac currently yielded zero matching recent reports, so the no-report export was verified end to end. Settings was left on System & Recovery.
+
+
+## Tester descriptions in diagnostics ZIPs — 14 October 2026
+
+The Export Diagnostics save dialog now includes an optional multiline “What were you doing before the crash?” editor, reproduction prompts and a visible 10,000-character counter/limit. The in-memory draft survives cancelling the save dialog or an export failure, and clears after success. The immutable description captured at Save is exported as UTF-8 Tester Notes.txt, preserving internal line breaks and Unicode; blank descriptions produce “No description provided.” The Read Me identifies the notes file. No description is saved into plaza data or uploaded automatically. The exporter independently rejects an over-limit description before replacing any existing destination.
+
+All four focused export checks passed (.qa/diagnostics-description-tests.log), including multiline Unicode/emoji in an extracted ZIP, blank notes, over-limit rejection preserving an existing ZIP, and the previous crash selection, limits, privacy and failure coverage.
+
+The description accessory uses a native AppKit text view inside the modal save panel, with explicit text-container/minimum editing-area sizing. Settings and the archive Read Me now show alexanderhosier@squidproductions.org. After successful export, Email Diagnostics… uses the macOS compose-email sharing service to open a reviewable draft with the ZIP attached and that recipient set. If email sharing is unavailable, the panel explains how to attach/send the ZIP manually. No email is sent automatically.
+
+The final optimized app rebuilt in 22.62 seconds (.qa/diagnostics-description-release.log) and passed deep/strict signature verification. Live native verification entered multiline text with Unicode/emoji, observed the 141-character counter, cancelled and reopened the panel to confirm draft retention, then exported .qa/diagnostics-description-live.zip. Independent ZIP inspection confirmed the exact Tester Notes.txt text and support email in Read Me.txt. Settings showed the Email Diagnostics button and recipient link. Clicking Email Diagnostics opened a Mail draft titled Mac Plaza diagnostics with alexanderhosier@squidproductions.org as recipient and diagnostics-description-live.zip attached. The QA draft was closed with Don't Save; nothing was sent.
+
+
+## Diagnostics offer after interrupted startup — 14 October 2026
+
+The existing unfinished-session marker now queues a native one-time startup offer: “Mac Plaza didn’t close normally,” with Export Diagnostics… and Not Now. The explanation covers crashes, forced quits and power loss, retains safe mode, identifies the report email address and points to Settings for later export. Choosing Export opens System & Recovery and the existing description/save flow, with Email Diagnostics available after success. Not Now dismisses without exporting, sending or changing safe mode. The marker still clears through the existing clean-termination path. The exported system summary records previousSessionInterrupted.
+
+The offer waits for a connected window and for existing startup errors/sheets to clear, then activates the recovery window so wallpaper/login starts cannot hide it. First-launch Discord setup is deferred on an interrupted launch. Window attachment, startup completion and sheet dismissal all retry the pending offer; consuming it before presentation prevents duplicate prompts during view/window updates.
+
+All eight focused crash startup, storage-marker and diagnostics export checks passed (.qa/crash-diagnostics-tests.log), including clean first/relaunches, an interrupted startup entering safe mode, deferral without a window, safe mode surviving a clean relaunch without a false crash offer, corrupt-data error/original-file preservation, and previous export coverage.
+
+The final optimized app rebuilt in 22.77 seconds (.qa/crash-diagnostics-release.log) and passed deep/strict signature verification. A separate demo bundle and data folder simulated unfinished sessions without changing the user's saved plaza. Native checks confirmed the startup alert, Not Now dismissal retaining safe mode, clean quit clearing the marker, and a clean relaunch without another offer. Export Diagnostics then opened the actual description/save dialog; .qa/crash-startup-live.zip was saved and independently inspected for previousSessionInterrupted=true, safeMode=true and the exact tester note. System & Recovery appeared after the save dialog with the email button/address and success message. The presentation order was corrected so a Settings sheet transition cannot cancel the save dialog. The isolated QA app quit cleanly after the successful final run. All eight focused checks passed again after that correction.
+
+The main app was restarted cleanly with the updated release and returned to wallpaper mode without a recovery prompt. The isolated test bundle was moved to .qa/Crash Diagnostics QA.fixture after testing so it is no longer available as a rotating home-screen app. No real crash was induced and no diagnostics email was sent.
+
+## Bundled Miiverse music for private friends — 14 October 2026
+
+The private 0.18.1 app download includes the exact requested Miiverse AAC so
+friends hear it offline without importing a file. A specific private-build flag
+retains only miiverse.m4a; other local recordings and source-archive audio remain
+excluded. Packaging can use a separate app output path, leaving the running app,
+its recordings and saved plaza untouched. Existing volume, mute and custom
+recording precedence are unchanged. Artifact verification checks the exact
+recording hash, native audio decode, archive signature, authenticated downloads
+and saved-plaza preservation.
+
+## Linked Discord names and primary public Miis — 14 October 2026
+
+Public note/reply identity now comes from the authenticated service account, with
+a full displayName separate from the 24-character Mii nickname. Existing stored
+payloads receive a read-only identity projection, preserving note IDs, replies,
+likes and visibility flags. New clients publish their sanitized primary Mii via
+the notes batch; its appearance is retained only while public notes remain.
+Primary changes update existing shared appearances. Account-scoped avatar IDs
+and Discord identity merge note authors with their temporary visitors instead
+of adding a second walker. Status and activity remain intact. Private notes and
+saved Mii nicknames are unchanged. Notes, previews, Miiverse search, replies,
+activity messages and speech posts use the linked name; public composers identify
+the primary Mii and Discord name explicitly.
+
+All 54 service and 39 focused native/core checks passed, covering legacy naming,
+long names, primary changes, atomic invalid batches, retraction, spoofed name
+rejection, visitor merging and private-note preservation. Logs are in
+.qa/public-identity-*-tests.log; pre-deployment backups in
+.qa/public-identity-migration.

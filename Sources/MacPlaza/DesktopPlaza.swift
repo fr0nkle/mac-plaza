@@ -174,14 +174,17 @@ final class DesktopPlazaController: NSObject, NSWindowDelegate {
         setInteractive(false,activate:false,keepAboveDesktopIcons:true)
         let friends = model.sheet?.id == "friends"
         let settings = model.sheet?.id == "preferences"
-        let identifier = settings ? "MacPlazaDesktopSettings" : friends ? "MacPlazaDesktopFriends" : "MacPlazaDesktopMiiMaker"
+        let writing = model.sheet?.id == "compose"
+        let activity = model.sheet?.id == "activity"
+        let miiverse = model.sheet?.id == "miiverse"
+        let identifier = settings ? "MacPlazaDesktopSettings" : friends ? "MacPlazaDesktopFriends" : writing ? "MacPlazaDesktopWriteNote" : activity ? "MacPlazaDesktopActivity" : miiverse ? "MacPlazaDesktopMiiverse" : "MacPlazaDesktopMiiMaker"
         if let panel = menuWindow, panel.identifier?.rawValue != identifier { closeMenuWindow() }
         if menuWindow == nil {
             let area=(wallpaper.screen ?? Self.targetScreen)?.visibleFrame ?? wallpaper.frame
-            let size=NSSize(width:min(settings ? 760 : 960,area.width-40),height:min(settings ? 820 : 760,area.height-48))
+            let size=NSSize(width:min(settings || writing || activity ? 760 : 960,area.width-40),height:min(settings || writing ? 820 : 760,area.height-48))
             let panel=NSPanel(contentRect:NSRect(origin:.zero,size:size),
                               styleMask:[.titled,.closable,.resizable,.fullSizeContentView],backing:.buffered,defer:false)
-            panel.title = settings ? "Settings" : friends ? "Friends" : "Mii Maker"
+            panel.title = settings ? "Settings" : friends ? "Friends" : writing ? "Write Note" : activity ? "Activity" : miiverse ? "Miiverse" : "Mii Maker"
             panel.identifier=NSUserInterfaceItemIdentifier(identifier)
             panel.titleVisibility = .hidden;panel.titlebarAppearsTransparent=true
             panel.isReleasedWhenClosed=false;panel.hidesOnDeactivate=false
@@ -310,6 +313,17 @@ private struct DesktopMenuRoot:View {
             Group {
                 if model.sheet?.id == "preferences" {
                     PreferencesView(model: model, fillsOverlay: true)
+                } else if case .compose(let appID) = model.sheet {
+                    ScrollView {
+                        NoteComposer(model: model, appID: appID, onClose: { model.sheet = nil })
+                            .id(appID).padding(.vertical, 28)
+                    }
+                } else if model.sheet?.id == "activity" {
+                    PlazaActivityView(model: model, social: model.social, onClose: { model.sheet = nil })
+                        .scaleEffect(min(1, proxy.size.width/660, proxy.size.height/640))
+                } else if model.sheet?.id == "miiverse" {
+                    FeedView(model: model, miiverse: true, onClose: { model.sheet = nil })
+                        .scaleEffect(min(1, proxy.size.width/960, proxy.size.height/720))
                 } else {
                     Group {
                         if model.sheet?.id == "friends" {
@@ -368,7 +382,7 @@ struct WallpaperCompanionView: View {
     }
 }
 
-/// Mii Maker, Friends and Settings share a native panel shell above the wallpaper.
+/// Editors and activity share a native panel shell above the moving wallpaper.
 struct PlazaPanels: ViewModifier {
     @ObservedObject var model: PlazaModel
     func body(content: Content) -> some View {
@@ -387,6 +401,8 @@ struct PlazaPanels: ViewModifier {
                 case .social: SocialSettingsView(model: model, social: model.social)
                 case .compose(let appID): NoteComposer(model: model, appID: appID)
                 case .feed: FeedView(model: model)
+                case .miiverse: FeedView(model: model, miiverse: true)
+                case .activity: PlazaActivityView(model: model, social: model.social)
                 case .preferences: PreferencesView(model: model)
                 case .app(let app): AppDetailsView(model: model, appID: app.id)
                 case .steamGames(let app): SteamGamePicker(model: model, replacing: app)

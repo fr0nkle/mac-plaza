@@ -21,6 +21,54 @@ def avatar():
 
 
 class ServiceTests(unittest.TestCase):
+    def test_public_identity_uses_linked_discord_name_for_legacy_notes_replies_and_activity(self):
+        import uuid
+        self.befriend()
+        note = self.journal_note(displayName="Spoofed identity")
+        note["author"]["name"] = "You"
+        self.call(self.a, "PUT", "notes", notes=[note])
+        account = self.snapshot(self.a)["account"]["id"]
+        name = "Linked Discord display name longer than twenty-four characters"
+        self.service.db.execute("UPDATE accounts SET name=? WHERE id=?", (name, account))
+        received = self.call(self.b, "GET", "notes")["notes"][0]
+        self.assertEqual(received["displayName"], name)
+        self.assertEqual(received["author"]["name"], name[:24])
+        self.assertEqual(received["author"]["id"], self.service.db.execute("SELECT avatar_id FROM accounts WHERE id=?", (account,)).fetchone()[0])
+        stored = self.service.db.execute("SELECT payload FROM journal_notes WHERE owner=?", (account,)).fetchone()[0]
+        self.assertEqual(json.loads(stored)["author"]["name"], "You", "Read projection must preserve original payloads")
+        reply = avatar(); reply["id"] = str(uuid.uuid4()); reply["name"] = "You"
+        self.call(self.b, "PUT", "notes/"+received["id"]+"/replies/"+str(uuid.uuid4()), author=reply, text="Hello", displayName="Spoofed")
+        thread = self.call(self.a, "GET", "notes/threads")["notes"][0]
+        self.assertEqual(thread["replies"][0]["displayName"], "Bob")
+        self.assertEqual(thread["replies"][0]["author"]["name"], "Bob")
+        self.assertEqual(self.call(self.a, "GET", "notes/activity")["activities"][0]["actorName"], "Bob")
+
+    def test_public_notes_use_one_primary_mii_without_enabling_private_profile_sharing(self):
+        self.befriend()
+        first, second = self.journal_note(), self.journal_note(topic=None)
+        primary = avatar(); primary["hair"] = 99
+        self.call(self.a, "PUT", "notes", notes=[first, second], primaryAvatar=primary)
+        account = self.snapshot(self.a)["account"]
+        self.assertFalse(account["sharing"])
+        received = self.call(self.b, "GET", "notes")["notes"]
+        self.assertEqual(len({n["author"]["id"] for n in received}), 1)
+        self.assertTrue(all(n["author"]["hair"] == 99 for n in received))
+        self.assertTrue(all(n["author"]["features"]["creator"] == "" for n in received))
+        self.call(self.b, "PUT", "notes/"+received[0]["id"]+"/like", liked=True)
+        primary["hair"] = 30
+        self.call(self.a, "PUT", "notes", notes=[first, second], primaryAvatar=primary)
+        updated = self.call(self.b, "GET", "notes")["notes"]
+        self.assertEqual({n["id"] for n in received}, {n["id"] for n in updated})
+        self.assertEqual(sum(n["likeCount"] for n in updated), 1)
+        self.assertTrue(all(n["author"]["hair"] == 30 for n in updated))
+        bad = copy.deepcopy(primary); bad["height"] = math.inf
+        with self.assertRaises(APIError): self.call(self.a, "PUT", "notes", notes=[], primaryAvatar=bad)
+        self.assertEqual(len(self.call(self.b, "GET", "notes")["notes"]), 2)
+        self.call(self.a, "PUT", "notes", notes=[first, second])
+        self.assertTrue(all(n["author"]["hair"] == 30 for n in self.call(self.b, "GET", "notes")["notes"]), "An older client must not erase the primary Mii")
+        self.call(self.a, "PUT", "notes", notes=[])
+        self.assertIsNone(self.service.db.execute("SELECT journal_avatar FROM accounts WHERE id=?", (account["id"],)).fetchone()[0])
+
     def test_discord_mii_sharing_uses_publishers_grants_without_invitations(self):
         self.publish(self.a, shareDiscordFriends=True)
         self.assertEqual(self.snapshot(self.b)["friends"], [])
@@ -556,6 +604,89 @@ class ServiceTests(unittest.TestCase):
             self.call(self.b,"DELETE","notes/"+nid+"/replies/"+rid)
             self.assertEqual(self.call(self.a,"GET","notes/threads")["notes"][0]["replies"],[])
         finally:server.shutdown();server.server_close();thread.join()
+
+    def test_activity_notifies_author_once_and_ignores_self_interactions(self):
+        import uuid
+        _,nid=self.published_thread();rid=str(uuid.uuid4())
+        self.call(self.b,"PUT","notes/"+nid+"/like",liked=True)
+        self.call(self.b,"PUT","notes/"+nid+"/like",liked=True)
+        self.thread_reply(self.b,nid,rid)
+        self.thread_reply(self.b,nid,rid,"Edited reply")
+        self.call(self.a,"PUT","notes/"+nid+"/like",liked=True)
+        self.thread_reply(self.a,nid,str(uuid.uuid4()),"Self reply")
+        inbox=self.call(self.a,"GET","notes/activity")
+        self.assertEqual(inbox["unreadCount"],2)
+        self.assertEqual({e["kind"] for e in inbox["activities"]},{"like","reply"})
+        self.assertEqual(next(e for e in inbox["activities"] if e["kind"]=="reply")["replyText"],"Edited reply")
+        self.assertEqual(self.call(self.b,"GET","notes/activity")["activities"],[])
+        self.assertEqual(self.call(self.c,"GET","notes/activity")["activities"],[])
+        self.assertTrue(all(e["noteID"]==nid for e in inbox["activities"]))
+
+    def test_activity_read_state_is_owned_idempotent_and_does_not_mark_new_arrivals(self):
+        import uuid
+        _,nid=self.published_thread()
+        self.call(self.b,"PUT","notes/"+nid+"/like",liked=True)
+        ids=[e["id"] for e in self.call(self.a,"GET","notes/activity")["activities"]]
+        self.thread_reply(self.b,nid,str(uuid.uuid4()))
+        self.call(self.b,"PUT","notes/activity/read",ids=ids)
+        self.assertEqual(self.call(self.a,"GET","notes/activity")["unreadCount"],2)
+        for _ in range(2):
+            snapshot=self.call(self.a,"PUT","notes/activity/read",ids=ids)
+            self.assertEqual(snapshot["unreadCount"],1)
+        self.assertEqual(sum(e["read"] for e in snapshot["activities"]),1)
+        for bad in ([True],[-1],["1"],[1]*201):
+            with self.assertRaises(APIError):self.call(self.a,"PUT","notes/activity/read",ids=bad)
+        self.assertEqual(self.call(self.a,"GET","notes/activity")["unreadCount"],1)
+
+    def test_activity_withdrawal_and_note_retraction_remove_notifications(self):
+        import uuid
+        note,nid=self.published_thread();rid=str(uuid.uuid4())
+        self.call(self.b,"PUT","notes/"+nid+"/like",liked=True)
+        self.thread_reply(self.b,nid,rid)
+        note["text"]="Updated note text"
+        self.call(self.a,"PUT","notes",notes=[note])
+        self.assertTrue(all(e["noteText"]==note["text"] for e in self.call(self.a,"GET","notes/activity")["activities"]))
+        self.call(self.b,"PUT","notes/"+nid+"/like",liked=False)
+        self.assertEqual(self.call(self.a,"GET","notes/activity")["unreadCount"],1)
+        self.call(self.b,"DELETE","notes/"+nid+"/replies/"+rid)
+        self.assertEqual(self.call(self.a,"GET","notes/activity")["unreadCount"],0)
+        self.call(self.b,"PUT","notes/"+nid+"/like",liked=True)
+        self.call(self.a,"PUT","notes",notes=[])
+        self.assertEqual(self.call(self.a,"GET","notes/activity")["activities"],[])
+        self.assertEqual(self.service.db.execute("SELECT count(*) FROM journal_activity").fetchone()[0],0)
+
+    def test_activity_honors_blocks_and_revoked_discord_audiences(self):
+        self.call(self.a,"PUT","notes",notes=[self.journal_note()])
+        self.call(self.a,"PUT","discord/recipients",discordIDs=["200"])
+        nid=self.call(self.b,"GET","notes")["notes"][0]["id"]
+        self.call(self.b,"PUT","notes/"+nid+"/like",liked=True)
+        self.assertEqual(self.call(self.a,"GET","notes/activity")["unreadCount"],1)
+        self.call(self.a,"POST","friends/block",id=self.snapshot(self.b)["account"]["id"])
+        self.assertEqual(self.call(self.a,"GET","notes/activity")["unreadCount"],0)
+        self.call(self.a,"POST","friends/unblock",id=self.snapshot(self.b)["account"]["id"])
+        self.assertEqual(self.call(self.a,"GET","notes/activity")["unreadCount"],1)
+        self.call(self.a,"PUT","discord/recipients",discordIDs=[])
+        self.assertEqual(self.call(self.a,"GET","notes/activity")["unreadCount"],0)
+
+    def test_activity_is_bounded_and_read_state_survives_restart(self):
+        import uuid,sqlite3,tempfile
+        from pathlib import Path
+        self.befriend();notes=[self.journal_note() for _ in range(5)]
+        self.call(self.a,"PUT","notes",notes=notes)
+        for note in self.call(self.b,"GET","notes")["notes"]:
+            for i in range(50):self.thread_reply(self.b,note["id"],str(uuid.uuid4()),"Reply "+str(i))
+        inbox=self.call(self.a,"GET","notes/activity")
+        self.assertEqual(len(inbox["activities"]),200)
+        self.assertEqual(self.service.db.execute("SELECT count(*) FROM journal_activity").fetchone()[0],200)
+        self.call(self.a,"PUT","notes/activity/read",ids=[e["id"] for e in inbox["activities"]])
+        with tempfile.TemporaryDirectory() as directory:
+            path=Path(directory)/"plaza.sqlite3"
+            with sqlite3.connect(path) as destination:self.service.db.backup(destination)
+            restarted=PlazaService(str(path),"http://127.0.0.1:8787",now=lambda:self.clock)
+            try:
+                after=restarted.handle("GET","/v1/notes/activity",{},self.a)
+                self.assertEqual(after["unreadCount"],0);self.assertEqual(after["latestID"],inbox["latestID"])
+            finally:restarted.db.close()
 
     def test_legacy_note_feed_excludes_own_posts_and_thread_feed_includes_them(self):
         _,nid=self.published_thread()

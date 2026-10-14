@@ -1,8 +1,59 @@
 import XCTest
 import AppKit
+import CoreAudio
 @testable import MacPlaza
 
 final class AutomaticMusicTests: XCTestCase {
+    func testDisappearingCallProcessesRemainUnknownUntilACompleteQuietSample() {
+        let incomplete = AudioProcessActivity.processStates([42], read: { _, selector in
+            switch selector {
+            case kAudioProcessPropertyPID: return 123
+            case kAudioProcessPropertyIsRunningOutput: return 0
+            default: return nil
+            }
+        }, identity: { _ in "com.hnc.Discord" })
+        XCTAssertNil(incomplete, "A failed input-property read cannot certify that a call ended")
+        var quiet = AudioQuietPeriod()
+        XCTAssertTrue(quiet.update(active: true, now: 0))
+        XCTAssertTrue(quiet.update(active: incomplete.map { AudioProcessActivity.hasOtherActivity($0, ownPID: 1) }, now: 5))
+        XCTAssertTrue(quiet.update(active: false, now: 6))
+        XCTAssertFalse(quiet.update(active: false, now: 7.6))
+    }
+
+    @MainActor func testCallInterruptionReleasesQueuesAndResumesImportedMusicAcrossRepeatedCalls() async throws {
+        _ = NSApplication.shared
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        let model = PlazaModel(directory: root)
+        defer { model.audio.update(enabled: false); try? FileManager.default.removeItem(at: root) }
+        for _ in 0..<200 where !model.loaded { try await Task.sleep(for: .milliseconds(10)) }
+        model.wallpaperEnabled = true; model.windowVisible = false
+        model.document.preferences.ambientSound = true
+        model.document.preferences.musicVolume = 0
+        let source = root.appendingPathComponent("Call-safe music.wav")
+        var wave = PlazaAudio.loop()
+        wave.replaceSubrange(44..<wave.count, with: Data(repeating: 0, count: wave.count - 44))
+        try wave.write(to: source)
+        try model.music.install(source, for: .plaza)
+        model.updateAudio()
+        for _ in 0..<8 {
+            try await Task.sleep(for: .milliseconds(80))
+            let departure = try XCTUnwrap(model.audio.backgroundPlayback.first).time
+            model.otherAudioActive = true
+            XCTAssertTrue(model.audio.backgroundPlayback.isEmpty, "Call suppression must release the old playback queues")
+            // Imports must succeed while the playback hardware is released.
+            try model.music.stage(source, for: .settings)
+            model.music.discardSelection(for: .settings)
+            model.otherAudioActive = false
+            XCTAssertTrue(model.audio.isBackgroundPlaying)
+            XCTAssertEqual(try XCTUnwrap(model.audio.backgroundPlayback.first).time, departure, accuracy: 0.15)
+            XCTAssertEqual(model.audio.backgroundPlayback.first?.source, model.music.url(for: .plaza))
+        }
+        model.otherAudioActive = true
+        model.document.preferences.ambientSound = false
+        model.otherAudioActive = false
+        XCTAssertFalse(model.audio.isBackgroundPlaying, "Call completion must respect saved mute")
+        await model.flush(); try await model.storage.endSession()
+    }
     func testProcessActivityExcludesOurMusicAndRecognizesPlaybackAndCalls() {
         typealias State = AudioProcessActivity.ProcessState
         XCTAssertFalse(AudioProcessActivity.hasOtherActivity([State(pid: 10, output: true, input: false)], ownPID: 10))

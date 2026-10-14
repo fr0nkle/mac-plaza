@@ -195,6 +195,16 @@ class PlazaService:
           FOREIGN KEY(note_owner,note_id) REFERENCES journal_notes(owner,id) ON DELETE CASCADE
         );
         CREATE INDEX IF NOT EXISTS journal_reply_actor ON journal_replies(actor);
+        CREATE TABLE IF NOT EXISTS journal_activity (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          recipient TEXT NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
+          actor TEXT NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
+          note_id TEXT NOT NULL, kind TEXT NOT NULL, ref TEXT NOT NULL,
+          created REAL NOT NULL, read INTEGER NOT NULL DEFAULT 0,
+          UNIQUE(recipient,actor,note_id,kind,ref),
+          FOREIGN KEY(recipient,note_id) REFERENCES journal_notes(owner,id) ON DELETE CASCADE
+        );
+        CREATE INDEX IF NOT EXISTS journal_activity_recipient ON journal_activity(recipient,id);
         CREATE TABLE IF NOT EXISTS discord_recipients (
           owner TEXT NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
           discord_id TEXT NOT NULL, PRIMARY KEY(owner,discord_id)
@@ -211,7 +221,7 @@ class PlazaService:
                                  "activity_active": "INTEGER NOT NULL DEFAULT 0",
                                  "share_discord_friends": "INTEGER NOT NULL DEFAULT 0",
                                  "audience_seen": "REAL NOT NULL DEFAULT 0",
-                                 "share_notes": "INTEGER NOT NULL DEFAULT 0"}.items():
+                                 "share_notes": "INTEGER NOT NULL DEFAULT 0", "journal_avatar": "TEXT"}.items():
             if name not in columns:
                 self.db.execute("ALTER TABLE accounts ADD COLUMN " + name + " " + definition)
         self.db.commit()
@@ -423,6 +433,14 @@ class PlazaService:
         allowed.update(row["id"] for row in rows if not self.blocked(account["id"], row["id"]))
         return allowed
 
+    def journal_identity(self, account, payload):
+        result = dict(payload)
+        appearance = json.loads(account["journal_avatar"]) if account["journal_avatar"] else dict(payload["author"])
+        appearance["id"] = account["avatar_id"]
+        appearance["name"] = account["name"][:24]
+        result.update(author=appearance, displayName=account["name"], discordID=account["discord_id"])
+        return result
+
     def journal_interactions(self, owner, note_id, viewer):
         # Filter both the viewer's and publisher's blocks, even for previously
         # authored replies/likes. Actor identity always comes from the session.
@@ -431,9 +449,10 @@ class PlazaService:
         args = (owner, note_id, viewer, owner, viewer, owner)
         likes = self.db.execute("SELECT count(*),coalesce(max(actor=?),0) FROM journal_likes WHERE note_owner=? AND note_id=?" + exclusion,
             (viewer,) + args).fetchone()
-        rows = self.db.execute("SELECT payload FROM journal_replies WHERE note_owner=? AND note_id=?" + exclusion +
-            " ORDER BY created,id LIMIT 50", args).fetchall()
-        return dict(likeCount=likes[0], liked=bool(likes[1]), replies=[json.loads(row["payload"]) for row in rows])
+        rows = self.db.execute("SELECT r.payload,a.name,a.avatar_id,a.journal_avatar,a.discord_id FROM journal_replies r JOIN accounts a ON a.id=r.actor WHERE note_owner=? AND note_id=?" + exclusion +
+            " ORDER BY r.created,r.id LIMIT 50", args).fetchall()
+        replies = [self.journal_identity(row, json.loads(row["payload"])) for row in rows]
+        return dict(likeCount=likes[0], liked=bool(likes[1]), replies=replies)
 
     def journal_snapshot(self, account, include_own=False):
         allowed = self.journal_owners(account)
@@ -446,14 +465,57 @@ class PlazaService:
         rows = self.db.execute("SELECT owner,id,payload FROM journal_notes WHERE owner IN (" + placeholders +
             ") ORDER BY CASE WHEN owner=? THEN 0 ELSE 1 END,created DESC,id LIMIT 300",
             tuple(sorted(allowed)) + (account["id"],)).fetchall()
+        owners = {owner: self.db.execute("SELECT * FROM accounts WHERE id=?", (owner,)).fetchone() for owner in allowed}
         for row in rows:
-            note = json.loads(row["payload"])
+            note = self.journal_identity(owners[row["owner"]], json.loads(row["payload"]))
             note.update(self.journal_interactions(row["owner"], row["id"], account["id"]))
             count = sum(len(stroke["points"]) for stroke in note["drawing"])
             size = len(json.dumps(note).encode("utf-8"))
             if points + count <= 60000 and byte_count + size < 3_500_000 and replies + len(note["replies"]) <= 2000:
                 notes.append(note); points += count; byte_count += size; replies += len(note["replies"])
         return dict(notes=notes)
+
+    def record_journal_activity(self, recipient, actor, note_id, kind, ref=""):
+        if recipient == actor:
+            return
+        self.db.execute("INSERT OR IGNORE INTO journal_activity(recipient,actor,note_id,kind,ref,created) VALUES (?,?,?,?,?,?)",
+                        (recipient,actor,note_id,kind,ref,self.now()))
+        self.db.execute("""DELETE FROM journal_activity WHERE recipient=? AND id NOT IN
+            (SELECT id FROM journal_activity WHERE recipient=? ORDER BY id DESC LIMIT 200)""", (recipient,recipient))
+
+    def activity_snapshot(self, account):
+        rows = self.db.execute("""SELECT e.*,a.name AS actor_name,n.payload AS note_payload
+            FROM journal_activity e JOIN accounts a ON a.id=e.actor
+            JOIN journal_notes n ON n.owner=e.recipient AND n.id=e.note_id
+            WHERE e.recipient=? ORDER BY e.id DESC LIMIT 200""", (account["id"],)).fetchall()
+        result, audiences = [], {}
+        for row in rows:
+            actor = row["actor"]
+            if self.blocked(account["id"],actor):
+                continue
+            if actor not in audiences:
+                person = self.db.execute("SELECT * FROM accounts WHERE id=?",(actor,)).fetchone()
+                audiences[actor] = self.journal_owners(person)
+            if account["id"] not in audiences[actor]:
+                continue
+            reply, author = None, None
+            if row["kind"] == "reply":
+                existing = self.db.execute("SELECT payload FROM journal_replies WHERE note_owner=? AND note_id=? AND id=? AND actor=?",
+                    (account["id"],row["note_id"],row["ref"],actor)).fetchone()
+                if not existing:
+                    continue
+                person = self.db.execute("SELECT * FROM accounts WHERE id=?", (actor,)).fetchone()
+                reply = self.journal_identity(person, json.loads(existing["payload"])); author = reply["author"]
+            elif not self.db.execute("SELECT 1 FROM journal_likes WHERE note_owner=? AND note_id=? AND actor=?",
+                    (account["id"],row["note_id"],actor)).fetchone():
+                continue
+            note = json.loads(row["note_payload"])
+            result.append(dict(id=row["id"],kind=row["kind"],actorID=actor,
+                actorName=row["actor_name"], author=author,
+                noteID=row["note_id"],sourceID=note.get("sourceID"),
+                noteText=note["text"] or note["drawingDescription"],replyText=reply["text"] if reply else None,
+                topic=note.get("topic"),created=row["created"],read=bool(row["read"])))
+        return dict(activities=result,unreadCount=sum(not e["read"] for e in result),latestID=max((e["id"] for e in result),default=0))
 
     def journal_action(self, method, parts, data, account):
         try:
@@ -471,8 +533,11 @@ class PlazaService:
                 if count >= 10000 and not existing:
                     raise APIError("This note has reached its like limit.")
                 self.db.execute("INSERT OR IGNORE INTO journal_likes VALUES (?,?,?)", (owner,note_id,actor))
+                if not existing:
+                    self.record_journal_activity(owner,actor,note_id,"like")
             else:
                 self.db.execute("DELETE FROM journal_likes WHERE note_owner=? AND note_id=? AND actor=?", (owner,note_id,actor))
+                self.db.execute("DELETE FROM journal_activity WHERE recipient=? AND note_id=? AND actor=? AND kind='like'",(owner,note_id,actor))
             return self.journal_interactions(owner,note_id,actor)
         if len(parts) == 3 and parts[1] == "replies" and method in ("PUT", "DELETE"):
             try:
@@ -484,6 +549,7 @@ class PlazaService:
                 raise APIError("Only the reply's author may edit it.",403)
             if method == "DELETE":
                 self.db.execute("DELETE FROM journal_replies WHERE note_owner=? AND note_id=? AND id=?", (owner,note_id,reply_id))
+                self.db.execute("DELETE FROM journal_activity WHERE recipient=? AND note_id=? AND ref=? AND kind='reply'",(owner,note_id,reply_id))
             else:
                 content = text(data.get("text"),280,1).strip()
                 if not content:
@@ -503,6 +569,8 @@ class PlazaService:
                 self.db.execute("""INSERT INTO journal_replies VALUES (?,?,?,?,?,?)
                     ON CONFLICT(note_owner,note_id,id) DO UPDATE SET payload=excluded.payload""",
                     (owner,note_id,reply_id,actor,json.dumps(payload),created))
+                if not existing:
+                    self.record_journal_activity(owner,actor,note_id,"reply",reply_id)
             return self.journal_interactions(owner,note_id,actor)
         raise APIError("Unknown note action.",404)
 
@@ -548,12 +616,14 @@ class PlazaService:
                 user = self.discord_request("users/@me", token=tokens["access_token"])
                 if user["id"] != me["discord_id"]:
                     raise APIError("Discord friends must belong to the linked account.", 403)
+                self.db.execute("UPDATE accounts SET name=? WHERE id=?", (text(user.get("global_name") or user.get("username") or me["name"], 80, 1), aid))
                 return self.sdk_credentials(tokens, user)
             if method == "PUT" and path == "/v1/notes":
                 items = data.get("notes")
                 if not isinstance(items, list) or len(items) > 200:
                     raise APIError("Share at most 200 notes.")
                 notes = [validated_journal_note(item, aid) for item in items]
+                primary = validated_avatar(data["primaryAvatar"], me["avatar_id"]) if data.get("primaryAvatar") is not None else None
                 if len({note["id"] for note in notes}) != len(notes) or sum(
                         len(stroke["points"]) for note in notes for stroke in note["drawing"]) > 60000:
                     raise APIError("Duplicate notes or excessive drawing data.")
@@ -566,10 +636,19 @@ class PlazaService:
                     ON CONFLICT(owner,id) DO UPDATE SET payload=excluded.payload,created=excluded.created""", [
                     (aid, note["id"], json.dumps(note), note["created"]) for note in notes])
                 self.db.execute("UPDATE accounts SET share_notes=? WHERE id=?", (bool(notes), aid))
+                self.db.execute("UPDATE accounts SET journal_avatar=? WHERE id=?", (json.dumps(primary) if primary and notes else me["journal_avatar"] if notes else None, aid))
                 if not notes and not (me["sharing"] and me["share_discord_friends"]):
                     self.db.execute("DELETE FROM discord_recipients WHERE owner=?", (aid,))
                     self.db.execute("UPDATE accounts SET audience_seen=0 WHERE id=?", (aid,))
                 return dict(saved=len(notes))
+            if method == "GET" and path == "/v1/notes/activity":
+                return self.activity_snapshot(me)
+            if method == "PUT" and path == "/v1/notes/activity/read":
+                ids = data.get("ids")
+                if not isinstance(ids,list) or len(ids)>200 or any(type(value) is not int or value<=0 or value>9_000_000_000_000_000 for value in ids):
+                    raise APIError("Choose a bounded list of activity IDs.")
+                self.db.executemany("UPDATE journal_activity SET read=1 WHERE recipient=? AND id=?",[(aid,value) for value in set(ids)])
+                return self.activity_snapshot(me)
             if method == "GET" and path == "/v1/notes/owned":
                 # Complete publisher payloads, without the feed's interaction
                 # budget. A new device can safely merge before replacement.

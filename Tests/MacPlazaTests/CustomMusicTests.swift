@@ -19,6 +19,8 @@ final class CustomMusicTests: XCTestCase {
         try library.stage(source, for: .plaza)
         try library.stage(source, for: .maker)
         try library.stage(source, for: .friends)
+        try library.stage(source, for: .settings)
+        try library.stage(source, for: .writing)
         let pendingFriends = try XCTUnwrap(library.previewURL(for: .friends))
         let pending = try XCTUnwrap(library.previewURL(for: .maker))
         XCTAssertEqual(try Data(contentsOf: manifest), original)

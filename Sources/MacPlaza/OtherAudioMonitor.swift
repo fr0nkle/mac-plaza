@@ -1,5 +1,6 @@
 import AppKit
 import CoreAudio
+import OSLog
 
 /// Read activity flags only. This never records audio or opens an input stream.
 enum AudioProcessActivity {
@@ -25,18 +26,33 @@ enum AudioProcessActivity {
         guard AudioObjectGetPropertyDataSize(system, &address, 0, nil, &size) == noErr,
               size <= 4096 * MemoryLayout<AudioObjectID>.size else { return nil }
         guard size > 0 else { return [] }
+        let capacity = size
+        guard size % UInt32(MemoryLayout<AudioObjectID>.size) == 0 else { return nil }
         var objects = [AudioObjectID](repeating: 0, count: Int(size) / MemoryLayout<AudioObjectID>.size)
         let status = objects.withUnsafeMutableBytes { bytes in
             AudioObjectGetPropertyData(system, &address, 0, nil, &size, bytes.baseAddress!)
         }
-        guard status == noErr else { return nil }
-        return objects.prefix(Int(size) / MemoryLayout<AudioObjectID>.size).compactMap { object in
-            guard let pid = value(object, kAudioProcessPropertyPID), pid > 0 else { return nil }
-            return ProcessState(pid: pid_t(bitPattern: pid),
-                                output: value(object, kAudioProcessPropertyIsRunningOutput).map { $0 != 0 } ?? false,
-                                input: value(object, kAudioProcessPropertyIsRunningInput).map { $0 != 0 } ?? false,
-                                bundleID: bundleID(object))
+        guard status == noErr, size <= capacity,
+              size % UInt32(MemoryLayout<AudioObjectID>.size) == 0 else { return nil }
+        return processStates(Array(objects.prefix(Int(size) / MemoryLayout<AudioObjectID>.size)),
+                             read: value, identity: bundleID)
+    }
+
+    static func processStates(_ objects: [AudioObjectID],
+                              read: (AudioObjectID, AudioObjectPropertySelector) -> UInt32?,
+                              identity: (AudioObjectID) -> String?) -> [ProcessState]? {
+        var states: [ProcessState] = []
+        for object in objects {
+            // A process can disappear between the list and its property reads.
+            // Unknown flags must not count as a quiet sample after a call ends.
+            guard let pid = read(object, kAudioProcessPropertyPID),
+                  let output = read(object, kAudioProcessPropertyIsRunningOutput),
+                  let input = read(object, kAudioProcessPropertyIsRunningInput) else { return nil }
+            guard pid_t(bitPattern: pid) > 0 else { continue }
+            states.append(ProcessState(pid: pid_t(bitPattern: pid), output: output != 0,
+                                       input: input != 0, bundleID: identity(object)))
         }
+        return states
     }
 
     private static func property(_ selector: AudioObjectPropertySelector) -> AudioObjectPropertyAddress {
@@ -54,7 +70,8 @@ enum AudioProcessActivity {
     }
     private static func value(_ object: AudioObjectID, _ selector: AudioObjectPropertySelector) -> UInt32? {
         var address = property(selector), size = UInt32(MemoryLayout<UInt32>.size), result: UInt32 = 0
-        guard AudioObjectGetPropertyData(object, &address, 0, nil, &size, &result) == noErr else { return nil }
+        guard AudioObjectGetPropertyData(object, &address, 0, nil, &size, &result) == noErr,
+              size == MemoryLayout<UInt32>.size else { return nil }
         return result
     }
 }
@@ -83,6 +100,8 @@ final class OtherAudioMonitor {
     private var sampleTask: Task<Void, Never>?
     private var quiet = AudioQuietPeriod()
     private var lastValue = false
+    private var lastSampleKnown: Bool?
+    private let logger = Logger(subsystem: "local.macplaza.audio", category: "ProcessMonitor")
     private let ownPID = ProcessInfo.processInfo.processIdentifier
     private let onChange: (Bool) -> Void
 
@@ -107,9 +126,15 @@ final class OtherAudioMonitor {
             }.value
             guard !Task.isCancelled, let self else { return }
             self.sampleTask = nil
+            let known = active != nil
+            if known != self.lastSampleKnown {
+                self.lastSampleKnown = known
+                self.logger.notice("Audio process sample available: \(known, privacy: .public)")
+            }
             let muted = self.quiet.update(active: active, now: ProcessInfo.processInfo.systemUptime)
             guard muted != self.lastValue else { return }
             self.lastValue = muted
+            self.logger.notice("Other-app audio suppression: \(muted, privacy: .public)")
             self.onChange(muted)
         }
     }

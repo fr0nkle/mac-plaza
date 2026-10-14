@@ -80,6 +80,9 @@ final class DesktopPlazaTests: XCTestCase {
         XCTAssertFalse(model.editing)
         try assertControlHit(20 + 5 + 3, height - 20 - 5 - 3, "Zoom out corner")
         try assertControlHit(20 + 5 + 15, height - 20 - 5 - 15, "Zoom out center")
+        try assertControlHit(width - 20 - 292 + 6 + 76, height - 20 - 32, "Activity button center")
+        try assertControlHit(width - 20 - 292 + 6 + 152 + 10 + 59, height - 20 - 32, "Write Note button center")
+        try assertControlHit(width - 20 - 6 - 59, height - 20 - 64 - 8 - 22, "Miiverse button center")
         func navigation(in view: NSView) -> PlazaNavigationInput.NavigationView? {
             if let result = view as? PlazaNavigationInput.NavigationView { return result }
             return view.subviews.lazy.compactMap { navigation(in: $0) }.first
@@ -291,6 +294,24 @@ final class DesktopPlazaTests: XCTestCase {
         XCTAssertTrue(model.desktopInteractive, "Sleep pauses motion without disabling input after wake")
         XCTAssertFalse(model.isMoving)
         model.sessionActive = true
+
+        let documentBeforeNotes = model.document
+        for (sheet, identifier) in [(PlazaSheet.compose(nil), "MacPlazaDesktopWriteNote"), (.activity, "MacPlazaDesktopActivity"), (.miiverse, "MacPlazaDesktopMiiverse")] {
+            model.sheet = sheet
+            let panel = try XCTUnwrap(controller.menuWindow)
+            XCTAssertEqual(panel.identifier?.rawValue, identifier)
+            XCTAssertTrue(panel.isVisible)
+            XCTAssertFalse(main.isVisible)
+            XCTAssertTrue(controller.window === wallpaper, "Note windows reuse the current crowd renderer")
+            model.desktopVisible = true
+            XCTAssertTrue(model.isMoving, "The crowd keeps moving behind note windows")
+            try await Task.sleep(for: .milliseconds(100))
+            XCTAssertEqual(model.document, documentBeforeNotes, "Opening a composer must not save an empty draft")
+            XCTAssertFalse(controller.windowShouldClose(panel))
+            XCTAssertNil(model.sheet)
+            XCTAssertNil(controller.menuWindow)
+            XCTAssertTrue(model.desktopInteractive)
+        }
 
         model.sheet = .preferences
         XCTAssertFalse(model.desktopInteractive)

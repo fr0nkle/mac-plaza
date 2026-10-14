@@ -45,6 +45,8 @@ struct PreferencesView: View {
         .onChange(of: model.windowVisible) { _,_ in model.updateAudio() }
         .onChange(of: model.document.preferences.safeMode) { _,_ in model.updateAudio() }
         .onChange(of: model.document.preferences.settingsMusicVolume) { _,_ in model.updateAudio() }
+        .onChange(of: model.document.preferences.writingMusicVolume) { _,_ in model.updateAudio() }
+        .onChange(of: model.document.preferences.miiverseMusicVolume) { _,_ in model.updateAudio() }
     }
     private var settingsHeader: some View {
         HStack(spacing: 14) {
@@ -174,7 +176,9 @@ struct PreferencesView: View {
                         musicControls(.maker, title: "Mii Maker", volume: \.makerMusicVolume, defaultVolume: 0.10)
                         musicControls(.friends, title: "Friends", volume: \.friendsMusicVolume, defaultVolume: 0.10)
                         musicControls(.settings, title: "Settings", volume: \.settingsMusicVolume, defaultVolume: 0.10)
-                        Text("Choose an audio file up to 256 MB, preview it, then select Use Music to apply it. Plaza, Mii Maker, Friends and Settings music crossfade when you open or close each menu. Music yields to other apps’ audio and calls, and to windows covering most of the plaza. It fades back in once the plaza is available and other audio has stopped. Some apps keep audio active briefly after pausing. Your saved tracks loop and stay on this Mac.").font(.caption).foregroundStyle(.secondary)
+                        musicControls(.writing, title: "Writing Notes", volume: \.writingMusicVolume, defaultVolume: 0.10)
+                        musicControls(.miiverse, title: "Miiverse", volume: \.miiverseMusicVolume, defaultVolume: 0.10)
+                        Text("Choose an audio file up to 256 MB, preview it, then select Use Music to apply it. Plaza, Mii Maker, Friends, Settings and note-writing music crossfade when you open or close each menu. The plaza theme resumes where it paused when you return. Music yields to other apps’ audio and calls, and to windows covering most of the plaza. It fades back in once the plaza is available and other audio has stopped. Some apps keep audio active briefly after pausing. Your saved tracks loop and stay on this Mac.").font(.caption).foregroundStyle(.secondary)
                         if let previewError { Text(previewError).font(.caption).foregroundStyle(.red).textSelection(.enabled) }
                         if let message = music.message { Text(message).font(.caption).foregroundStyle(.secondary).textSelection(.enabled) }
                     }
@@ -233,6 +237,27 @@ struct PreferencesView: View {
                     }
                 }
                 if selectedCategory == .system {
+                    Section("Testing & diagnostics") {
+                        HStack {
+                            Button("Export Diagnostics…") { model.exportDiagnostics() }
+                                .disabled(model.diagnosticsExporting)
+                            if model.diagnosticsExportURL != nil {
+                                Button("Email Diagnostics…") { model.emailDiagnostics() }
+                                    .disabled(model.diagnosticsExporting)
+                            }
+                            if model.diagnosticsExporting { ProgressView().controlSize(.small); Text("Collecting reports…").font(.caption) }
+                        }
+                        Text("Save a ZIP with recent Mac Plaza crash reports, build details and an optional description of what happened. Reports may contain file paths and system information. Your saved plaza and Discord credentials are excluded; nothing is uploaded.")
+                            .font(.caption).foregroundStyle(.secondary)
+                        HStack(spacing: 4) {
+                            Text("Send reports to:").font(.caption)
+                            Link(PlazaDiagnostics.supportEmail, destination: URL(string: "mailto:" + PlazaDiagnostics.supportEmail)!)
+                                .font(.caption)
+                        }
+                        if let message = model.diagnosticsExportMessage {
+                            Text(message).font(.caption).textSelection(.enabled)
+                        }
+                    }
                     Section("Recovery & build") {
                         Toggle("Safe mode — disable 3D, custom icons, music & bubbles", isOn: preference(\.safeMode))
                         Text("Mac Plaza \(Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "") · Private friend test\nYour local plaza stays on this Mac. Optional sharing publishes your chosen Mii, note and enabled activity to the Discord friends you authorize.").font(.caption).foregroundStyle(.secondary)

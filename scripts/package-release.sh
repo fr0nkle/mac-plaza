@@ -2,7 +2,7 @@
 set -euo pipefail
 cd "${0:A:h:h}"
 version=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' scripts/Info.plist)
-app="$PWD/Artifacts/Mac Plaza.app"
+app="${PLAZA_APP_PATH:-$PWD/Artifacts/Mac Plaza.app}"
 codesign --verify --deep --strict "$app"
 ditto -c -k --sequesterRsrc --keepParent "$app" "Artifacts/Mac-Plaza-$version.zip"
 staging=$(mktemp -d /tmp/macplaza-source.XXXXXX)

@@ -132,7 +132,7 @@ jobs:
           cd Windows/dist
           sha256sum *.exe *.zip > SHA256SUMS.txt
           if gh release view "$tag" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
-            echo 'Release already exists; refusing to replace tested downloads.'
-            exit 1
+            echo 'Release already exists; keeping its immutable Windows downloads.'
+            exit 0
           fi
           gh release create "$tag" --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" --prerelease --title "Plaza for Windows $version — cross-platform preview" --notes-file ../../Windows/RELEASE-NOTES.md *.exe *.zip SHA256SUMS.txt

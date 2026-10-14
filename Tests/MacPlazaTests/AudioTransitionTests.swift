@@ -122,4 +122,50 @@ final class AudioTransitionTests: XCTestCase {
             XCTAssertFalse(FullScreenAudioMonitor.coversDisplay(window: display.insetBy(dx: 100, dy: 100), display: display))
         }
     }
+
+    @MainActor func testMainThemeResumesAfterEveryMenuHasFinishedItsCrossfade() async throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        let source = try silentTrack(in: root)
+        let audio = PlazaAudio()
+        defer { audio.update(enabled: false); try? FileManager.default.removeItem(at: root) }
+        audio.update(enabled: true, volume: 0, track: .plaza, customURL: source)
+        try await Task.sleep(for: .milliseconds(400))
+        for menu in [PlazaAudio.Track.friends, .settings, .maker, .miiverse] {
+            let departure = try XCTUnwrap(audio.backgroundPlayback.first { $0.track == .plaza }).time
+            audio.update(enabled: true, volume: 0, track: menu, customURL: source)
+            try await Task.sleep(for: .seconds(1.4))
+            XCTAssertEqual(audio.backgroundPlayback.count, 1)
+            XCTAssertEqual(audio.backgroundPlayback.first?.track, menu)
+            // Stay in the menu beyond the fade: the main theme must not keep advancing.
+            try await Task.sleep(for: .milliseconds(500))
+            audio.update(enabled: true, volume: 0, track: .plaza, customURL: source)
+            let resumed = try XCTUnwrap(audio.backgroundPlayback.first { $0.track == .plaza }).time
+            XCTAssertGreaterThan(resumed, departure + 0.8, "Returning from \(menu) must not restart the main theme")
+            XCTAssertLessThan(resumed, departure + 1.55, "The main theme must pause after its outgoing fade")
+            XCTAssertEqual(audio.backgroundPlayback.filter(\.playing).count, 2)
+            try await Task.sleep(for: .seconds(1.4))
+        }
+    }
+
+    @MainActor func testMainThemePlayheadSurvivesInterruptedFadeAndNewRecordingStartsFresh() async throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        let source = try silentTrack(in: root), replacement = try silentTrack(in: root)
+        let audio = PlazaAudio()
+        defer { audio.update(enabled: false); try? FileManager.default.removeItem(at: root) }
+        audio.update(enabled: true, volume: 0, track: .plaza, customURL: source)
+        try await Task.sleep(for: .milliseconds(500))
+        audio.update(enabled: true, volume: 0, track: .settings, customURL: source)
+        try await Task.sleep(for: .milliseconds(250))
+        let departure = try XCTUnwrap(audio.backgroundPlayback.first { $0.track == .plaza }).time
+        audio.update(enabled: false, track: .settings, customURL: source)
+        try await Task.sleep(for: .seconds(1.4))
+        XCTAssertFalse(audio.backgroundPlayback.contains( where: \.playing))
+        audio.update(enabled: true, volume: 0, track: .plaza, customURL: source)
+        XCTAssertEqual(try XCTUnwrap(audio.backgroundPlayback.first).time, departure, accuracy: 0.15)
+        audio.update(enabled: true, volume: 0, track: .plaza, customURL: replacement)
+        XCTAssertLessThan(try XCTUnwrap(audio.backgroundPlayback.first).time, 0.15,
+                          "Changing the chosen recording must not reuse another file's playhead")
+    }
 }

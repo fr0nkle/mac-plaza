@@ -2,7 +2,7 @@
 set -euo pipefail
 cd "${0:A:h:h}"
 version=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' scripts/Info.plist)
-app="$PWD/Artifacts/Mac Plaza.app"
+app="${PLAZA_APP_PATH:-$PWD/Artifacts/Mac Plaza.app}"
 staging=$(mktemp -d /tmp/macplaza-installer.XXXXXX)
 trap 'rm -rf "$staging"' EXIT
 mkdir -p "$staging/root/Applications" "$staging/image"

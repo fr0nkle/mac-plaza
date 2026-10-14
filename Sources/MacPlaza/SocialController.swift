@@ -46,11 +46,29 @@ final class SocialController: NSObject, ObservableObject, ASWebAuthenticationPre
     @Published private(set) var sharedJournal: [SharedJournalNote] = []
     var visibleSharedJournal: [SharedJournalNote] { sharedJournal.filter { !hiddenIDs.contains($0.ownerID ?? "") } }
     @Published private(set) var journalSyncMessage = "Public notes will sync when connected to Plaza."
+    @Published private(set) var activity: [JournalActivity] = []
+    @Published private(set) var unreadActivityCount = 0
+    @Published private(set) var activityAlert: JournalActivity?
+    @Published private(set) var activityMessage: String?
+    @Published private(set) var markingActivityRead = false
+    @Published private(set) var systemNotificationsEnabled = false
+    var activityPreviewsAllowed = false { didSet { activityNotifications.previewsAllowed = activityPreviewsAllowed } }
+    var onActivityChanged: (() -> Void)?
+    var onActivitySelected: ((JournalActivity) -> Void)?
+    private let activityNotifications = PlazaActivityNotifications()
+    private var activityDelivery = JournalActivityDelivery()
+    private var activityScope: String?
+    private var activityFetchSequence = 0
+    private var activityAppliedSequence = 0
+    private var activityAlertTask: Task<Void, Never>?
+    private var pendingActivityNotification: (Int, String)?
     @Published private(set) var interactingNotes = Set<UUID>()
     @Published private(set) var journalInteractionMessage: String?
     private var journalFetchSequence = 0
     private var journalAppliedSequence = 0
     private var localJournal: [SharedJournalNote] = []
+    private var localJournalPrimary: Avatar?
+    private var uploadedJournalPrimary: Avatar?
     private var journalReady = false
     private var uploadedJournal: [SharedJournalNote]?
     private var syncingJournal = false
@@ -126,6 +144,15 @@ final class SocialController: NSObject, ObservableObject, ASWebAuthenticationPre
         config.httpCookieStorage = nil; config.urlCredentialStorage = nil
         network = URLSession(configuration: config, delegate: SocialRedirectBlocker(), delegateQueue: nil)
         super.init()
+        activityNotifications.onOpen = { [weak self] id, scope in
+            guard let self else { return }
+            self.pendingActivityNotification = (id, scope)
+            Task { await self.refreshActivity() }
+        }
+        Task { [weak self] in
+            guard let self else { return }
+            self.systemNotificationsEnabled = await self.activityNotifications.isEnabled()
+        }
         if !isolated {
             gameExpiryTimer = Timer.scheduledTimer(withTimeInterval: 30, repeats: true) { [weak self] _ in
                 Task { @MainActor in self?.expireRememberedGames() }
@@ -187,7 +214,13 @@ final class SocialController: NSObject, ObservableObject, ASWebAuthenticationPre
         discordRefreshing = false; discordFriendsMessage = "Load your Discord friends to see their Miis automatically."
         token = nil; connected = false; snapshot = nil; friends = []; blocks = []
         sharedJournal = []; uploadedJournal = nil; journalSyncTask?.cancel(); journalSyncTask = nil
+        uploadedJournalPrimary = nil
         interactingNotes = []; journalInteractionMessage = nil; journalFetchSequence = 0; journalAppliedSequence = 0
+        activity = []; unreadActivityCount = 0; activityAlert = nil; activityAlertTask?.cancel()
+        activityScope = nil; activityDelivery = JournalActivityDelivery(); activityFetchSequence = 0; activityAppliedSequence = 0
+        activityMessage = nil; markingActivityRead = false
+        if !isolated { activityNotifications.setState(unreadIDs: [], scope: nil, count: 0); Task { await activityNotifications.reconcile() } }
+        onActivityChanged?()
         audienceRefreshedAt = nil; audienceRefreshing = false; lastAudience = []
         if !isolated { PlazaUpdater.shared.configure(endpoint: nil, token: nil) }
         miiAssignments.reset()
@@ -401,16 +434,12 @@ final class SocialController: NSObject, ObservableObject, ASWebAuthenticationPre
         rebuildFriends()
     }
 
-    func setJournal(notes: [LocalNote], apps: [AppIsland], avatars: [Avatar]) {
-        let next = notes.filter { $0.shared == true }.compactMap { note -> SharedJournalNote? in
-            let app = note.appID.flatMap { id in apps.first { $0.id == id } }
-            // A removed shortcut is not silently republished as a plaza post.
-            guard note.appID == nil || app != nil else { return nil }
-            var author = avatars.first { $0.id == note.authorID } ?? Avatar(name: note.author)
-            author.id = note.authorID
-            return SharedJournalNote(note: note, author: author, app: app)
-        }.sorted { $0.id.uuidString < $1.id.uuidString }
-        guard next != localJournal || !journalReady else { return }
+    func setJournal(notes: [LocalNote], apps: [AppIsland], primary: Avatar) {
+        var primary = primary
+        primary.features.creator = ""; primary.features.birthDay = 0; primary.features.birthMonth = 0
+        let next = SharedJournalNote.publishing(notes: notes, apps: apps, primary: primary)
+        guard next != localJournal || primary != localJournalPrimary || !journalReady else { return }
+        localJournalPrimary = primary
         journalReady = true; localJournal = next
         journalSyncMessage = "Public notes are queued for sync."
         journalSyncTask?.cancel()
@@ -428,12 +457,16 @@ final class SocialController: NSObject, ObservableObject, ASWebAuthenticationPre
         do {
             // Serialize replacements so a late response cannot restore a deleted
             // note. Changes made during an upload are sent in the same loop.
-            while uploadedJournal != localJournal {
+            while uploadedJournal != localJournal || uploadedJournalPrimary != localJournalPrimary {
                 let notes = localJournal
+                let primary = localJournalPrimary
                 let object = try JSONSerialization.jsonObject(with: JSONEncoder().encode(notes))
-                _ = try await request("PUT", "v1/notes", body: ["notes": object])
+                var body: [String: Any] = ["notes": object]
+                if let primary { body["primaryAvatar"] = try JSONSerialization.jsonObject(with: JSONEncoder().encode(primary)) }
+                _ = try await request("PUT", "v1/notes", body: body)
                 guard generation == epoch else { return }
                 uploadedJournal = notes
+                uploadedJournalPrimary = primary
             }
             await syncDiscordRecipients()
             try await reloadJournal()
@@ -453,7 +486,7 @@ final class SocialController: NSObject, ObservableObject, ASWebAuthenticationPre
         let next = try JSONDecoder().decode(SharedJournalSnapshot.self, from: data).validated().notes
         guard generation == epoch, sequence >= journalAppliedSequence else { return }
         journalAppliedSequence = sequence
-        if sharedJournal != next { sharedJournal = next; onRosterChanged?() }
+        if sharedJournal != next { sharedJournal = next; rebuildFriends(notify: false); onRosterChanged?() }
     }
 
     private func interact(noteID: UUID, method: String, action: String, body: Any? = nil) async -> Bool {
@@ -495,6 +528,82 @@ final class SocialController: NSObject, ObservableObject, ASWebAuthenticationPre
     }
     func deleteReply(noteID: UUID, replyID: UUID) async -> Bool {
         await interact(noteID: noteID, method: "DELETE", action: "replies/" + replyID.uuidString)
+    }
+
+    private var currentActivityScope: String? {
+        guard let endpoint, let account else { return nil }
+        return SHA256.hash(data: Data((endpoint.absoluteString + "|" + account.id).utf8)).map { String(format: "%02x", $0) }.joined()
+    }
+    private func applyActivity(_ data: Data, sequence: Int) throws {
+        let snapshot = try JSONDecoder().decode(JournalActivitySnapshot.self, from: data).validated()
+        guard sequence >= activityAppliedSequence, let scope = currentActivityScope else { return }
+        activityAppliedSequence = sequence
+        if activityScope != scope {
+            activityScope = scope
+            let value = isolated ? nil : UserDefaults.standard.object(forKey: "activity.delivered." + scope) as? Int
+            activityDelivery = JournalActivityDelivery(deliveredThrough: value)
+        }
+        let fresh = activityDelivery.newUnread(in: snapshot)
+        if !isolated, let cursor = activityDelivery.deliveredThrough { UserDefaults.standard.set(cursor, forKey: "activity.delivered." + scope) }
+        activity = snapshot.activities; unreadActivityCount = snapshot.unreadCount
+        if !isolated { activityNotifications.setState(unreadIDs: Set(activity.filter { !$0.read }.map(\.id)), scope: scope, count: unreadActivityCount) }
+        activityMessage = nil
+        if let alert = activityAlert, !activity.contains(where: { $0.id == alert.id && !$0.read }) { dismissActivityAlert() }
+        if let latest = fresh.last {
+            activityAlertTask?.cancel(); activityAlert = latest
+            activityAlertTask = Task { [weak self] in
+                do { try await Task.sleep(for: .seconds(8)) } catch { return }
+                self?.dismissActivityAlert()
+            }
+            if !isolated { Task { await activityNotifications.deliver(latest, scope: scope, additional: fresh.count - 1) } }
+        }
+        if !isolated {
+            Task { await activityNotifications.reconcile() }
+        }
+        onActivityChanged?()
+        if let pending = pendingActivityNotification {
+            pendingActivityNotification = nil
+            if pending.1 == scope, let entry = activity.first(where: { $0.id == pending.0 }) { openActivity(entry) }
+        }
+    }
+    func refreshActivity() async {
+        guard token != nil, !previewing else { return }
+        activityFetchSequence += 1
+        let sequence = activityFetchSequence, generation = epoch
+        do {
+            let data = try await request("GET", "v1/notes/activity")
+            guard generation == epoch else { return }
+            try applyActivity(data, sequence: sequence)
+        } catch {
+            guard generation == epoch else { return }
+            activityMessage = "Activity will refresh when the Plaza service is available."
+            onActivityChanged?()
+        }
+    }
+    func markActivityRead(_ ids: [Int]) async {
+        guard token != nil, !markingActivityRead, !ids.isEmpty else { return }
+        markingActivityRead = true
+        let generation = epoch
+        defer { if generation == epoch { markingActivityRead = false } }
+        do {
+            let data = try await request("PUT", "v1/notes/activity/read", body: ["ids": ids])
+            guard generation == epoch else { return }
+            activityFetchSequence += 1
+            try applyActivity(data, sequence: activityFetchSequence)
+        } catch {
+            if generation == epoch { activityMessage = "Could not mark activity read. Try again when connected."; onActivityChanged?() }
+        }
+    }
+    func openActivity(_ entry: JournalActivity) {
+        dismissActivityAlert()
+        onActivitySelected?(entry)
+        Task { await markActivityRead([entry.id]) }
+    }
+    func dismissActivityAlert() { activityAlertTask?.cancel(); activityAlertTask = nil; activityAlert = nil; onActivityChanged?() }
+    func enableActivityNotifications() async {
+        systemNotificationsEnabled = await activityNotifications.requestPermission()
+        if !systemNotificationsEnabled { activityMessage = "macOS notifications are off. You can enable Mac Plaza in System Settings → Notifications." }
+        onActivityChanged?()
     }
 
     func setLocalMiis(_ avatars: [Avatar]) {
@@ -543,6 +652,9 @@ final class SocialController: NSObject, ObservableObject, ASWebAuthenticationPre
         } else {
             friends = miiAssignments.resolve(shared: shared, unlinked: unlinked, localAppearances: appearances).filter { !hiddenIDs.contains($0.id) }
         }
+        if connected {
+            friends = PublicNoteIdentity.applying(notes: visibleSharedJournal, to: friends)
+        }
         if notify { onRosterChanged?() }
     }
 
@@ -553,6 +665,7 @@ final class SocialController: NSObject, ObservableObject, ASWebAuthenticationPre
             while !Task.isCancelled {
                 guard let self, self.epoch == generation, self.token != nil else { return }
                 if self.active || (self.activityEligible && self.account?.shareActivity == true) { await self.refresh() }
+                else if self.activityEligible { await self.refreshActivity() }
                 do { try await Task.sleep(for: .seconds(15)) } catch { return }
             }
         }
@@ -572,6 +685,7 @@ final class SocialController: NSObject, ObservableObject, ASWebAuthenticationPre
             await syncDiscordRecipients()
             await refreshDiscordGames()
             await syncJournal()
+            await refreshActivity()
         } catch is CancellationError { }
         catch {
             guard generation == epoch, revision == mutationRevision else { return }

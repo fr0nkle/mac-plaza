@@ -23,7 +23,7 @@ class OwnedNoteTests(unittest.TestCase):
                 for _ in range(11):
                     rid = str(uuid.uuid4())
                     service.db.execute('INSERT INTO journal_replies VALUES (?,?,?,?,?,?)',
-                        (aid,row['id'],rid,aid,json.dumps(dict(id=rid)),0))
+                        (aid,row['id'],rid,aid,json.dumps(dict(id=rid,ownerID=aid,author=author,text='Earlier reply',created=0)),0))
             self.assertLess(len(service.handle('GET','/v1/notes/threads',{},token)['notes']),200)
             owned = service.handle('GET','/v1/notes/owned',{},token)['notes']
             self.assertEqual(len(owned),200)

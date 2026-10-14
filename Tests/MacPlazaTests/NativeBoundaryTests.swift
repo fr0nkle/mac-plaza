@@ -145,8 +145,8 @@ extension NativeBoundaryTests {
     func testRequestedSoundtrackDecodesForLoopingPlayback() throws {
         let url = try XCTUnwrap(PlazaAudio.soundtrackURL)
         let player = try AVAudioPlayer(contentsOf: url)
-        XCTAssertGreaterThan(player.duration, 60)
-        XCTAssertLessThan(player.duration, 90)
+        XCTAssertGreaterThan(player.duration, 1830)
+        XCTAssertLessThan(player.duration, 1850)
         XCTAssertEqual(player.numberOfChannels, 2)
         XCTAssertTrue(player.prepareToPlay())
     }

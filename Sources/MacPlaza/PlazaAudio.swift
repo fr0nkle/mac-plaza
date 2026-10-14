@@ -1,11 +1,12 @@
 import AppKit
 import AVFoundation
 import PlazaCore
+import OSLog
 
 /// Local soundtrack playback; no network or web player is needed at runtime.
 @MainActor
 final class PlazaAudio: NSObject, ObservableObject, AVAudioPlayerDelegate {
-    enum Track: String { case plaza = "warawara-home", maker = "mii-maker", friends = "friends-menu", settings = "system-settings" }
+    enum Track: String { case plaza = "warawara-home", maker = "mii-maker", friends = "friends-menu", settings = "system-settings", writing = "note-writing", miiverse = "miiverse" }
     static let crossfadeDuration: TimeInterval = 1.2
     private final class Voice {
         let player: AVAudioPlayer
@@ -20,6 +21,13 @@ final class PlazaAudio: NSObject, ObservableObject, AVAudioPlayerDelegate {
     }
     private var voice: Voice?
     private var fadingVoices: [Voice] = []
+    // A menu may remain open long after the outgoing player is released.
+    // Retain the plaza playhead, scoped to the selected recording, for this session.
+    private var plazaPlayhead: (source: URL?, time: TimeInterval)?
+    private var interruptedPlayhead: (track: Track, source: URL?, time: TimeInterval)?
+    private let logger = Logger(subsystem: "local.macplaza.audio", category: "Playback")
+    private var playbackRetry: Task<Void, Never>?
+    private var playbackRetries = 0
     private var previewPlayer: AVAudioPlayer?
     private var effects:[(cue:PlazaArrival.Cue,player:AVAudioPlayer)]=[]
     var effectPlayback:[(cue:PlazaArrival.Cue,playing:Bool,volume:Float)] {
@@ -61,7 +69,10 @@ final class PlazaAudio: NSObject, ObservableObject, AVAudioPlayerDelegate {
     func update(enabled: Bool, volume: Double = 0.12, track: Track = .plaza, customURL: URL? = nil, allowPreview: Bool = true) {
         backgroundRequest = (enabled, volume, track, customURL)
         if !allowPreview { clearPreview() }
-        if previewPlayer != nil || !enabled { stopArrivalEffects();pauseBackground(); return }
+        if previewPlayer != nil || !enabled {
+            playbackRetry?.cancel(); playbackRetry = nil; playbackRetries = 0
+            stopArrivalEffects(); pauseBackground(); return
+        }
         let level = Float(volume.isFinite ? max(0, min(0.35, volume)) : 0.12)
         effects.forEach {$0.player.setVolume(min(0.35,level*1.4),fadeDuration:0.06)}
         let source = customURL ?? Self.soundtrackURL(for: track)
@@ -78,7 +89,20 @@ final class PlazaAudio: NSObject, ObservableObject, AVAudioPlayerDelegate {
                 guard let player else { return }
                 player.numberOfLoops = -1
                 player.volume = 0
-                guard player.prepareToPlay(), player.play() else { return }
+                if track == .plaza, let saved = plazaPlayhead, saved.source == source,
+                   saved.time.isFinite, saved.time >= 0, player.duration.isFinite, player.duration > 0 {
+                    player.currentTime = saved.time.truncatingRemainder(dividingBy: player.duration)
+                } else if let saved = interruptedPlayhead, saved.track == track, saved.source == source,
+                          saved.time.isFinite, saved.time >= 0, player.duration.isFinite, player.duration > 0 {
+                    player.currentTime = saved.time.truncatingRemainder(dividingBy: player.duration)
+                }
+                guard player.prepareToPlay(), player.play() else {
+                    logger.error("Playback could not start for role \(track.rawValue, privacy: .public)")
+                    pauseBackground()
+                    schedulePlaybackRetry()
+                    return
+                }
+                interruptedPlayhead = nil
                 next = Voice(player: player, track: track, source: source)
             }
             if let previous = voice { retire(previous) }
@@ -88,7 +112,13 @@ final class PlazaAudio: NSObject, ObservableObject, AVAudioPlayerDelegate {
         } else if let voice {
             if !voice.player.isPlaying {
                 voice.player.volume = 0
-                voice.player.play()
+                guard voice.player.play() else {
+                    logger.error("Playback could not resume for role \(track.rawValue, privacy: .public)")
+                    interruptedPlayhead = (voice.track, voice.source, voice.player.currentTime)
+                    release(voice); self.voice = nil
+                    schedulePlaybackRetry()
+                    return
+                }
                 voice.targetVolume = level
                 voice.player.setVolume(level, fadeDuration: Self.crossfadeDuration)
             } else if voice.targetVolume != level {
@@ -97,22 +127,59 @@ final class PlazaAudio: NSObject, ObservableObject, AVAudioPlayerDelegate {
             }
             // Duplicate view/lifecycle updates must not shorten a crossfade.
         }
+        playbackRetry?.cancel(); playbackRetry = nil; playbackRetries = 0
+    }
+    private func schedulePlaybackRetry() {
+        guard playbackRetry == nil, playbackRetries < 3 else { return }
+        playbackRetries += 1
+        playbackRetry = Task { @MainActor [weak self] in
+            do { try await Task.sleep(for: .milliseconds(750)) } catch { return }
+            guard let self else { return }
+            self.playbackRetry = nil
+            guard let request = self.backgroundRequest, request.enabled, self.previewPlayer == nil else { return }
+            self.update(enabled: request.enabled, volume: request.volume, track: request.track, customURL: request.url)
+        }
     }
     private func retire(_ previous: Voice) {
-        guard previous.player.isPlaying else { previous.player.stop(); return }
+        guard previous.player.isPlaying else { release(previous); return }
         previous.player.setVolume(0, fadeDuration: Self.crossfadeDuration)
         fadingVoices.append(previous)
         previous.retirement = Task { @MainActor [weak self, weak previous] in
             do { try await Task.sleep(for: .seconds(Self.crossfadeDuration)) } catch { return }
             guard let self, let previous else { return }
-            previous.player.stop()
+            self.release(previous)
             self.fadingVoices.removeAll { $0 === previous }
             previous.retirement = nil
         }
     }
+    private func release(_ previous: Voice) {
+        if previous.track == .plaza {
+            plazaPlayhead = (previous.source, previous.player.currentTime)
+        }
+        previous.player.stop()
+    }
     private func pauseBackground() {
         voice?.player.pause()
-        for previous in fadingVoices { previous.retirement?.cancel(); previous.player.stop() }
+        for previous in fadingVoices { previous.retirement?.cancel(); release(previous) }
+        fadingVoices.removeAll()
+    }
+
+    /// Calls can switch Bluetooth/USB routes. Release the old audio queues while
+    /// suppressed so returning to music creates a fresh player on the current route.
+    func releaseForAudioInterruption() {
+        playbackRetry?.cancel(); playbackRetry = nil; playbackRetries = 0
+        logger.notice("Releasing playback hardware for other-app audio activity")
+        clearPreview()
+        stopArrivalEffects()
+        if let voice {
+            interruptedPlayhead = (voice.track, voice.source, voice.player.currentTime)
+            release(voice)
+        }
+        for previous in fadingVoices {
+            previous.retirement?.cancel(); previous.retirement = nil
+            release(previous)
+        }
+        voice = nil
         fadingVoices.removeAll()
     }
     func preview(_ url: URL, track: Track, volume: Double) throws {

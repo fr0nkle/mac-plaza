@@ -15,10 +15,10 @@ struct MacPlazaApp: App {
             }
                 .modifier(PlazaPanels(model: model))
                 .background(WindowConnection(model: model))
-                .onAppear { delegate.model = model; model.desktop.restoreIfNeeded() }
+                .onAppear { delegate.model = model; model.desktop.restoreIfNeeded(); model.offerDiagnosticsAfterInterruptedSession() }
                 .onChange(of: model.loaded) { _, loaded in
                     model.desktop.restoreIfNeeded()
-                    if loaded, !setupSeen, !model.social.hasSession, !CommandLine.arguments.contains("--demo"), !model.recoveryRequired {
+                    if loaded, !setupSeen, !model.social.hasSession, !CommandLine.arguments.contains("--demo"), !model.recoveryRequired, !model.previousSessionInterrupted {
                         setupSeen = true; model.sheet = .social
                     }
                 }
@@ -130,12 +130,13 @@ final class WindowObserverView: NSView {
         window.isMovableByWindowBackground = true
         window.collectionBehavior.insert(.fullScreenPrimary)
         model?.windowVisible = window.isVisible && window.occlusionState.contains(.visible) && !window.isMiniaturized
-        Task { @MainActor [weak model] in model?.desktop.restoreIfNeeded() }
-        for name in [NSWindow.didChangeOcclusionStateNotification, NSWindow.didMiniaturizeNotification, NSWindow.didDeminiaturizeNotification, NSWindow.willCloseNotification, NSWindow.didChangeScreenNotification] {
+        Task { @MainActor [weak model] in model?.desktop.restoreIfNeeded(); model?.offerDiagnosticsAfterInterruptedSession() }
+        for name in [NSWindow.didChangeOcclusionStateNotification, NSWindow.didMiniaturizeNotification, NSWindow.didDeminiaturizeNotification, NSWindow.willCloseNotification, NSWindow.didChangeScreenNotification, NSWindow.didEndSheetNotification] {
             tokens.append(NotificationCenter.default.addObserver(forName: name, object: window, queue: .main) { [weak self, weak window] notification in
                 Task { @MainActor in
                     if notification.name == NSWindow.didChangeScreenNotification,let window { self?.clamp(window) }
                     self?.model?.windowVisible = notification.name != NSWindow.willCloseNotification && (window?.occlusionState.contains(.visible) ?? false) && !(window?.isMiniaturized ?? true)
+                    if notification.name == NSWindow.didEndSheetNotification { self?.model?.offerDiagnosticsAfterInterruptedSession() }
                 }
             })
         }

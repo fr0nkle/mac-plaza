@@ -45,6 +45,8 @@ struct PlazaView: View {
         .onChange(of:model.document.preferences.makerMusicVolume) { _,_ in updateAudio() }
         .onChange(of:model.document.preferences.friendsMusicVolume) { _,_ in updateAudio() }
         .onChange(of:model.document.preferences.settingsMusicVolume) { _,_ in updateAudio() }
+        .onChange(of:model.document.preferences.writingMusicVolume) { _,_ in updateAudio() }
+        .onChange(of:model.document.preferences.miiverseMusicVolume) { _,_ in updateAudio() }
         .onAppear { updateAudio() }
     }
     var body: some View {
@@ -169,10 +171,12 @@ struct PlazaView: View {
               if selected == nil && arrivalTime == nil {
                   VStack {
                       Spacer()
-                      HStack {
+                      HStack(alignment: .bottom) {
                           PlazaControlSurface { plazaZoomControls(size: proxy.size) }
                               .frame(width: 136, height: 40)
                           Spacer()
+                          PlazaControlSurface { PlazaBottomControls(model: model, social: model.social) }
+                              .frame(width: 292, height: model.social.activityAlert == nil ? 116 : 216)
                       }
                   }.padding(20).zIndex(1)
               }
@@ -455,7 +459,7 @@ struct BubbleView: View {
     var body: some View {
         let index = model.bubbleSelections[offset] % (model.bubbleNotes.count + guides.count)
         let note = index < model.bubbleNotes.count ? model.bubbleNotes[index] : nil
-        let author = note.flatMap { note in model.document.avatars.first { $0.id == note.authorID } } ?? model.document.primaryAvatar
+        let author = note.map { model.noteAvatar($0) } ?? model.document.primaryAvatar
         let large = model.document.preferences.largerText == true
         Button { model.openJournal(note: note?.id) } label: {
             HStack(alignment: .center, spacing: 9) {
@@ -518,7 +522,7 @@ struct AppListView: View {
                 ForEach(model.visibleNotes) { note in
                     Button { model.openJournal(note: note.id) } label: {
                         VStack(alignment: .leading, spacing: 4) {
-                            Text("\(note.author) · \(model.isOwnNote(note) ? (note.shared == true ? "Public note" : "Private note") : "Friend’s note")").font(.caption).foregroundStyle(PlazaStyle.teal)
+                            Text("\(model.noteDisplayName(note)) · \(model.isOwnNote(note) ? (note.shared == true ? "Public note" : "Private note") : "Friend’s note")").font(.caption).foregroundStyle(PlazaStyle.teal)
                             Text(note.drawing.isEmpty ? note.text : note.drawingDescription).lineLimit(3)
                         }.padding(.vertical, 4)
                     }.buttonStyle(.plain)

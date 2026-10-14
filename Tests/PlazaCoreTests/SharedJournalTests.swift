@@ -2,6 +2,45 @@ import XCTest
 @testable import PlazaCore
 
 final class SharedJournalTests: XCTestCase {
+    func testPublicPostingUsesPrimaryMiiAndPreservesPrivateNotesAndLongDiscordNames() throws {
+        var primary = Avatar(name: "My primary"); primary.hair = 99; primary.features.creator = "Private creator"
+        let secondary = Avatar(name: "You")
+        let publicNote = LocalNote(authorID: secondary.id, author: secondary.name, appID: nil, text: "Public")
+        var privateNote = publicNote; privateNote.id = UUID(); privateNote.shared = false
+        let originals = [publicNote, privateNote]
+        var shared = try XCTUnwrap(SharedJournalNote.publishing(notes: originals, apps: [], primary: primary).first)
+        XCTAssertEqual(shared.author.id, primary.id)
+        XCTAssertEqual(shared.author.hair, 99)
+        XCTAssertEqual(shared.author.features.creator, "")
+        shared.displayName = "My linked Discord name longer than twenty-four characters"
+        try shared.validate()
+        XCTAssertEqual(shared.publicDisplayName, shared.displayName)
+        XCTAssertLessThanOrEqual(shared.localNote(apps: []).author.count, 24)
+        let catalog = MiiverseCatalog(notes: [], apps: [], shared: [shared], accountID: UUID().uuidString)
+        XCTAssertEqual(catalog.filtered(section: "all", query: "twenty-four", sort: .newest).count, 1)
+        XCTAssertEqual(originals[0].authorID, secondary.id)
+        XCTAssertEqual(originals[1].shared, false)
+        let decoded = try JSONDecoder().decode(SharedJournalNote.self, from: JSONEncoder().encode(shared))
+        XCTAssertEqual(decoded.publicDisplayName, shared.displayName)
+        shared.displayName = String(repeating: "a", count: 81)
+        XCTAssertThrowsError(try shared.validate())
+    }
+    func testPublicPrimaryReplacesTemporaryVisitorWithoutLosingFriendStatus() {
+        let primary = Avatar(name: "Primary")
+        var note = SharedJournalNote(note: LocalNote(authorID: primary.id, author: primary.name, appID: nil, text: "Hello"), author: primary, app: nil)
+        note.ownerID = UUID().uuidString; note.discordID = "100"; note.displayName = "Discord friend"
+        var friend = SharedMii(id: UUID().uuidString, displayName: "Old name", avatar: Avatar(name: "Stand-in"), note: "", presence: .online, plazaOnline: false)
+        friend.discordID = "100"; friend.temporaryAvatar = true; friend.locallyAssignedAvatar = true
+        friend.activities = [SharedAppActivity(name: "Game", bundleID: nil, source: "discord", active: true, observedAt: Date().timeIntervalSince1970)]
+        let updated = PublicNoteIdentity.applying(notes: [note, note], to: [friend])
+        XCTAssertEqual(updated.count, 1)
+        XCTAssertEqual(updated[0].avatar.id, primary.id)
+        XCTAssertEqual(updated[0].displayName, "Discord friend")
+        XCTAssertEqual(updated[0].activities, friend.activities)
+        XCTAssertEqual(updated[0].presence, .online)
+        XCTAssertFalse(updated[0].temporaryAvatar ?? true)
+        XCTAssertEqual(PublicNoteIdentity.applying(notes: [], to: [friend])[0], friend)
+    }
     func testMatchingUsesPortableGameIdentityRatherThanLocalUUIDOrLabel() {
         var sender = AppIsland(label: "Bloons TD6", bundleID: "steam.same-launcher")
         sender.steamAppID = 960090

@@ -6,6 +6,7 @@ struct NoteComposer: View {
     @ObservedObject var model: PlazaModel
     var appID: UUID?
     var existing: LocalNote?
+    var onClose: (() -> Void)?
     @Environment(\.dismiss) private var dismiss
     @State private var text = ""
     @State private var strokes: [InkStroke] = []
@@ -17,18 +18,23 @@ struct NoteComposer: View {
     @State private var saveError: String?
     @State private var ready=false
     @State private var committed=false
+    @State private var initialDraft: NoteDraft?
     @State private var shared = true
     var body: some View {
         VStack(spacing: 0) {
-            SheetHeader(title: existing == nil ? "Leave a little something" : "Edit your note", subtitle: "Public notes are shared with your Plaza friends.") { dismiss() }
+            SheetHeader(title: existing == nil ? "Leave a little something" : "Edit your note", subtitle: "Public notes are shared with your Plaza friends.") { close() }
             VStack(alignment: .leading, spacing: 16) {
                 HStack {
-                    Picker("Character", selection: $authorID) { ForEach(model.document.avatars) { avatar in Text(avatar.name).tag(avatar.id) } }.frame(width: 220)
+                    Picker("Character", selection: shared ? .constant(model.document.primaryAvatar.id) : $authorID) { ForEach(model.document.avatars) { avatar in Text(avatar.name).tag(avatar.id) } }.frame(width: 220).disabled(shared)
                     Spacer()
                     Picker("Topic", selection: $topicID) {
                         Text("The plaza").tag(nil as UUID?)
                         ForEach(model.topicApps) { app in Text(app.label).tag(Optional(app.id)) }
                     }.frame(width: 240)
+                }
+                if shared {
+                    Text("Public as \(model.social.account?.displayName ?? "your linked Discord name") · Primary Mii: \(model.document.primaryAvatar.name)")
+                        .font(.caption).foregroundStyle(.secondary)
                 }
                 if let saveError { Text(saveError).font(.caption).foregroundStyle(.red) }
                 TextEditor(text: $text).font(.system(size: 15)).scrollContentBackground(.hidden)
@@ -57,26 +63,35 @@ struct NoteComposer: View {
                     }
                 }
                 HStack {
-                    Toggle("Public · Plaza friends", isOn: $shared).toggleStyle(.checkbox).font(.caption).help("Share this note and its author Mii with your authorized Plaza friends. Uncheck to keep it on this Mac.")
+                    Toggle("Public · Plaza friends", isOn: $shared).toggleStyle(.checkbox).font(.caption).help("Share this note using your linked Discord name and primary Mii. Uncheck to keep it on this Mac.")
                     Spacer()
-                    Button("Keep Draft & Close") { dismiss() }
+                    Button("Keep Draft & Close") { close() }
                     Button(existing == nil ? "Save Note" : "Save Changes") { save() }
                         .buttonStyle(.borderedProminent).tint(PlazaStyle.teal).keyboardShortcut(.defaultAction).disabled(!canSave)
                 }
             }.padding(22)
         }.frame(width: 650)
             .onAppear {
+                model.beginWritingNote()
                 authorID = existing.flatMap { n in model.document.avatars.first(where: { $0.id == n.authorID })?.id } ?? model.document.primaryAvatar.id
                 topicID = existing?.appID ?? appID
                 if existing == nil, let draft=model.document.draft, appID == nil || draft.appID == appID {
                     text=draft.text; strokes=draft.drawing; description=draft.description; drawing = !strokes.isEmpty; topicID=draft.appID
                     if let id=draft.authorID, model.document.avatars.contains(where:{$0.id==id}) { authorID=id }
                 }
-                ready=true
                 if let existing { shared = existing.shared == true; text = existing.text; strokes = existing.drawing; description = existing.drawingDescription; drawing = !strokes.isEmpty }
+                initialDraft=draft
+                ready=true
             }
-            .onChange(of:draft) { _,value in if ready && !committed && existing == nil { model.storeDraft(value) } }
+            .onDisappear { model.endWritingNote() }
+            .onChange(of:draft) { _,value in
+                if ready && !committed && existing == nil && value != initialDraft {
+                    initialDraft=value
+                    model.storeDraft(value)
+                }
+            }
     }
+    private func close() { if let onClose { onClose() } else { dismiss() } }
     private var draft: NoteDraft { var d=NoteDraft(); d.text=text; d.drawing=drawing ? strokes:[]; d.description=description; d.appID=topicID; d.authorID=authorID; return d }
     private var canSave: Bool {
         (!text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || (drawing && !strokes.isEmpty)) &&
@@ -84,7 +99,7 @@ struct NoteComposer: View {
         (existing != nil || model.document.notes.count < 200)
     }
     private func save() {
-        guard let author = model.document.avatars.first(where: { $0.id == authorID }) else { return }
+        guard let author = shared ? model.document.primaryAvatar : model.document.avatars.first(where: { $0.id == authorID }) else { return }
         var note = LocalNote(authorID: author.id, author: author.name, appID: topicID, text: text.trimmingCharacters(in: .whitespacesAndNewlines), drawing: drawing ? strokes : [], drawingDescription: description.trimmingCharacters(in: .whitespacesAndNewlines))
         note.shared = shared
         if let existing { note.id = existing.id; note.created = existing.created; note.acknowledged = existing.acknowledged; note.replies=existing.replies; note.read=existing.read }
@@ -92,7 +107,7 @@ struct NoteComposer: View {
             if let index = doc.notes.firstIndex(where: { $0.id == note.id }) { doc.notes[index] = note }
             else { doc.notes.insert(note, at: 0) }
         }
-        if saved { committed=true; if existing == nil { model.clearDraft() }; model.status = "Your note is saved in the plaza journal."; dismiss() }
+        if saved { committed=true; if existing == nil { model.clearDraft() }; model.status = "Your note is saved in the plaza journal."; close() }
         else { saveError = model.error ?? "The note could not be saved."; model.error = nil }
     }
 }
@@ -136,18 +151,44 @@ struct DrawingPad: View {
 struct FeedView: View {
     @ObservedObject var model: PlazaModel
     var authorID: UUID?
+    var miiverse = false
+    var onClose: (() -> Void)?
     @Environment(\.dismiss) private var dismiss
     @State private var query = ""
     @State private var composing = false
     @State private var editing: LocalNote?
     @State private var deleted: LocalNote?
     @State private var replyTo: LocalNote?
-    var notes: [LocalNote] { model.allJournalNotes.filter { (authorID == nil || $0.authorID == authorID) && (query.isEmpty || $0.text.localizedCaseInsensitiveContains(query) || $0.author.localizedCaseInsensitiveContains(query) || $0.drawingDescription.localizedCaseInsensitiveContains(query)) } }
+    @State private var section = "all"
+    @State private var sort = MiiverseSort.newest
+    var notes: [LocalNote] { model.allJournalNotes.filter { (authorID == nil || $0.authorID == authorID) && (query.isEmpty || $0.text.localizedCaseInsensitiveContains(query) || model.noteDisplayName($0).localizedCaseInsensitiveContains(query) || $0.drawingDescription.localizedCaseInsensitiveContains(query)) } }
     var body: some View {
+        let catalog = model.miiverseCatalog
+        let selected = catalog.sections.first { $0.id == section } ?? catalog.sections[0]
+        let entries = catalog.filtered(section: selected.id, query: query, sort: sort)
+        let labels = Dictionary(uniqueKeysWithValues: catalog.entries.map { ($0.id, $0.sectionLabel) })
+        let ownIDs = Set(catalog.entries.filter(\.own).map(\.id))
+        HStack(spacing: 0) {
+            if miiverse { sidebar(catalog, selected: selected.id); Divider() }
+            journal(notes: miiverse ? entries.map(\.note) : notes, labels: labels, ownIDs: ownIDs, selected: selected)
+        }.frame(width: miiverse ? 960 : 660, height: miiverse ? 720 : 670).background(PlazaStyle.paper)
+            .sheet(isPresented: $composing) { NoteComposer(model: model, appID: miiverse ? selected.appID : nil) }
+            .sheet(item: $editing) { note in NoteComposer(model: model, existing: note) }
+            .sheet(item:$replyTo) { note in ReplyComposer(model:model,noteID:note.id) }
+    }
+    private func journal(notes: [LocalNote], labels: [UUID: String], ownIDs: Set<UUID>, selected: MiiverseSection) -> some View {
         VStack(spacing: 0) {
-            SheetHeader(title: "Plaza journal", subtitle: "Your notes and public notes from Plaza friends.") { dismiss() }
+            SheetHeader(title: miiverse ? selected.label : "Plaza journal", subtitle: miiverse ? "Miiverse · \(notes.count) notes · Your plaza and friends" : "Your notes and public notes from Plaza friends.") {
+                if let onClose { onClose() } else { dismiss() }
+            }
             HStack {
-                TextField("Search your journal", text: $query).textFieldStyle(.roundedBorder)
+                TextField(miiverse ? "Search Miiverse" : "Search your journal", text: $query).textFieldStyle(.roundedBorder)
+                if miiverse {
+                    Picker("Sort notes", selection: $sort) { ForEach(MiiverseSort.allCases, id: \.self) { Text($0.rawValue).tag($0) } }
+                        .labelsHidden().frame(width: 120).accessibilityLabel("Sort notes")
+                    Button { Task { await model.social.refresh() } } label: { Image(systemName: "arrow.clockwise") }
+                        .accessibilityLabel("Refresh Miiverse").help("Refresh shared notes")
+                }
                 Button { composing = true } label: { Label("New Note", systemImage: "plus") }.buttonStyle(.borderedProminent).tint(PlazaStyle.teal).disabled(model.document.notes.count >= 200)
             }.padding(18)
             ScrollViewReader { scrollProxy in
@@ -156,7 +197,7 @@ struct FeedView: View {
                     if notes.isEmpty {
                         VStack(spacing: 12) {
                             Image(systemName: "text.bubble").font(.system(size: 35)).foregroundStyle(PlazaStyle.teal)
-                            Text(query.isEmpty ? "A little room for your thoughts." : "No notes found.").font(.title3)
+                            Text(query.isEmpty ? (miiverse ? "No notes in this section yet." : "A little room for your thoughts.") : "No notes found.").font(.title3)
                             Text("Write a reminder, celebrate a finished project, or leave a sketch. Choose Public to share a note with your Plaza friends.").font(.callout).foregroundStyle(.secondary).multilineTextAlignment(.center)
                         }.frame(maxWidth: .infinity).padding(36)
                     }
@@ -165,10 +206,10 @@ struct FeedView: View {
                             HStack(spacing: 10) {
                                 MiiHeadIcon(avatar: model.noteAvatar(note)).frame(width: 42, height: 42)
                                 VStack(alignment: .leading, spacing: 3) {
-                                    Text("\(model.isOwnNote(note) ? (note.shared == true ? "Public · Plaza friends" : "Private · This Mac") : "Friend’s public note") · \(note.created.formatted(date: .abbreviated, time: .shortened))").font(.system(size: 10)).foregroundStyle(.secondary)
+                                    Text("\(ownIDs.contains(note.id) ? (note.shared == true ? "Your public note · Plaza friends" : "Private · This Mac") : "Friend’s public note") · \(note.created.formatted(date: .abbreviated, time: .shortened))").font(.system(size: 10)).foregroundStyle(.secondary)
                                 }
                                 Spacer()
-                                Text(note.appID.flatMap { id in model.topicApps.first(where: { $0.id == id })?.label } ?? "The plaza").font(.caption).padding(7).background(PlazaStyle.teal.opacity(0.06), in: Capsule())
+                                Text(labels[note.id] ?? "The Plaza").font(.caption).padding(7).background(PlazaStyle.teal.opacity(0.06), in: Capsule())
                             }
                             if !note.text.isEmpty { Text(note.text).font(.system(size: 14, design: .rounded)).foregroundStyle(PlazaPostStyle.text).lineSpacing(4).textSelection(.enabled).fixedSize(horizontal: false, vertical: true) }
                             if !note.drawing.isEmpty {
@@ -189,7 +230,7 @@ struct FeedView: View {
                                 Button("Edit") { editing = note }
                                 Button("Delete", role: .destructive) { deleted = note; model.mutate { $0.notes.removeAll { $0.id == note.id } } }
                                 } else {
-                                    Label("Shared by a Plaza friend", systemImage: "person.2")
+                                    Label(ownIDs.contains(note.id) ? "Your shared note" : "Shared by a Plaza friend", systemImage: "person.2")
                                     Spacer()
                                     if !note.drawing.isEmpty { Button("Export Drawing") { exportDrawing(note) } }
                                 }
@@ -203,7 +244,7 @@ struct FeedView: View {
                             }
                         }.padding(18).padding(.bottom, 9).frame(maxWidth: .infinity, alignment: .leading)
                             .modifier(PlazaPostSurface(tailX: 38))
-                            .overlay(alignment: .topLeading) { PlazaNameTab(name: note.author, large: true).padding(.leading, 18).offset(y: -9) }
+                            .overlay(alignment: .topLeading) { PlazaNameTab(name: model.noteDisplayName(note), large: true).padding(.leading, 18).offset(y: -9) }
                             .padding(.top, 9).id(note.id)
                     }
                     VStack(alignment: .leading, spacing: 7) {
@@ -213,15 +254,55 @@ struct FeedView: View {
                     }.padding(18)
                 }.padding(.horizontal, 18).padding(.bottom, 18)
               }.background(PlazaStyle.paper)
-               .onAppear { if let id = model.selectedNoteID { scrollProxy.scrollTo(id, anchor: .top) } }
+               .onAppear { if !miiverse, let id = model.selectedNoteID { scrollProxy.scrollTo(id, anchor: .top) } }
+               .onChange(of: section) { _, _ in if let id = notes.first?.id { scrollProxy.scrollTo(id, anchor: .top) } }
             }
             if let deleted {
                 HStack { Text("Note deleted.").font(.caption); Spacer(); Button("Undo") { model.mutate { $0.notes.insert(deleted, at: 0) }; self.deleted = nil } }.padding(12)
             }
-        }.frame(width: 660, height: 670).background(PlazaStyle.paper)
-            .sheet(isPresented: $composing) { NoteComposer(model: model) }
-            .sheet(item: $editing) { note in NoteComposer(model: model, existing: note) }
-            .sheet(item:$replyTo) { note in ReplyComposer(model:model,noteID:note.id) }
+            if miiverse {
+                Divider()
+                HStack(spacing: 10) {
+                    Label("Miiverse music", systemImage: "speaker.wave.2").font(.caption)
+                    Slider(value: Binding(get: { model.document.preferences.miiverseMusicVolume ?? 0.10 }, set: { value in
+                        if model.mutate({ $0.preferences.miiverseMusicVolume = value }) { model.updateAudio() }
+                    }), in: 0...0.35).frame(width: 140).accessibilityLabel("Miiverse music volume")
+                    Text("\(Int((model.document.preferences.miiverseMusicVolume ?? 0.10) * 100))%")
+                        .font(.caption).monospacedDigit().frame(width: 34)
+                    Spacer()
+                    Text("\(model.music.title(for: .miiverse)) · On this Mac").font(.caption).foregroundStyle(.secondary).lineLimit(1)
+                }.padding(14)
+            }
+        }.frame(maxWidth: .infinity, maxHeight: .infinity).background(PlazaStyle.paper)
+    }
+    private func sidebar(_ catalog: MiiverseCatalog, selected: String) -> some View {
+        VStack(alignment: .leading, spacing: 0) {
+            Label("Miiverse", systemImage: "bubble.left.and.bubble.right.fill")
+                .font(.system(size: 23, weight: .bold, design: .rounded)).foregroundStyle(PlazaStyle.teal).padding(20)
+            ScrollView {
+                VStack(alignment: .leading, spacing: 6) {
+                    ForEach(Array(catalog.sections.prefix(4))) { item in sectionButton(item, selected: selected) }
+                    Text("APP COMMUNITIES").font(.system(size: 10, weight: .bold)).foregroundStyle(.secondary).padding(.top, 18).padding(.horizontal, 10)
+                    ForEach(Array(catalog.sections.dropFirst(4))) { item in sectionButton(item, selected: selected) }
+                }.padding(.horizontal, 12).padding(.bottom, 16)
+            }
+            Text("Your private notes stay on this Mac. Public notes come from your Plaza friends.")
+                .font(.caption).foregroundStyle(.secondary).padding(18)
+        }.frame(width: 225).background(PlazaStyle.teal.opacity(0.04))
+    }
+    private func sectionButton(_ item: MiiverseSection, selected: String) -> some View {
+        Button { section = item.id } label: {
+            HStack(spacing: 8) {
+                Image(systemName: item.id == "all" ? "square.grid.2x2" : item.id == "mine" ? "person.crop.circle" : item.id == "friends" ? "person.2" : item.id == "plaza" ? "sun.max" : "app")
+                    .frame(width: 20)
+                Text(item.label).lineLimit(2).multilineTextAlignment(.leading)
+                Spacer(minLength: 0)
+                Text(String(item.count)).font(.caption).monospacedDigit().foregroundStyle(.secondary)
+            }.font(.system(size: 13, weight: selected == item.id ? .semibold : .regular))
+                .padding(10).frame(maxWidth: .infinity, alignment: .leading)
+                .background(selected == item.id ? PlazaStyle.teal.opacity(0.12) : .clear, in: RoundedRectangle(cornerRadius: 10))
+        }.buttonStyle(.plain).foregroundStyle(PlazaStyle.ink)
+            .accessibilityLabel(item.label).accessibilityValue("\(item.count) notes\(selected == item.id ? ", selected" : "")")
     }
     private func exportDrawing(_ note: LocalNote) {
         let panel = NSSavePanel(); panel.allowedContentTypes = [.png]; panel.nameFieldStringValue = "Plaza Drawing.png"
@@ -272,7 +353,8 @@ struct ReplyComposer: View {
             SheetHeader(title: publicReply ? "A shared reply" : "A local reply",
                 subtitle: publicReply ? "Visible to the note’s Plaza friends." : "Saved only on this Mac.") { if !saving { dismiss() } }
             VStack(alignment: .leading, spacing: 15) {
-                Picker("Character", selection: $authorID) { ForEach(model.document.avatars) { Text($0.name).tag($0.id) } }
+                Picker("Character", selection: publicReply ? .constant(model.document.primaryAvatar.id) : $authorID) { ForEach(model.document.avatars) { Text($0.name).tag($0.id) } }.disabled(publicReply)
+                if publicReply { Text("Public as \(model.social.account?.displayName ?? "your linked Discord name") · Primary Mii: \(model.document.primaryAvatar.name)").font(.caption).foregroundStyle(.secondary) }
                 TextEditor(text: $text).font(.body).scrollContentBackground(.hidden).frame(height: 130)
                     .padding(14).modifier(PlazaPostSurface()).accessibilityLabel("Reply text")
                     .onChange(of: text) { _, value in if value.count > 280 { text = String(value.prefix(280)) } }
@@ -287,14 +369,16 @@ struct ReplyComposer: View {
             }.padding(20).disabled(saving)
         }.frame(width: 540).interactiveDismissDisabled(saving)
         .onAppear {
-            publicReply = existingSharedReply != nil || model.allJournalNotes.first { $0.id == noteID }?.shared == true
+            model.beginWritingNote()
+            publicReply = existingSharedReply != nil || model.journalNote(noteID)?.shared == true
             authorID = existingSharedReply.flatMap { reply in model.document.avatars.first { $0.name == reply.author.name }?.id } ?? model.document.primaryAvatar.id
             if let existingSharedReply { text = existingSharedReply.text; replyID = existingSharedReply.id }
         }
+        .onDisappear { model.endWritingNote() }
     }
     @MainActor private func save() async {
-        guard !saving, let author = model.document.avatars.first(where: { $0.id == authorID }),
-              let note = model.allJournalNotes.first(where: { $0.id == noteID }) else {
+        guard !saving, let author = publicReply ? model.document.primaryAvatar : model.document.avatars.first(where: { $0.id == authorID }),
+              let note = model.journalNote(noteID) else {
             saveError = "This note is no longer available."; return
         }
         saving = true; defer { saving = false }

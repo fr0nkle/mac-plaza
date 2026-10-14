@@ -66,6 +66,10 @@ public struct NoteDraft: Codable, Equatable, Sendable {
     public var appID: UUID?
     public var authorID: UUID?
     public init() {}
+    public var hasContent: Bool {
+        !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || !drawing.isEmpty ||
+        !description.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
     public func validate() throws {
         guard text.count <= 280, description.count <= 160, drawing.count <= 512, drawing.reduce(0, { $0 + $1.points.count }) <= 20000, drawing.allSatisfy({ $0.points.allSatisfy { $0.x.isFinite && $0.y.isFinite && (0...1).contains($0.x) && (0...1).contains($0.y) } }) else { throw PlazaError.invalid("The journal draft is invalid.") }
     }

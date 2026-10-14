@@ -39,7 +39,7 @@ enum SettingsCategory: String, CaseIterable, Identifiable {
         case .appearance: "Choose your Mii face, body and animation resources."
         case .data: "Export your plaza, import a saved plaza or restore a backup."
         case .updates: "Keep Mac Plaza up to date."
-        case .system: "View app information and recovery options."
+        case .system: "Export diagnostics, view app information and recovery options."
         }
     }
     var color: Color {

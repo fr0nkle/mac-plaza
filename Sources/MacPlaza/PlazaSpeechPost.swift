@@ -32,8 +32,8 @@ extension PlazaModel {
             // Preserve a deleted author's identity so their post cannot attach
             // to another Mii. The overhead layer hides absent speakers.
             var speaker = noteAvatar(note)
-            speaker.id = note.authorID
-            return PlazaSpeechPost(id: note.id.uuidString, speaker: speaker, name: note.author, text: note.text,
+            if note.shared != true { speaker.id = note.authorID }
+            return PlazaSpeechPost(id: note.id.uuidString, speaker: speaker, name: noteDisplayName(note), text: note.text,
                                    drawing: note.drawing, drawingDescription: note.drawingDescription,
                                    destination: .journal(note.id))
         }

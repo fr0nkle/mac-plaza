@@ -47,10 +47,12 @@ final class PlazaMusicLibrary: ObservableObject {
     func title(for track: PlazaAudio.Track) -> String {
         if url(for: track) != nil { return recordings[track.rawValue]!.name }
         switch track {
-        case .plaza: return "WaraWara Plaza · Home"
+        case .plaza: return "Wii U Home Menu · Extended"
         case .maker: return "Mii Maker"
         case .friends: return "Friend List · Wii U"
         case .settings: return "System Settings · Wii U"
+        case .writing: return "Writing Notes · Wii U Chat"
+        case .miiverse: return "Miiverse · Wii U"
         }
     }
     func choose(for track: PlazaAudio.Track) {
@@ -84,9 +86,9 @@ final class PlazaMusicLibrary: ObservableObject {
         if let selection = selections.removeValue(forKey: track.rawValue) { try? FileManager.default.removeItem(at: selection.url) }
     }
     func discardSelections() {
-        discardSelection(for: .plaza)
-        discardSelection(for: .maker)
-        discardSelection(for: .friends)
+        for track in [PlazaAudio.Track.plaza, .maker, .friends, .settings, .writing, .miiverse] {
+            discardSelection(for: track)
+        }
         try? FileManager.default.removeItem(at: previewDirectory)
     }
     private func validatedCopy(_ source: URL, into destination: URL, displayName: String? = nil) throws -> Recording {
@@ -104,10 +106,7 @@ final class PlazaMusicLibrary: ObservableObject {
         let copy = destination.appendingPathComponent(name)
         try FileManager.default.copyItem(at: source, to: copy)
         do {
-            let player = try AVAudioPlayer(contentsOf: copy)
-            guard player.duration.isFinite, player.duration > 0, player.prepareToPlay() else {
-                throw FFLError.message("The file contains no playable audio.")
-            }
+            try MusicFileValidation.validate(copy)
             return Recording(file: name, name: displayName ?? source.lastPathComponent)
         } catch {
             try? FileManager.default.removeItem(at: copy)

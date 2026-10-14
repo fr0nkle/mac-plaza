@@ -290,5 +290,5 @@ app.whenReady().then(async () => {
   setInterval(backgroundRefresh,15000).unref();
   if(native)setInterval(()=>{if(!session?.discordSDK)return;try{const current=JSON.parse(native.discordSnapshot()).state;if(current!==lastState){lastState=current;if(current==='ready')backgroundRefresh();}}catch{}},1000).unref();
 }).catch(error=>{console.error('Plaza startup failed:',error);dialog.showErrorBox('Plaza could not start',error.message);app.exit(1);});
-app.on('before-quit',()=>{quitting=true;wallpaper?.cleanup();native?.disconnectDiscord();engine?.close();for(const item of windows)if(!item.isDestroyed())item.destroy();});
+app.on('before-quit',()=>{if(quitting)return;quitting=true;wallpaper?.cleanup();native?.disconnectDiscord();engine?.close();for(const item of windows)if(!item.isDestroyed())item.destroy();});
 app.on('window-all-closed',()=>{if(process.platform!=='win32')app.quit();});

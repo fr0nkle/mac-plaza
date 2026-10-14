@@ -19,9 +19,8 @@ or resources. Preserve the individual license files and attribution notices.
   The source archive includes acquisition instructions and the SDK's third-party
   notices, rather than redistributing the standalone SDK.
 - Nintendo soundtrack recordings, console resource archives, menu models and
-  textures are not covered by this license. Default distributable builds and source
-  archives omit the local Nintendo recordings. The user-requested private friend
-  app release 0.18.1 includes the Miiverse – Loading recording; its rights remain
+  textures are not covered by this license. Source archives omit soundtrack recordings. The current Mac release and
+  Windows 0.3.0 include the Miiverse – Loading recording; its rights remain
   separate from the MIT source license. Its provenance is in Audio/SOURCE.txt.
   Users may still import their own local resources and music through the existing
   controls. Synthesized ambience remains available.

@@ -43,7 +43,7 @@ async function ensureSDK(){
   sdk=validateFriends(JSON.parse(native.discordSnapshot()));
 }
 async function audience(){if(sdk.state==='ready'&&(doc().shareProfile||(doc().remoteNotes||[]).some(n=>n.ownerID===session?.accountID))){await request('PUT','/v1/discord/recipients',{discordIDs:recipients(sdk.friends,doc().hiddenFriends)});}}
-async function publishProfile(){if(session){const owned=await request('GET','/v1/notes/owned');if(owned.notes.length)await request('PUT','/v1/notes',{notes:core.mergeNotes(owned.notes,session.accountID,doc().pending),primaryAvatar:core.publicAvatar(doc().avatar)});await request('PUT','/v1/profile',{avatar:doc().avatar,note:doc().profileNote||'',sharing:!!doc().shareProfile,sharePresence:doc().sharePresence!==false,shareActivity:!!doc().shareActivity,shareDiscordFriends:!!doc().shareProfile});}}
+async function publishProfile(){if(session){doc().profilePending=true;await save();const owned=await request('GET','/v1/notes/owned');if(owned.notes.length)await request('PUT','/v1/notes',{notes:core.mergeNotes(owned.notes,session.accountID,doc().pending),primaryAvatar:core.publicAvatar(doc().avatar)});await request('PUT','/v1/profile',{avatar:doc().avatar,note:doc().profileNote||'',sharing:!!doc().shareProfile,sharePresence:doc().sharePresence!==false,shareActivity:!!doc().shareActivity,shareDiscordFriends:!!doc().shareProfile});doc().profilePending=false;await save();}}
 async function persistSession() {
   if (!safeStorage.isEncryptionAvailable()) throw new Error('Windows credential encryption is unavailable. Sign-in was not saved.');
   await atomic(path.join(root(), 'session.bin'), safeStorage.encryptString(JSON.stringify(session)));
@@ -66,7 +66,7 @@ async function refresh() {
   if (!session) return { ...publicState(), snapshot: null, notes: [] };
   await ensureSDK();
   const snapshot = await request('GET', '/v1/snapshot');
-  const threads = await request('GET', '/v1/notes/threads');
+  const threads = await request('GET', '/v1/notes/threads');threads.notes=threads.notes.filter(n=>!core.expired(n));
   doc().remoteNotes = threads.notes;
   await audience();
   if(sdk.state==='ready'){
@@ -79,6 +79,7 @@ async function refresh() {
   return { ...publicState(), snapshot, notes: threads.notes };
 }
 async function sync() {
+  if(session&&doc().profilePending)await publishProfile();
   if (!session || !Object.keys(doc().pending).length) return refresh();
   const { notes } = await request('GET', '/v1/notes/owned');
   await request('PUT', '/v1/notes', { notes: core.mergeNotes(notes, session.accountID, doc().pending), primaryAvatar:core.publicAvatar(doc().avatar) });

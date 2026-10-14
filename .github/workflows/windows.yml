@@ -16,12 +16,36 @@ jobs:
     runs-on: windows-latest
     permissions:
       contents: write
+      actions: read
     timeout-minutes: 45
     defaults:
       run:
         working-directory: Windows
     steps:
       - uses: actions/checkout@v4
+      - name: Find verified build of this commit
+        id: verified
+        uses: actions/github-script@v7
+        with:
+          script: |
+            if (context.ref !== 'refs/heads/main') return;
+            const {data} = await github.rest.actions.listWorkflowRuns({
+              owner: context.repo.owner, repo: context.repo.repo,
+              workflow_id: 'windows.yml', status: 'success', per_page: 30,
+              head_sha: context.sha
+            });
+            const run = data.workflow_runs.find(r => r.head_sha === context.sha &&
+              r.head_branch === 'codex/windows-current-features' && r.event === 'push' &&
+              r.conclusion === 'success');
+            if (run) { core.setOutput('run-id', String(run.id)); core.info(`Reusing verified Windows build ${run.id} for ${context.sha}`); }
+      - name: Restore verified Windows downloads
+        if: steps.verified.outputs.run-id != ''
+        uses: actions/download-artifact@v4
+        with:
+          name: windows-downloads
+          path: Windows/dist
+          run-id: ${{ steps.verified.outputs.run-id }}
+          github-token: ${{ github.token }}
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
@@ -34,11 +58,13 @@ jobs:
       - run: pnpm install --frozen-lockfile --ignore-scripts --config.block-exotic-subdeps=false
       - run: node node_modules/electron/install.js
       - uses: compnerd/gha-setup-swift@bbae8ce86bac5a3449f3992b3d88bc4ca25f2057
+        if: steps.verified.outputs.run-id == ''
         continue-on-error: true
         with:
           swift-version: swift-6.4.1-release
           swift-build: 6.4.1-RELEASE
       - name: Resolve installed Swift paths
+        if: steps.verified.outputs.run-id == ''
         shell: pwsh
         run: |
           $roots = @("$env:LOCALAPPDATA\Programs\Swift", "C:\Library\Developer", "C:\Program Files\Swift") | Where-Object { Test-Path $_ }
@@ -61,31 +87,44 @@ jobs:
           $swift.DirectoryName | Out-File $env:GITHUB_PATH -Append -Encoding utf8
           "SDKROOT=$($sdk.FullName)" | Out-File $env:GITHUB_ENV -Append -Encoding utf8
       - uses: compnerd/gha-setup-vsdevenv@f1ba60d553a3216ce1b89abe0201213536bc7557
+        if: steps.verified.outputs.run-id == ''
       - run: swift --version
+        if: steps.verified.outputs.run-id == ''
       - run: ./scripts/prepare-native.ps1
+        if: steps.verified.outputs.run-id == ''
         env:
           GH_TOKEN: ${{ github.token }}
       - run: python scripts/prepare-music.py
+        if: steps.verified.outputs.run-id == ''
       - run: pnpm run build:engine
+        if: steps.verified.outputs.run-id == ''
       - run: pnpm test
       - run: python -m pip install -r ../Server/requirements.txt
       - run: python -B -m unittest discover -s ../Server
       - run: pnpm test:desktop
+        if: steps.verified.outputs.run-id == ''
         timeout-minutes: 5
         env:
           PYTHON: python
       - run: pnpm test:parity
+        if: steps.verified.outputs.run-id == ''
         timeout-minutes: 5
       - run: pnpm test:features
+        if: steps.verified.outputs.run-id == ''
         timeout-minutes: 5
         env:
           PYTHON: python
       - run: pnpm dist
+        if: steps.verified.outputs.run-id == ''
         env:
           CSC_IDENTITY_AUTO_DISCOVERY: 'false'
       - name: Install and verify the Windows installer
         shell: pwsh
         run: |
+          if (!(Test-Path 'dist/win-unpacked/resources/app.asar')) {
+            $portable = Get-ChildItem dist/*.zip | Select-Object -First 1
+            Expand-Archive -LiteralPath $portable.FullName -DestinationPath 'dist/win-unpacked'
+          }
           $setup = Get-ChildItem dist/*Setup*.exe | Select-Object -First 1
           $target = Join-Path $env:RUNNER_TEMP 'PlazaInstalled'
           $process = Start-Process $setup.FullName -ArgumentList @('/S', "/D=$target") -Wait -PassThru
@@ -142,7 +181,7 @@ jobs:
           cd Windows/dist
           sha256sum *.exe *.zip > SHA256SUMS.txt
           if gh release view "$tag" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
-            echo 'Release already exists; keeping its immutable Windows downloads.'
-            exit 0
+            echo 'Release already exists; refusing to replace tested downloads.'
+            exit 1
           fi
           gh release create "$tag" --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" --prerelease --title "Plaza for Windows $version — cross-platform preview" --notes-file ../../Windows/RELEASE-NOTES.md *.exe *.zip SHA256SUMS.txt

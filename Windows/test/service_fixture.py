@@ -25,9 +25,10 @@ call(windows, 'POST', 'friends/request', code=code)
 windows_id = call(windows, 'GET', 'snapshot')['account']['id']
 call(mac, 'POST', 'friends/accept', id=windows_id)
 note = dict(id=str(uuid.uuid4()), author=appearance, text='Hello Windows, from Mac!', drawing=[],
-            drawingDescription='', created=1234567890,
+            drawingDescription='', created=service.now(),
             topic=dict(label='Portal 2', bundleID='com.valvesoftware.portal2', steamAppID=620))
-call(mac, 'PUT', 'notes', notes=[note])
+expired={**note,'id':str(uuid.uuid4()),'text':'Expired legacy feed note','created':service.now()-8*86400}
+call(mac, 'PUT', 'notes', notes=[note,expired] if os.environ.get('PLAZA_TEST_ACCOUNT_NAME') else [note])
 server = make_server(service, port=0)
 origin = 'http://127.0.0.1:' + str(server.server_address[1])
 service.public_url = origin

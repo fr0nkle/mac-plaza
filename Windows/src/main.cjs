@@ -111,10 +111,10 @@ const actions = {
       doc().privateNotes = doc().privateNotes.filter(n => n.id !== value.note.id);
     } else {
       if (!doc().privateNotes.some(n => n.id === value.note.id) && doc().privateNotes.length >= 200) throw new Error('The private journal is full.');
-      doc().privateNotes = doc().privateNotes.filter(n => n.id !== value.note.id).concat(value.note);
+      const previous=doc().privateNotes.find(n=>n.id===value.note.id);doc().privateNotes = doc().privateNotes.filter(n => n.id !== value.note.id).concat({...value.note,replies:previous?.replies||value.note.replies||[],liked:previous?.liked??value.note.liked??false});
       if (session) doc().pending[value.note.id] = null;
     }
-    doc().draft = { text: '', drawing: [], drawingDescription: '' }; await save();
+    if(!value.preserveDraft)doc().draft = { text: '', drawing: [], drawingDescription: '' }; await save();
     return sync();
   },
   deleteNote: async id => {

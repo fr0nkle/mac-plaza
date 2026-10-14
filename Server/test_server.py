@@ -681,7 +681,9 @@ class ServiceTests(unittest.TestCase):
         self.call(self.a,"PUT","notes/activity/read",ids=[e["id"] for e in inbox["activities"]])
         with tempfile.TemporaryDirectory() as directory:
             path=Path(directory)/"plaza.sqlite3"
-            with sqlite3.connect(path) as destination:self.service.db.backup(destination)
+            destination=sqlite3.connect(path)
+            try:self.service.db.backup(destination)
+            finally:destination.close()
             restarted=PlazaService(str(path),"http://127.0.0.1:8787",now=lambda:self.clock)
             try:
                 after=restarted.handle("GET","/v1/notes/activity",{},self.a)

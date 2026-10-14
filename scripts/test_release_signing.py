@@ -74,6 +74,12 @@ class SigningTests(unittest.TestCase):
         check_metadata(METADATA, REQUIREMENT, TEAM)
         check_metadata(METADATA.replace("0123456789", "fedcba9876"), REQUIREMENT, TEAM)
 
+    def test_accepts_apples_unquoted_team_requirement_without_accepting_a_prefix(self):
+        unquoted = REQUIREMENT.replace('"' + TEAM + '"', TEAM)
+        check_metadata(METADATA, unquoted, TEAM)
+        with self.assertRaises(SigningError):
+            check_metadata(METADATA, unquoted.replace(TEAM, TEAM + "EXTRA"), TEAM)
+
     def test_rejects_missing_runtime_timestamp_wrong_team_and_changed_identifier(self):
         for metadata in [METADATA.replace("(runtime)", ""), METADATA.replace("Timestamp=", "MissingTimestamp="),
                          METADATA.replace(TEAM, "B123456789"), METADATA.replace("local.macplaza.app", "local.macplaza.other")]:

@@ -1,9 +1,10 @@
 # Developer ID releases
 
-The current 0.20.2 preview is ad-hoc signed. This Mac currently has only an
-Apple Development certificate. A paid Apple Developer Program membership is
-required before Apple can issue the Developer ID distribution identities.
-No Developer ID release has been built or published yet.
+Public direct-download releases use Developer ID Application and Developer ID
+Installer certificates from the same enrolled Apple developer team. The build
+submits the app and installer disk image to Apple, staples the accepted tickets,
+and verifies Gatekeeper acceptance before publishing. Local ad-hoc previews
+remain available only through the explicit testing-preview path.
 
 ## Complete the Apple account setup
 

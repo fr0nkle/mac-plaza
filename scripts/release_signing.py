@@ -47,7 +47,7 @@ def check_metadata(metadata, requirement, team):
     if "adhoc" in metadata or "designated => cdhash" in requirement:
         raise SigningError("Ad-hoc signatures change identity between builds and cannot be published as Developer ID releases.")
     if ('identifier "local.macplaza.app"' not in requirement or "anchor apple generic" not in requirement
-            or 'certificate leaf[subject.OU] = "' + team + '"' not in requirement):
+            or not re.search(r'certificate leaf\[subject\.OU\] = (?:"' + re.escape(team) + r'"|' + re.escape(team) + r')(?=\s|$)', requirement)):
         raise SigningError("The app's designated requirement must retain its bundle identifier and developer team across updates.")
 
 

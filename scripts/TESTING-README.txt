@@ -1,4 +1,4 @@
-MAC PLAZA 0.21 — TESTING PREVIEW
+MAC PLAZA 0.22.1 — DEVELOPER ID RELEASE
 
 Requires an Apple silicon Mac and macOS 15 or later.
 
@@ -26,14 +26,14 @@ new likes, replies and profile changes retry when it returns. The connection add
 the tunnel restarts. Your friend does not need Tailscale installed.
 The local plaza continues working offline.
 
-This preview is not Apple notarized. macOS may block the installer/app.
-If you trust the copy you received, Apple's Privacy & Security settings
-provide an Open Anyway option. Developer ID signing and notarization are
-planned for wider distribution. Never disable Gatekeeper globally.
+This release is signed with Developer ID and notarized by Apple. The app,
+installer package and disk image carry Apple's notarization tickets.
+macOS may still ask for the normal confirmation the first time you open a
+downloaded app. You do not need to disable Gatekeeper or use Open Anyway.
 
 Original Wii U resource files are not included. The built-in character
 renderer works without them; imports in Preferences are optional.
 
-Corresponding Source.zip contains the source and component license notices
-for this build. Downloads are available at https://plaza.squidproductions.org
+Corresponding Source.txt links to the full source and component license
+notices for this build, published alongside the GitHub downloads. Downloads are available at https://plaza.squidproductions.org
 even when the developer’s Mac is offline. No GitHub account is required.

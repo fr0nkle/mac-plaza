@@ -26,9 +26,9 @@ or resources. Preserve the individual license files and attribution notices.
   Users may still import their own local resources and music through the existing
   controls. Synthesized ambience remains available.
 
-Source is supplied with each installer even while the GitHub repository is
-private. Private repository visibility is an access setting; it does not change
-the license rights of people who receive the licensed source. Mac Plaza is an
+Corresponding source is published alongside each installer with equivalent
+public download access. The installer includes a direct source download link
+and checksum. Repository visibility does not change recipients' license rights. Mac Plaza is an
 independent project and is not affiliated with Nintendo, Apple, Valve or Discord.
 
 References:

@@ -8,7 +8,7 @@ Mac Plaza is currently available for macOS only.
 
 Download from **https://plaza.squidproductions.org** to install on Apple silicon/macOS 15+. Discord setup opens on first launch with the test service preconfigured. Choose a Mii, enable **Share my chosen Mii and note with my Discord friends**, then save. Both people can share their own Miis without Plaza invitation codes. Sharing is opt-in and older explicit Plaza friendships remain supported.
 
-Sparkle provides signed private updates after Discord sign-in, with **Check for Updates…** in the app menu and automatic download/install options in Preferences. The public GitHub repository is **[fr0nkle/mac-plaza](https://github.com/fr0nkle/mac-plaza)**. Downloads need no account and work while the hosting Mac is offline. This preview is not Apple notarized. Direct Discord sign-in, friend loading and availability run on each Mac without the Plaza service. Shared notes, bot statuses and in-app updates use the optional shared service; cached discussions remain readable and queued actions retry after reconnection. [Installer, release publishing, hosting, and signing instructions](DISTRIBUTION.md).
+Sparkle provides signed private updates after Discord sign-in, with **Check for Updates…** in the app menu and automatic download/install options in Preferences. The public GitHub repository is **[fr0nkle/mac-plaza](https://github.com/fr0nkle/mac-plaza)**. Downloads need no account and work while the hosting Mac is offline. Published downloads are Developer ID signed and notarized by Apple. macOS may still show its normal first-open confirmation. Direct Discord sign-in, friend loading and availability run on each Mac without the Plaza service. Shared notes, bot statuses and in-app updates use the optional shared service; cached discussions remain readable and queued actions retry after reconnection. [Installer, release publishing, hosting, and signing instructions](DISTRIBUTION.md).
 
 ## Discord & Plaza friends pilot
 
@@ -220,7 +220,7 @@ The renderer uses [FFL.js](https://github.com/ariankordi/FFL.js) and the [FFL na
 
 ## License and download page
 
-Original Mac Plaza code is MIT licensed; see [LICENSE](LICENSE) and [LICENSING.md](LICENSING.md). Third-party components keep their own terms, including the AGPL renderer and separately licensed Discord Social SDK. The installer includes corresponding source. Get the latest preview at https://plaza.squidproductions.org. GitHub releases and corresponding source are public; downloads do not depend on the hosting Mac.
+Original Mac Plaza code is MIT licensed; see [LICENSE](LICENSE) and [LICENSING.md](LICENSING.md). Third-party components keep their own terms, including the AGPL renderer and separately licensed Discord Social SDK. Corresponding source is available alongside each installer; its download link and checksum are included in the disk image. Get the latest preview at https://plaza.squidproductions.org. GitHub releases and corresponding source are public; downloads do not depend on the hosting Mac.
 
 Distributable builds omit the optional local Nintendo recordings and console resources. Synthesized ambience works immediately, and local music/resource imports remain available. To make a distributable build use `PLAZA_DISTRIBUTION=1 zsh scripts/build-app.sh`. Source builds require the separately obtained Discord SDK as described in ThirdParty/DiscordSocialSDK/README.md. Recording-specific tests require the optional local audio fixtures; the files are intentionally not supplied in source releases.
 

@@ -19,7 +19,16 @@ fi
 cp "Artifacts/Mac-Plaza-$version.pkg" "$staging/image/Install Mac Plaza.pkg"
 ditto "$app" "$staging/image/Mac Plaza.app"
 ln -s /Applications "$staging/image/Applications"
-cp "Artifacts/Mac-Plaza-$version-Source.zip" "$staging/image/Corresponding Source.zip"
+# Source archives contain developer build tools that are not app runtime code.
+# Offer corresponding source alongside the binary release, with equivalent access.
+python3 - "$version" "Artifacts/Mac-Plaza-$version-Source.zip" "$staging/image/Corresponding Source.txt" <<'PY_SOURCE'
+from pathlib import Path
+import hashlib,sys
+version,source,output=sys.argv[1:]
+asset=Path(source)
+url='https://github.com/fr0nkle/mac-plaza/releases/download/v'+version+'/'+asset.name
+Path(output).write_text('Mac Plaza corresponding source\n\n'+url+'\n\nSHA-256: '+hashlib.sha256(asset.read_bytes()).hexdigest()+'\n\nThe source is available without a GitHub account, alongside this installer.\nIt includes original Mac Plaza code and component notices.\n')
+PY_SOURCE
 cp scripts/TESTING-README.txt "$staging/image/START HERE.txt"
 hdiutil create -volname "Mac Plaza $version" -srcfolder "$staging/image" -ov -format UDZO "Artifacts/Mac-Plaza-$version.dmg"
 shasum -a 256 "Artifacts/Mac-Plaza-$version.dmg" > "Artifacts/Mac-Plaza-$version.dmg.sha256"

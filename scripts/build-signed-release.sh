@@ -21,7 +21,12 @@ mkdir -p "$notarydir"
 zsh scripts/build-app.sh
 ditto -c -k --sequesterRsrc --keepParent "$PLAZA_APP_PATH" "$notarydir/submission.zip"
 function notarize() {
-  xcrun notarytool submit "$1" --keychain-profile "$profile" --wait --output-format json > "$2"
+  # Persist the submission ID before waiting so a slow Apple review is recoverable.
+  xcrun notarytool submit "$1" --keychain-profile "$profile" --output-format json > "$2.submission.json"
+  local submission_id
+  submission_id=$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["id"])' "$2.submission.json")
+  print "Apple notarization submission: $submission_id"
+  xcrun notarytool wait "$submission_id" --keychain-profile "$profile" --timeout 2h --output-format json > "$2"
   python3 - "$2" <<'PY'
 import json,sys
 result=json.load(open(sys.argv[1]))
@@ -41,5 +46,7 @@ xcrun stapler staple "Artifacts/Mac-Plaza-$version.dmg"
 # The PKG is also distributed separately from the DMG.
 xcrun stapler staple "Artifacts/Mac-Plaza-$version.pkg"
 shasum -a 256 "Artifacts/Mac-Plaza-$version.dmg" > "Artifacts/Mac-Plaza-$version.dmg.sha256"
+# Stapling changes the separately distributed PKG bytes too.
+shasum -a 256 "Artifacts/Mac-Plaza-$version.pkg" > "Artifacts/Mac-Plaza-$version.pkg.sha256"
 python3 scripts/verify-release-signing.py
 print 'Signed, notarized release is ready. Publishing is a separate step.'

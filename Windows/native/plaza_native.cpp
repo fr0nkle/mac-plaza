@@ -44,7 +44,7 @@ static napi_value configure(napi_env env,napi_callback_info info){
   client->UpdateToken(discordpp::AuthorizationTokenType::Bearer,token,[current](auto result){if(current!=generation||!client)return;if(result.Successful())client->Connect();else discordState="authorization-required";});
   return jsBoolean(env,true);
 }
-static napi_value pump(napi_env env,napi_callback_info){discordpp::RunCallbacks();return jsBoolean(env,true);}
+static napi_value pump(napi_env env,napi_callback_info){if(client)discordpp::RunCallbacks();return jsBoolean(env,true);}
 static napi_value stop(napi_env env,napi_callback_info){disconnect();return jsBoolean(env,true);}
 static napi_value snapshot(napi_env env,napi_callback_info){
   std::string friends="[";size_t count=0;

@@ -14,7 +14,7 @@ final class PlazaAudio: NSObject, ObservableObject, AVAudioPlayerDelegate {
     private func recordingURL(for track: Track) -> URL? {
         PlazaResources.url(for: track.rawValue, extension: "m4a", directory: "Audio", roots: resourceRoots)
     }
-    enum Track: String { case plaza = "warawara-home", maker = "mii-maker", friends = "friends-menu", settings = "system-settings", writing = "note-writing", miiverse = "miiverse" }
+    enum Track: String { case plaza = "warawara-home", maker = "mii-maker", friends = "friends-menu", settings = "system-settings", writing = "note-writing", miiverse = "miiverse", miiverseAlternate = "miiverse-alternate" }
     static let crossfadeDuration: TimeInterval = 1.2
     private final class Voice {
         let player: AVAudioPlayer

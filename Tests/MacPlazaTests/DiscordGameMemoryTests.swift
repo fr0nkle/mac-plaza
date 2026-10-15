@@ -40,56 +40,36 @@ final class DiscordGameMemoryTests: XCTestCase {
         XCTAssertTrue(final.records(at: now).isEmpty, "Expired records must be removed from saved history too")
     }
 
-    func testRecentGameBubblesAlternateWithCustomStatusAndKeepTheFriendIdentity() {
-        let now = Date().timeIntervalSince1970
-        var friend = SharedMii(id: UUID().uuidString, displayName: "Exotic_Panda", avatar: Avatar(), note: "", presence: .online, plazaOnline: false)
-        friend.activities = [DiscordGameRecord(discordID: "123", name: "Great Game", observedAt: now - 300, active: false).activity]
-        friend.customStatus = DiscordCustomStatusRecord(discordID: "123", text: "Taking a break", observedAt: now)
-        let status = PlazaSpeechPost.friend(friend)
-        let recent = PlazaSpeechPost.friend(friend, variation: 1)
-        XCTAssertEqual(status.text, "Taking a break")
-        XCTAssertEqual(recent.text, "Exotic_Panda was recently playing Great Game")
-        XCTAssertEqual(status.id, recent.id)
-        XCTAssertEqual(status.speaker.id, recent.speaker.id)
-        XCTAssertEqual(PlazaSpeechPost.friend(friend, variation: 2).text, status.text)
-        friend.presence = .offline
-        XCTAssertEqual(PlazaSpeechPost.friend(friend).text, recent.text)
-        friend.activities[0].observedAt = now - 7201
-        XCTAssertTrue(friend.overheadTexts.isEmpty)
-    }
-
-    func testVisibleBubbleActuallyAlternatesAndKeepsItsHeadAnchor() throws {
+    func testDiscordMetadataDoesNotBecomeSpeechWithoutMiiversePosts() throws {
         _ = NSApplication.shared
-        var friend = SharedMii(id: UUID().uuidString, displayName: "Exotic_Panda", avatar: Avatar(), note: "", presence: .online, plazaOnline: false)
+        var friend = SharedMii(id: UUID().uuidString, displayName: "Exotic_Panda", avatar: Avatar(), note: "Preserved legacy character note", presence: .online, plazaOnline: false)
         let now = Date().timeIntervalSince1970
         friend.activities = [DiscordGameRecord(discordID: "123", name: "Great Game", observedAt: now - 300, active: false).activity]
         friend.customStatus = DiscordCustomStatusRecord(discordID: "123", text: "Taking a break", observedAt: now)
+        let original = friend
         let scene = PlazaScene(size: CGSize(width: 1000, height: 700))
         scene.configure(avatars: [friend.avatar], population: 1, localCount: 0)
         let notes = FriendNotesView(frame: CGRect(x: 0, y: 0, width: 1000, height: 700))
         defer { notes.stop() }
-        func configure(_ show: Bool) {
+        for show in [true, false, true] {
             notes.configure(scene: scene, friends: [friend], paused: false, largerText: false,
                 islands: [], reserved: [], showPosts: show, onSelect: { _ in })
             scene.acceptFFLAnchors([[0, 0.5, 0.7]])
+            XCTAssertEqual(notes.visibleCardCount, 0)
         }
-        configure(true)
+        var post = SharedJournalNote(note: LocalNote(authorID: friend.avatar.id, author: friend.displayName, appID: nil, text: "My own Miiverse post"), author: friend.avatar, app: nil)
+        post.ownerID = friend.id; post.displayName = friend.displayName
+        let speech = try XCTUnwrap(PlazaSpeechPost.miiverse(post, friends: [friend]))
+        var selected: UUID?
+        notes.configure(scene: scene, friends: [friend], paused: false, largerText: false, islands: [], reserved: [],
+            journalPosts: [speech], onSelectJournal: { selected = $0 }, onSelect: { _ in })
+        scene.acceptFFLAnchors([[0, 0.5, 0.7]])
         XCTAssertEqual(notes.visiblePosts.first?.speakerID, friend.avatar.id)
-        XCTAssertEqual(notes.subviews.compactMap { ($0 as? NSButton)?.accessibilityLabel() }.first, "Exotic_Panda: Taking a break")
-        configure(true) // Layout/poll refreshes must not change an open bubble.
-        XCTAssertEqual(notes.subviews.compactMap { ($0 as? NSButton)?.accessibilityLabel() }.first, "Exotic_Panda: Taking a break")
-        configure(false); configure(true)
-        XCTAssertEqual(notes.subviews.compactMap { ($0 as? NSButton)?.accessibilityLabel() }.first,
-            "Exotic_Panda: Exotic_Panda was recently playing Great Game")
-        XCTAssertEqual(notes.visiblePosts.first?.speakerID, friend.avatar.id)
-        let post = try XCTUnwrap(notes.visiblePosts.first)
-        XCTAssertEqual(post.pointerX, post.head.x, accuracy: 0.01)
-        if ProcessInfo.processInfo.environment["PLAZA_GAME_HISTORY_QA"] == "1" {
-            let image = try XCTUnwrap(notes.bitmapImageRepForCachingDisplay(in: notes.bounds))
-            notes.cacheDisplay(in: notes.bounds, to: image)
-            let output = URL(fileURLWithPath: FileManager.default.currentDirectoryPath).appendingPathComponent(".qa/recent-discord-game-bubble.png")
-            try XCTUnwrap(image.representation(using: .png, properties: [:])).write(to: output)
-        }
+        let button = try XCTUnwrap(notes.subviews.compactMap { $0 as? NSButton }.first)
+        XCTAssertEqual(button.accessibilityLabel(), "Exotic_Panda: My own Miiverse post")
+        button.performClick(nil)
+        XCTAssertEqual(selected, post.id)
+        XCTAssertEqual(friend, original, "Legacy notes and Discord metadata are retained without becoming speech")
     }
 
     func testAppActivityPreviewFitsSmallWindowsAndRespectsPrivatePresentation() async throws {

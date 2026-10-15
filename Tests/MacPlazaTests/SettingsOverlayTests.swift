@@ -70,7 +70,9 @@ final class SettingsOverlayTests: XCTestCase {
         XCTAssertEqual(model.musicTrack, .settings)
         XCTAssertEqual(model.isMoving, !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion)
         try await Task.sleep(for: .milliseconds(100))
-        try model.audio.preview(try XCTUnwrap(PlazaAudio.soundtrackURL), track: .plaza, volume: 0)
+        let preview = directory.appendingPathComponent("Preview.wav")
+        try PlazaAudio.loop().write(to: preview)
+        try model.audio.preview(preview, track: .plaza, volume: 0)
         XCTAssertNotNil(model.audio.previewTrack)
         XCTAssertFalse(controller.windowShouldClose(settings))
         for _ in 0..<50 where model.audio.previewTrack != nil { try await Task.sleep(for: .milliseconds(10)) }

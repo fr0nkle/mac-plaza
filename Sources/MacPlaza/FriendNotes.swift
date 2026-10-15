@@ -51,7 +51,7 @@ struct FriendNotesLayer: NSViewRepresentable {
     var onSelect: (SharedMii) -> Void
     func makeNSView(context: Context) -> FriendNotesView { FriendNotesView() }
     func updateNSView(_ view: FriendNotesView, context: Context) {
-        view.configure(scene: scene, friends: social.friends, paused: paused,
+        view.configure(scene: scene, friends: social.discordSpeechFriends, paused: paused,
                        largerText: largerText, islands: islands, reserved: reserved,
                        showPosts: showPosts, onHoldChanged: onHoldChanged,
                        journalPosts: journalPosts, maxPosts: maxPosts, onSelectJournal: onSelectJournal, onSelect: onSelect)
@@ -62,22 +62,19 @@ struct FriendNotesLayer: NSViewRepresentable {
 final class FriendNotesView: NSView {
     private let owner = UUID()
     private weak var scene: PlazaScene?
-    private var friends: [SharedMii] = []
-    private var friendPostVariations: [String: Int] = [:]
-    private var selectedVariations: [String: Int] = [:]
-    private var variationRotation: Int?
     private var candidates: [PlazaSpeechPost] = []
     private var journalPosts: [PlazaSpeechPost] = []
+    private var friends: [SharedMii] = []
+    private var discordVariation = -1
+    private var selectedFriend: (SharedMii) -> Void = { _ in }
     private var activePostIDs = Set<String>()
     private var maxPosts = 1
     private var positions: [UUID: CGPoint] = [:]
     private var buttons: [FriendNoteButton] = []
-    private var rotation = 0
     private var showPosts = false
     private var largerText = false
     private var islands: [CGPoint] = []
     private var reserved: [CGRect] = []
-    private var selected: ((SharedMii) -> Void)?
     private var selectedJournal: (UUID?) -> Void = { _ in }
     private var holdChanged: (Bool) -> Void = { _ in }
     var visibleCardCount: Int { buttons.filter { !$0.isHidden }.count }
@@ -99,37 +96,25 @@ final class FriendNotesView: NSView {
                    onHoldChanged: @escaping (Bool) -> Void = { _ in },
                    journalPost: PlazaSpeechPost? = nil, journalPosts: [PlazaSpeechPost] = [], maxPosts: Int = 1, onSelectJournal: @escaping (UUID?) -> Void = { _ in },
                    onSelect: @escaping (SharedMii) -> Void) {
-        self.scene = scene; self.friends = friends.filter { !$0.overheadText.isEmpty }
+        self.scene = scene
+        self.friends = friends; selectedFriend = onSelect
+        if showPosts && !self.showPosts { discordVariation += 1 }
         let posts = journalPost.map { [$0] } ?? journalPosts
         let limit = min(3, max(1, maxPosts))
         if showPosts != self.showPosts || posts.map(\.id) != self.journalPosts.map(\.id) || limit != self.maxPosts { activePostIDs.removeAll() }
         self.journalPosts = posts; self.maxPosts = limit; selectedJournal = onSelectJournal
-        if showPosts && !self.showPosts { rotation += 1 }
         self.showPosts = showPosts; self.largerText = largerText; self.islands = islands
-        self.reserved = reserved; selected = onSelect
+        self.reserved = reserved
         holdChanged = onHoldChanged
         chooseCandidates()
     }
     private func chooseCandidates() {
-        // Large Discord lists can exceed the crowd limit. Rotate only through
-        // Miis actually in the scene so off-plaza friends cannot create long gaps.
+        // Friend intervals include actual Discord custom statuses and games.
+        // Profile notes and generic presence strings never become candidates.
         let rendered = Set(scene?.fflCharacters.map(\.id) ?? [])
-        let visible = showPosts ? friends.filter { rendered.contains($0.avatar.id) } : []
-        let selected = visible.isEmpty ? [] : (0..<min(6, visible.count)).map { visible[(rotation + $0) % visible.count] }
-        if !selected.isEmpty, variationRotation != rotation {
-            let ids = Set(friends.map(\.id))
-            friendPostVariations = friendPostVariations.filter { ids.contains($0.key) }
-            selectedVariations = [:]
-            for friend in selected {
-                let variation = friendPostVariations[friend.id, default: 0]
-                selectedVariations[friend.id] = variation
-                friendPostVariations[friend.id] = variation + 1
-            }
-            variationRotation = rotation
-        }
         var speakers = Set<UUID>()
-        candidates = (selected.map { PlazaSpeechPost.friend($0, variation: selectedVariations[$0.id, default: 0]) } + journalPosts)
-            .filter { rendered.contains($0.speaker.id) && speakers.insert($0.speaker.id).inserted }
+        let discord = showPosts ? friends.compactMap { PlazaSpeechPost.discord($0, variation: discordVariation) } : []
+        candidates = (discord + journalPosts).filter { rendered.contains($0.speaker.id) && speakers.insert($0.speaker.id).inserted }
         activePostIDs.formIntersection(Set(candidates.map(\.id)))
         scene?.attachNotes(owner: owner, targets: candidates.map { $0.speaker.id }) { [weak self] positions in
             self?.positions = positions; self?.arrange()
@@ -190,7 +175,7 @@ final class FriendNotesView: NSView {
         PlazaUISounds.shared.play(.click)
         switch post.destination {
         case .journal(let id): selectedJournal(id)
-        case .friend(let id): if let friend = friends.first(where: { $0.id == id }) { selected?(friend) }
+        case .friend(let id): if let friend = friends.first(where: { $0.id == id }) { selectedFriend(friend) }
         }
     }
     func stop() { holdChanged(false); buttons.forEach { $0.cancelPortrait() }; scene?.detachNotes(owner: owner) }

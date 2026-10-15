@@ -11,6 +11,7 @@ enum PlazaStyle {
 
 struct PlazaView: View {
     @ObservedObject var model: PlazaModel
+    @ObservedObject private var updater = PlazaUpdater.shared
     var desktop = false
     @FocusState private var focusedApp: UUID?
     @State private var plazaZoom: CGFloat = 1
@@ -77,7 +78,8 @@ struct PlazaView: View {
                 }
                 Spacer()
                 SocialConnectionBadge(social: model.social) { model.sheet = .social }
-                PlazaButton { model.sheet = .preferences } label: { Image(systemName: "slider.horizontal.3").font(.system(size: 17 + (model.document.preferences.largerText == true ? 2 : 0))) }.buttonStyle(.plain).help("Preferences")
+                PlazaButton { model.sheet = .preferences } label: { Image(systemName: "slider.horizontal.3").font(.system(size: 17 + (model.document.preferences.largerText == true ? 2 : 0))).padding(7) }.buttonStyle(.plain)
+                    .modifier(PlazaUpdateIndicator(available: updater.updateAvailable, label: "Settings"))
             }
             HStack(spacing: 12) {
                 VStack(alignment: .leading, spacing: 3) {
@@ -339,7 +341,10 @@ struct PlazaView: View {
                 PlazaButton { model.openMiiverse() } label: {
                     Label("Miiverse", systemImage: "text.bubble")
                     Text("\(model.document.notes.count)").font(.system(size: 10 + (model.document.preferences.largerText == true ? 2 : 0), weight: .bold)).padding(.horizontal, 6).padding(.vertical, 3).background(PlazaStyle.teal.opacity(0.1), in: Capsule())
-                }
+                }.overlay(alignment: .topTrailing) {
+                    PlazaUnreadActivityBadge(count: model.social.unreadActivityCount).offset(x: 8, y: -8)
+                }.accessibilityLabel("Miiverse, \(model.social.unreadActivityCount) unread notifications")
+                    .accessibilityValue("\(model.document.notes.count) posts")
                 PlazaButton { model.sheet = .compose(nil) } label: { Label("Leave a note", systemImage: "square.and.pencil") }
                 Spacer(minLength: 8)
                 if model.pageCount > 1 {
@@ -485,36 +490,27 @@ struct BubbleView: View {
     let offset: Int
     @State private var hovering = false
     @FocusState private var focused: Bool
-    private let guides = ["Make yourself at home. Click an app to take a closer look before opening it.", "A thought, a sketch, a little spark. Share a post on Miiverse.", "These visitors live on your Mac. Give your own characters a little personality."]
     var body: some View {
-        let index = model.bubbleSelections[offset] % (model.bubbleNotes.count + guides.count)
-        let note = index < model.bubbleNotes.count ? model.bubbleNotes[index] : nil
-        let author = note.map { model.noteAvatar($0) } ?? model.document.primaryAvatar
-        let large = model.document.preferences.largerText == true
-        PlazaButton { model.openMiiverse(note: note?.id) } label: {
-            HStack(alignment: .center, spacing: 9) {
-                MiiHeadIcon(avatar: author).frame(width: 42, height: 42)
-                if let note, !note.drawing.isEmpty {
-                    InkCanvas(strokes: note.drawing).scaledToFit().frame(maxHeight: 65).accessibilityHidden(true)
-                } else {
-                    Text(note?.text ?? guides[index - model.bubbleNotes.count])
-                        .font(.system(size: large ? 14 : 12, design: .rounded))
-                        .foregroundStyle(PlazaPostStyle.text).lineSpacing(2).lineLimit(3)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                }
-            }.padding(.horizontal, 12).padding(.top, 13).padding(.bottom, 18)
-                .frame(maxWidth: .infinity).frame(height: 108)
-                .modifier(PlazaPostSurface(tailX: 30))
-                .overlay(alignment: .topLeading) {
-                    PlazaNameTab(name: note?.author ?? "Plaza Guide", large: large).padding(.leading, 10).offset(y: -7)
-                }
-        }.buttonStyle(.plain).focused($focused)
-            .help("Open Miiverse")
-            .accessibilityLabel("\(note?.author ?? "Plaza Guide"): \(note.map { $0.drawing.isEmpty ? $0.text : $0.drawingDescription } ?? guides[index - model.bubbleNotes.count])")
-            .accessibilityHint("Open this post in the Miiverse")
-            .onHover { hovering = $0; model.holdBubble(offset, held:hovering || focused) }
-            .onChange(of: focused) { _, value in model.holdBubble(offset, held:hovering || value) }
-            .onDisappear { model.holdBubble(offset, held:false) }
+        if let post = model.journalPost(at: offset) {
+            let large = model.document.preferences.largerText == true
+            PlazaButton { if case .journal(let id) = post.destination { model.openMiiverse(note: id) } } label: {
+                HStack(alignment: .center, spacing: 9) {
+                    MiiHeadIcon(avatar: post.speaker).frame(width: 42, height: 42)
+                    if !post.drawing.isEmpty {
+                        InkCanvas(strokes: post.drawing).scaledToFit().frame(maxHeight: 65).accessibilityHidden(true)
+                    } else {
+                        Text(post.text).font(.system(size: large ? 14 : 12, design: .rounded))
+                            .foregroundStyle(PlazaPostStyle.text).lineSpacing(2).lineLimit(3).frame(maxWidth: .infinity, alignment: .leading)
+                    }
+                }.padding(.horizontal, 12).padding(.top, 13).padding(.bottom, 18)
+                    .frame(maxWidth: .infinity).frame(height: 108).modifier(PlazaPostSurface(tailX: 30))
+                    .overlay(alignment: .topLeading) { PlazaNameTab(name: post.name, large: large).padding(.leading, 10).offset(y: -7) }
+            }.buttonStyle(.plain).focused($focused).help("Open Miiverse")
+                .accessibilityLabel("\(post.name): \(post.accessibleText)").accessibilityHint("Open this post in the Miiverse")
+                .onHover { hovering = $0; model.holdBubble(offset, held: hovering || focused) }
+                .onChange(of: focused) { _, value in model.holdBubble(offset, held: hovering || value) }
+                .onDisappear { model.holdBubble(offset, held: false) }
+        }
     }
 }
 

@@ -137,7 +137,9 @@ final class AutomaticMusicTests: XCTestCase {
         model.otherAudioActive = false
         XCTAssertTrue(model.audio.isBackgroundPlaying)
         model.windowVisible = true
-        try model.audio.preview(try XCTUnwrap(PlazaAudio.soundtrackURL), track: .plaza, volume: 0)
+        let preview = root.appendingPathComponent("Preview.wav")
+        try PlazaAudio.loop().write(to: preview)
+        try model.audio.preview(preview, track: .plaza, volume: 0)
         XCTAssertNotNil(model.audio.previewTrack)
         model.otherAudioActive = true
         XCTAssertNil(model.audio.previewTrack)

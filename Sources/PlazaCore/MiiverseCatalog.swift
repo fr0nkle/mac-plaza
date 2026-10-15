@@ -26,6 +26,23 @@ public struct MiiverseSection: Identifiable, Sendable {
 public struct MiiverseCatalog: Sendable {
     public let entries: [MiiverseEntry]
     public let sections: [MiiverseSection]
+    public var communities: [MiiverseSection] {
+        sections.filter { !["all", "mine", "friends", "public"].contains($0.id) }
+    }
+    /// Plaza is pinned. Real post engagement and caller-supplied existing app
+    /// activity rank the rest; equal scores shuffle only when requested.
+    public func orderedCommunities<R: RandomNumberGenerator>(popularity: [String: Int] = [:], using random: inout R) -> [MiiverseSection] {
+        var scores = popularity
+        for entry in entries where entry.sectionID != "plaza" {
+            scores[entry.sectionID, default: 0] += 1 + max(0, entry.likeCount) + (entry.note.replies?.count ?? 0)
+        }
+        let shuffled = communities.filter { $0.id != "plaza" }.shuffled(using: &random)
+        let ranks = Dictionary(uniqueKeysWithValues: shuffled.enumerated().map { ($0.element.id, $0.offset) })
+        return communities.filter { $0.id == "plaza" } + shuffled.sorted {
+            let lhs = scores[$0.id, default: 0], rhs = scores[$1.id, default: 0]
+            return lhs == rhs ? ranks[$0.id]! < ranks[$1.id]! : lhs > rhs
+        }
+    }
     public static func topicID(_ topic: SharedNoteTopic) -> String {
         topic.steamAppID.map { "steam:\($0)" } ?? "bundle:" + topic.bundleID
     }

@@ -59,6 +59,7 @@ final class PlazaMusicLibrary: ObservableObject {
         case .settings: return "System Settings · Wii U"
         case .writing: return "Writing Notes · Wii U Chat"
         case .miiverse: return "Miiverse · Wii U"
+        case .miiverseAlternate: return "eShop (July 2014) · Wii U"
         }
     }
     func choose(for track: PlazaAudio.Track) {
@@ -92,7 +93,7 @@ final class PlazaMusicLibrary: ObservableObject {
         if let selection = selections.removeValue(forKey: track.rawValue) { try? FileManager.default.removeItem(at: selection.url) }
     }
     func discardSelections() {
-        for track in [PlazaAudio.Track.plaza, .maker, .friends, .settings, .writing, .miiverse] {
+        for track in [PlazaAudio.Track.plaza, .maker, .friends, .settings, .writing, .miiverse, .miiverseAlternate] {
             discardSelection(for: track)
         }
         try? FileManager.default.removeItem(at: previewDirectory)

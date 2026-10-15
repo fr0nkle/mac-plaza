@@ -120,11 +120,7 @@ struct FriendsMenuView: View {
                         Label(activity.label, systemImage: activity.source == "discord" ? "gamecontroller" : "app")
                             .font(.callout).foregroundStyle(.secondary)
                     }
-                    if !friend.note.isEmpty {
-                        Text(friend.note).font(.callout).textSelection(.enabled)
-                            .padding(16).frame(maxWidth: .infinity)
-                            .background(.white.opacity(0.65), in: RoundedRectangle(cornerRadius: 18))
-                    }
+                    FriendMiiversePostsView(model: model, social: social, friend: friend)
                     assignment(for: friend)
                 }.padding(.horizontal, 28).padding(.vertical, 18)
             }

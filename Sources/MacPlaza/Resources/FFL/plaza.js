@@ -211,7 +211,8 @@ function featureIcon(a,feature,w=144,h=96){
     const box=new THREE.Box3().setFromObject(isolated),size=box.getSize(new THREE.Vector3()),center=box.getCenter(new THREE.Vector3());
     if(box.isEmpty())return;
     const half=Math.max(size.y/2,size.x*h/w/2,.001)*1.35;
-    const view=new THREE.OrthographicCamera(-half*w/h,half*w/h,half,-half,.01,1000);
+    // FFL mask parts use a downward Y axis; real nose geometry uses world Y.
+    const view=new THREE.OrthographicCamera(-half*w/h,half*w/h,isNose?half:-half,isNose?-half:half,.01,1000);
     view.position.set(center.x,center.y,box.max.z+100);view.lookAt(center);view.updateProjectionMatrix();
     const target=renderer.getRenderTarget();
     try{renderer.setRenderTarget(null);renderer.clear();originalRender(isolated,view);result=renderer.domElement.toDataURL('image/png');}

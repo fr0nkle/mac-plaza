@@ -1,9 +1,9 @@
-# Testing preview — Mac Plaza 0.21
+# Testing preview — Mac Plaza 0.23
 
 The repository and current GitHub release are public at https://github.com/fr0nkle/mac-plaza.
 Send https://plaza.squidproductions.org to your tester. Its download buttons point
 directly to GitHub release assets and work while the hosting Mac is asleep or off.
-The current installer is `Mac-Plaza-0.21.0.dmg`. It contains the installer,
+The current installer is `Mac-Plaza-0.23.0.dmg`. It contains the installer,
 the app for drag-to-Applications installation, instructions, and corresponding source.
 The tester needs an Apple silicon Mac and macOS 15 or later. They do not need Python,
 GitHub, Developer Portal access, bot tokens, or a Plaza invitation code.

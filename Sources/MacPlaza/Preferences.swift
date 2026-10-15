@@ -4,6 +4,7 @@ import PlazaCore
 
 struct PreferencesView: View {
     @ObservedObject var model: PlazaModel
+    @ObservedObject private var updater = PlazaUpdater.shared
     let fillsOverlay: Bool
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var selectedCategory: SettingsCategory?
@@ -76,7 +77,7 @@ struct PreferencesView: View {
             ScrollView {
                 LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 16), count: 3), spacing: 16) {
                     ForEach(SettingsCategory.allCases) { category in
-                        SettingsCategoryTile(category: category, height: tileHeight) { selectedCategory = category }
+                        SettingsCategoryTile(category: category, height: tileHeight, select: { selectedCategory = category }, updateAvailable: updater.updateAvailable)
                     }
                 }.padding(26)
             }.scrollIndicators(.hidden)

@@ -113,6 +113,7 @@ public struct Preferences: Codable, Equatable, Sendable {
     public var settingsMusicVolume: Double?
     public var writingMusicVolume: Double?
     public var miiverseMusicVolume: Double?
+    public var miiverseAlternateTheme: Bool?
     public var uiSoundEffects: Bool?
     public var uiSoundVolume: Double?
     public var rotatingHomeScreen: Bool?

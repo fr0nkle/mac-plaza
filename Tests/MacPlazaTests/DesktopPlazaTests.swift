@@ -296,7 +296,7 @@ final class DesktopPlazaTests: XCTestCase {
         model.sessionActive = true
 
         let documentBeforeNotes = model.document
-        for (sheet, identifier) in [(PlazaSheet.compose(nil), "MacPlazaDesktopWriteNote"), (.activity, "MacPlazaDesktopActivity"), (.miiverse, "MacPlazaDesktopMiiverse")] {
+        for (sheet, identifier) in [(PlazaSheet.compose(nil), "MacPlazaDesktopWriteNote"), (.activity, "MacPlazaDesktopActivity")] {
             model.sheet = sheet
             let panel = try XCTUnwrap(controller.menuWindow)
             XCTAssertEqual(panel.identifier?.rawValue, identifier)
@@ -312,6 +312,17 @@ final class DesktopPlazaTests: XCTestCase {
             XCTAssertNil(controller.menuWindow)
             XCTAssertTrue(model.desktopInteractive)
         }
+
+        model.sheet = .miiverse
+        XCTAssertNil(controller.menuWindow, "Miiverse has its own resizable window")
+        XCTAssertNotNil(model.miiverseWindow.window)
+        XCTAssertFalse(main.isVisible)
+        XCTAssertTrue(controller.window === wallpaper)
+        model.desktopVisible = true
+        XCTAssertTrue(model.isMoving)
+        model.sheet = nil
+        XCTAssertFalse(main.isVisible)
+        XCTAssertTrue(model.desktopInteractive)
 
         model.sheet = .preferences
         XCTAssertFalse(model.desktopInteractive)

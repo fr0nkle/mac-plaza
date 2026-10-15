@@ -97,6 +97,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
         guard let model else { return .terminateNow }
         model.desktop.shutdown()
+        model.birthdayCelebration.dismiss()
+        model.miiverseWindow.close()
         Task { model.social.setActive(false); await model.flush(); try? await model.storage.endSession(); sender.reply(toApplicationShouldTerminate: true) }
         return .terminateLater
     }

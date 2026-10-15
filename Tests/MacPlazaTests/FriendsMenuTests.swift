@@ -110,11 +110,12 @@ final class FriendsMenuTests: XCTestCase {
     }
 
     @MainActor func testBundledFriendsMusicIsPlayableAndVolumeIsBackwardCompatible() throws {
-        let url = try XCTUnwrap(PlazaAudio.soundtrackURL(for: .friends))
-        let player = try AVAudioPlayer(contentsOf: url)
-        XCTAssertTrue(player.prepareToPlay())
-        XCTAssertGreaterThan(player.duration, 140)
-        XCTAssertLessThan(player.duration, 155)
+        if let url = PlazaAudio.soundtrackURL(for: .friends) {
+            let player = try AVAudioPlayer(contentsOf: url)
+            XCTAssertTrue(player.prepareToPlay())
+            XCTAssertGreaterThan(player.duration, 140)
+            XCTAssertLessThan(player.duration, 155)
+        }
         let legacy = try JSONDecoder().decode(PlazaCore.Preferences.self,
             from: Data("{\"population\":160,\"pauseMotion\":false,\"pausePosts\":false,\"privatePresentation\":false,\"safeMode\":false}".utf8))
         XCTAssertNil(legacy.friendsMusicVolume)

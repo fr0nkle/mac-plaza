@@ -322,9 +322,6 @@ private struct DesktopMenuRoot:View {
                 } else if model.sheet?.id == "activity" {
                     PlazaActivityView(model: model, social: model.social, onClose: { model.sheet = nil })
                         .scaleEffect(min(1, proxy.size.width/660, proxy.size.height/640))
-                } else if model.sheet?.id == "miiverse" {
-                    MiiverseView(model: model, onClose: { model.sheet = nil })
-                        .scaleEffect(min(1, proxy.size.width/960, proxy.size.height/720))
                 } else {
                     Group {
                         if model.sheet?.id == "friends" {
@@ -387,10 +384,10 @@ struct WallpaperCompanionView: View {
 struct PlazaPanels: ViewModifier {
     @ObservedObject var model: PlazaModel
     func body(content: Content) -> some View {
-        content.sheet(item: Binding(get:{model.wallpaperEnabled && model.sheet?.isFloatingMenu == true ? nil:model.sheet},set:{value in
+        content.sheet(item: Binding(get:{model.sheet?.id == "miiverse" || (model.wallpaperEnabled && model.sheet?.isFloatingMenu == true) ? nil:model.sheet},set:{value in
             // Dismissing a previous companion sheet must not close the menu
             // panel that has just replaced it.
-            if model.wallpaperEnabled && model.sheet?.isFloatingMenu == true {return}
+            if model.sheet?.id == "miiverse" || (model.wallpaperEnabled && model.sheet?.isFloatingMenu == true) {return}
             model.sheet=value
         })) { sheet in
             Group {

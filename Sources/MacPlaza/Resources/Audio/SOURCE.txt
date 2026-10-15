@@ -73,3 +73,11 @@ Click and back interface effects (local 0.20.1):
 User-supplied original Wii U PCM recordings in Audio/UI.
 See UI/SOURCE.txt for numbered source filenames and exact SHA-256 checksums.
 Independent one-shot playback and volume; music playback is untouched.
+
+Alternate Miiverse theme, supplied by the user on 15 October 2026:
+eShop (July 2014) - Wii U System Music Extended.mp3
+Reference: https://youtu.be/OVZ7EaqplsI (TB)
+Converted locally to miiverse-alternate.m4a (AAC, stereo 44.1 kHz) for the existing offline player. Approximately 30:01; original timing and pitch preserved.
+Uploaded MP3 SHA-256: 8b61fcd2e09f48c2d3d806363c17c5d5b7245a109d803751fce3756afe16c757
+Local M4A SHA-256: 3da1e7f9456b385dc636f8da83aee44bbfe34578b0132c1b25b8fb0b98bba844
+Local review asset only; ignored by Git and removed by the existing distribution-build filter. No redistribution rights inferred from the upload.

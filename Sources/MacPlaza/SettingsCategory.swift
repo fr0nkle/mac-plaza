@@ -61,6 +61,7 @@ struct SettingsCategoryTile: View {
     let category: SettingsCategory
     let height: CGFloat
     let select: () -> Void
+    var updateAvailable = false
     @State private var hovered = false
     @FocusState private var focused: Bool
 
@@ -81,7 +82,8 @@ struct SettingsCategoryTile: View {
             .shadow(color: .black.opacity(hovered || focused ? 0.12 : 0.06), radius: 5, y: 4)
             .contentShape(RoundedRectangle(cornerRadius: 19))
         }.buttonStyle(.plain).focused($focused).onHover { hovered = $0 }
-            .accessibilityLabel("\(category.title) settings").help(category.subtitle)
+            .overlay(alignment: .topTrailing) { if category == .updates { PlazaUpdateBadge(available: updateAvailable).padding(9) } }
+            .accessibilityLabel("\(category.title) settings" + (category == .updates && updateAvailable ? ", update available" : "")).help(category.subtitle)
     }
 }
 

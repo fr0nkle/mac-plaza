@@ -1243,3 +1243,10 @@ Regression checks cover notification services, repeated Discord-like chimes, sus
 ## Consolidated Mac-only release — 14 October 2026
 
 Version 0.21.0 (build 35) gathers today’s Mac work. Historical Windows notes above describe local experiments; Windows distribution and its release workflow remain removed from GitHub and the public website. The Mac release includes direct Discord authorization and encrypted account-scoped offline delivery. Its live outage check loaded 226 friends after direct sign-in and after a cold start with the service address unreachable. The shared service and bot have not been migrated to an always-on host or to peer-to-peer hosting. The public preview deliberately retains ad-hoc signing while Apple enrollment is pending, with an explicit preview verification path; the default Developer ID publishing guard remains active.
+
+
+## Miiverse window, Discord speech and birthday effects — 15 October 2026
+
+Version 0.23.0 (build 38) opens Miiverse in its own resizable native window. Reference-inspired navigation keeps Activity Feed as all accessible posts, pins The Plaza first and ranks/shuffles app communities using existing activity data. User Menu retains existing Discord linking and adds primary-Mii month/day editing and independent alternate-theme preview/import/toggle controls. Friend profiles show authored Miiverse posts; linked, random and assigned Discord friend Miis use real status, current/recent game activity and authored posts rather than legacy profile notes. No authentication grants or system permissions change.
+
+Facial customization masks use upright FFL texture coordinates. Birthday glitter is click-through, brief, suppressed behind full-screen/presenting apps, once per year and reduced-motion aware. Activity bell/counts remain intact; the Sparkle available-update callback controls a Settings/System Update badge. Public app and source archives exclude local Nintendo recordings, including the uploaded alternate song.

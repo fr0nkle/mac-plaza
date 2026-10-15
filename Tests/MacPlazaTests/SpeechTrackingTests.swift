@@ -108,8 +108,12 @@ final class SpeechTrackingTests: XCTestCase {
         scene.configure(avatars: [first.avatar, second.avatar], population: 2)
         let view = FriendNotesView(frame: CGRect(x: 0, y: 0, width: 1280, height: 720))
         defer { view.stop() }
+        let posts = [second, first].map { friend in
+            PlazaSpeechPost(id: friend.id, speaker: friend.avatar, name: friend.displayName,
+                text: "An actual Miiverse post", destination: .journal(UUID()))
+        }
         view.configure(scene: scene, friends: [first, second], paused: false, largerText: false,
-                       islands: [], reserved: [], onSelect: { _ in })
+                       islands: [], reserved: [], journalPosts: posts, onSelect: { _ in })
         scene.acceptFFLAnchors([[0, 0.4, 0.7], [1, 0.6, 0.7]])
         let initial = try XCTUnwrap(view.visiblePosts.first)
         XCTAssertEqual(initial.speakerID, second.avatar.id)
@@ -135,17 +139,17 @@ final class SpeechTrackingTests: XCTestCase {
         note.shared = false
         model.document.notes = [note]
         model.bubbleSelections[0] = 0
-        XCTAssertEqual(model.journalPost().speaker.id, author.id)
+        XCTAssertEqual(model.journalPost()?.speaker.id, author.id)
         model.document.avatars.removeAll { $0.id == author.id }
-        XCTAssertEqual(model.journalPost().speaker.id, author.id)
-        XCTAssertNotEqual(model.journalPost().speaker.id, model.document.primaryAvatar.id)
+        XCTAssertEqual(model.journalPost()?.speaker.id, author.id)
+        XCTAssertNotEqual(model.journalPost()?.speaker.id, model.document.primaryAvatar.id)
         model.bubbleSelections[0] = 1
-        XCTAssertEqual(model.journalPost().speaker.id, model.document.primaryAvatar.id)
+        XCTAssertEqual(model.journalPost()?.speaker.id, author.id, "Selection wraps only through real authored notes")
         await model.flush()
         try await model.storage.endSession()
     }
 
-    func testBatchKeepsAuthoredNotesWithTheirSpeakersAndUsesDistinctGuides() async throws {
+    func testBatchKeepsOnlyAuthoredNotesWithTheirSpeakers() async throws {
         _ = NSApplication.shared
         let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         let model = PlazaModel(directory: root)
@@ -158,7 +162,7 @@ final class SpeechTrackingTests: XCTestCase {
         XCTAssertTrue(model.mutate { $0.avatars += [secondary,guide]; $0.notes = [privateNote,publicNote] })
         let original = model.document
         let posts = model.journalPosts()
-        XCTAssertGreaterThanOrEqual(posts.count, 3)
+        XCTAssertEqual(posts.count, 2)
         XCTAssertLessThanOrEqual(posts.count, 6)
         XCTAssertEqual(Set(posts.map { $0.speaker.id }).count, posts.count)
         XCTAssertEqual(posts.first { $0.id == privateNote.id.uuidString }?.speaker.id, secondary.id)
@@ -198,9 +202,7 @@ final class SpeechTrackingTests: XCTestCase {
         }
         let notes = try XCTUnwrap(layer)
         let first = try XCTUnwrap(notes.visiblePosts.first)
-        // The planner may show a guide when the author's overhead space is
-        // blocked. Verify the displayed post's own speaker, then follow that
-        // same identity throughout the live interval.
+        // Follow the authored post’s own speaker throughout the live interval.
         let expectedSpeaker = try XCTUnwrap(model.journalPosts().first { $0.id == first.id }).speaker.id
         XCTAssertEqual(first.speakerID, expectedSpeaker)
         XCTAssertLessThan(first.frame.maxY, first.head.y)

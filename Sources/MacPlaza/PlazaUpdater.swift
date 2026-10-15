@@ -11,12 +11,15 @@ final class PlazaUpdater: NSObject, ObservableObject, SPUUpdaterDelegate {
     @Published private(set) var signedIn = false
     @Published private(set) var automaticChecks = false
     @Published private(set) var automaticDownloads = false
+    @Published private(set) var availability = PlazaUpdateAvailability()
+    var updateAvailable: Bool { signedIn && availability.available }
     private var endpoint: URL?
     private var started = false
     private var observations: Set<AnyCancellable> = []
     private lazy var controller = SPUStandardUpdaterController(startingUpdater: false, updaterDelegate: self, userDriverDelegate: nil)
 
     func configure(endpoint: URL?, token: String?) {
+        if self.endpoint != endpoint || token == nil { availability.clear() }
         self.endpoint = endpoint
         signedIn = endpoint != nil && token != nil
         controller.updater.httpHeaders = token.map { ["Authorization": "Bearer " + $0] }
@@ -38,6 +41,15 @@ final class PlazaUpdater: NSObject, ObservableObject, SPUUpdaterDelegate {
     func updater(_ updater: SPUUpdater, mayPerform updateCheck: SPUUpdateCheck) throws {
         if !signedIn { throw NSError(domain: "MacPlaza.Updates", code: 1, userInfo: [NSLocalizedDescriptionKey: "Connect Discord to check for private testing updates."]) }
     }
+    func updater(_ updater: SPUUpdater, didFindValidUpdate item: SUAppcastItem) {
+        guard signedIn else { availability.clear(); return }
+        availability.found(version: item.versionString, displayVersion: item.displayVersionString,
+            installedVersion: Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? "",
+            downloadURL: item.isInformationOnlyUpdate ? nil : item.fileURL, source: endpoint)
+    }
+    func updaterDidNotFindUpdate(_ updater: SPUUpdater) { availability.clear() }
+    func updaterDidNotFindUpdate(_ updater: SPUUpdater, error: Error) { availability.clear() }
+    func updater(_ updater: SPUUpdater, didAbortWithError error: Error) { availability.clear() }
     func updater(_ updater: SPUUpdater, willDownloadUpdate item: SUAppcastItem, with request: NSMutableURLRequest) {
         guard let endpoint, let url = request.url, url.scheme == endpoint.scheme,
               url.host == endpoint.host, url.port == endpoint.port, url.path.hasPrefix("/updates/") else {
@@ -59,9 +71,35 @@ struct UpdateSettingsView: View {
             Toggle("Automatically download and install updates", isOn: Binding(get: { updater.automaticDownloads }, set: updater.setAutomaticDownloads))
                 .disabled(!updater.automaticChecks)
             PlazaButton("Check for Updates…", action: updater.check).disabled(!updater.canCheck)
+            if updater.updateAvailable {
+                Label("Mac Plaza \(updater.availability.displayVersion ?? "") is available to download.", systemImage: "arrow.down.circle.fill")
+                    .font(.callout.weight(.semibold)).foregroundStyle(PlazaStyle.teal)
+            }
             Text(updater.signedIn ? "Updates come from the private testing channel and are verified before installation. Your Miis and settings stay on this Mac." : "Connect Discord to enable private testing updates.")
                 .font(.caption).foregroundStyle(.secondary)
         }
+    }
+}
+
+struct PlazaUpdateBadge: View {
+    var available: Bool
+    var body: some View {
+        if available {
+            Text("!").font(.system(size: 11, weight: .bold)).foregroundStyle(.white)
+                .frame(width: 19, height: 19).background(.red, in: Circle())
+                .overlay(Circle().strokeBorder(.white, lineWidth: 1.5))
+                .allowsHitTesting(false).accessibilityHidden(true)
+        }
+    }
+}
+
+struct PlazaUpdateIndicator: ViewModifier {
+    var available: Bool
+    var label: String
+    func body(content: Content) -> some View {
+        content.overlay(alignment: .topTrailing) { PlazaUpdateBadge(available: available).padding(3) }
+            .accessibilityLabel(label + (available ? ", update available" : ""))
+            .help(available ? "A new Mac Plaza update is available. Open System Update in Settings." : label)
     }
 }
 

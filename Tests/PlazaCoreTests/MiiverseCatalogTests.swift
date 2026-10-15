@@ -2,6 +2,24 @@ import XCTest
 @testable import PlazaCore
 
 final class MiiverseCatalogTests: XCTestCase {
+    func testPopularCommunitiesPinPlazaAndShuffleOnlyTiesWithoutFilteringFeed() {
+        let author = Avatar()
+        let apps = (0..<6).map { AppIsland(label: "App \($0)", bundleID: "app.\($0)") }
+        let notes = [LocalNote(authorID: author.id, author: author.name, appID: apps[3].id, text: "A popular app post"),
+                     LocalNote(authorID: author.id, author: author.name, appID: nil, text: "A plaza post")]
+        let catalog = MiiverseCatalog(notes: notes, apps: apps, shared: [], accountID: nil)
+        var random = SeededRandom(seed: 72)
+        let first = catalog.orderedCommunities(popularity: ["bundle:app.2": 20], using: &random)
+        XCTAssertEqual(first.first?.id, "plaza")
+        XCTAssertEqual(first[1].id, "bundle:app.2")
+        XCTAssertEqual(first[2].id, "bundle:app.3")
+        XCTAssertEqual(Set(first.map(\.id)), Set(catalog.communities.map(\.id)))
+        var arrangements = Set<[String]>()
+        for _ in 0..<12 { arrangements.insert(catalog.orderedCommunities(using: &random).map(\.id)); XCTAssertEqual(catalog.orderedCommunities(using: &random).first?.id, "plaza") }
+        XCTAssertGreaterThan(arrangements.count, 1)
+        XCTAssertEqual(catalog.filtered(section: "all", query: "", sort: .newest).count, 2)
+        XCTAssertEqual(notes.count, 2)
+    }
     func testNewPostDraftsDefaultToPublicAndKeepAnExplicitPrivateChoice() throws {
         XCTAssertTrue(NoteDraft().isPublic)
         let oldDraft = try JSONDecoder().decode(NoteDraft.self, from: Data(#"{"text":"Unfinished","drawing":[],"description":""}"#.utf8))

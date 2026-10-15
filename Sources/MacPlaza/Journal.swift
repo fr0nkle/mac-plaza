@@ -160,17 +160,18 @@ struct DrawingPad: View {
     }
 }
 
-struct MiiverseView: View {
+struct MiiversePostsView: View {
     @ObservedObject var model: PlazaModel
     var authorID: UUID?
-    var onClose: (() -> Void)?
-    @Environment(\.dismiss) private var dismiss
+    @Binding var section: String
+    var onBack: () -> Void
+    var onAccount: () -> Void
+    var onActivity: () -> Void
     @State private var query = ""
     @State private var composing = false
     @State private var editing: LocalNote?
     @State private var deleted: LocalNote?
     @State private var replyTo: LocalNote?
-    @State private var section = "all"
     @State private var sort = MiiverseSort.newest
     var body: some View {
         let catalog = model.miiverseCatalog
@@ -178,24 +179,27 @@ struct MiiverseView: View {
         let entries = catalog.filtered(section: selected.id, query: query, sort: sort).filter { authorID == nil || $0.note.authorID == authorID }
         let labels = Dictionary(uniqueKeysWithValues: catalog.entries.map { ($0.id, $0.sectionLabel) })
         let ownIDs = Set(catalog.entries.filter(\.own).map(\.id))
-        HStack(spacing: 0) {
-            sidebar(catalog, selected: selected.id); Divider()
-            posts(notes: entries.map(\.note), labels: labels, ownIDs: ownIDs, selected: selected)
-        }.frame(width: 960, height: 720).background(PlazaStyle.paper)
+        posts(notes: entries.map(\.note), labels: labels, ownIDs: ownIDs, selected: selected)
+            .frame(maxWidth: .infinity, maxHeight: .infinity).background(PlazaStyle.paper)
             .sheet(isPresented: $composing) { NoteComposer(model: model, appID: selected.appID) }
             .sheet(item: $editing) { note in NoteComposer(model: model, existing: note) }
             .sheet(item:$replyTo) { note in ReplyComposer(model:model,noteID:note.id) }
     }
     private func posts(notes: [LocalNote], labels: [UUID: String], ownIDs: Set<UUID>, selected: MiiverseSection) -> some View {
         VStack(spacing: 0) {
-            SheetHeader(title: "Miiverse", subtitle: "\(selected.label) · \(notes.count) posts · The Plaza community") {
-                if let onClose { onClose() } else { dismiss() }
+            if selected.id != "all" {
+                HStack {
+                    PlazaButton(action: onBack) { Label("Communities", systemImage: "chevron.left") }
+                    Spacer()
+                    Text("\(selected.label) · \(notes.count) posts").font(.headline)
+                    Spacer()
+                }.padding(18)
             }
             if !model.social.hasSession {
                 HStack {
                     Text("Sign in with Discord to browse Public and Friends Only posts.").font(.caption).foregroundStyle(.secondary)
                     Spacer()
-                    PlazaButton("Connect Discord") { model.sheet = .social }
+                    PlazaButton("Connect Discord", action: onAccount)
                 }.padding(.horizontal, 18).padding(.top, 12)
             }
             HStack {
@@ -205,6 +209,7 @@ struct MiiverseView: View {
                         .labelsHidden().frame(width: 120).accessibilityLabel("Sort notes")
                     PlazaButton { Task { await model.social.refresh() } } label: { Image(systemName: "arrow.clockwise") }
                         .accessibilityLabel("Refresh Miiverse").help("Refresh shared notes")
+                    PlazaMiiverseActivityButton(social: model.social, onOpen: onActivity)
                 }
                 PlazaButton { composing = true } label: { Label("New Post", systemImage: "plus") }.buttonStyle(.borderedProminent).tint(PlazaStyle.teal).disabled(model.document.notes.count >= 200)
             }.padding(18)
@@ -268,11 +273,6 @@ struct MiiverseView: View {
                             .overlay(alignment: .topLeading) { PlazaNameTab(name: model.noteDisplayName(note), large: true).padding(.leading, 18).offset(y: -9) }
                             .padding(.top, 9).id(note.id)
                     }
-                    VStack(alignment: .leading, spacing: 7) {
-                        Label("Plaza Guide", systemImage: "sparkle").font(.caption).foregroundStyle(PlazaStyle.teal)
-                        Text(model.social.journalSyncMessage).font(.caption).foregroundStyle(.secondary)
-                        Text("Public posts, likes and replies are visible to everyone signed in with Discord. Friends Only posts stay with authorized friends. Private notes, drafts and local replies stay on this Mac. Connect Discord to access shared Miiverse posts; delivery retries when connected.").font(.callout).foregroundStyle(.secondary)
-                    }.padding(18)
                 }.padding(.horizontal, 18).padding(.bottom, 18)
               }.background(PlazaStyle.paper)
                .task(id: model.selectedNoteID) {
@@ -297,52 +297,13 @@ struct MiiverseView: View {
                     Text("\(Int((model.document.preferences.miiverseMusicVolume ?? 0.10) * 100))%")
                         .font(.caption).monospacedDigit().frame(width: 34)
                     Spacer()
-                    Text("\(model.music.title(for: .miiverse)) · On this Mac").font(.caption).foregroundStyle(.secondary).lineLimit(1)
+                    Text("\(model.music.title(for: model.miiverseMusicTrack)) · On this Mac").font(.caption).foregroundStyle(.secondary).lineLimit(1)
                 }.padding(14)
             }
             Divider()
             Text(NoteRetention.disclaimer).font(.caption).foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true).padding(.horizontal, 18).padding(.vertical, 10)
         }.frame(maxWidth: .infinity, maxHeight: .infinity).background(PlazaStyle.paper)
-    }
-    private func sidebar(_ catalog: MiiverseCatalog, selected: String) -> some View {
-        VStack(alignment: .leading, spacing: 0) {
-            Label("Miiverse", systemImage: "bubble.left.and.bubble.right.fill")
-                .font(.system(size: 23, weight: .bold, design: .rounded)).foregroundStyle(PlazaStyle.teal).padding(20)
-            ScrollView {
-                VStack(alignment: .leading, spacing: 6) {
-                    ForEach(Array(catalog.sections.prefix(5))) { item in sectionButton(item, selected: selected) }
-                    Text("APP COMMUNITIES").font(.system(size: 10, weight: .bold)).foregroundStyle(.secondary).padding(.top, 18).padding(.horizontal, 10)
-                    ForEach(Array(catalog.sections.dropFirst(5))) { item in sectionButton(item, selected: selected) }
-                }.padding(.horizontal, 12).padding(.bottom, 16)
-            }
-            Text("Public posts are for everyone signed in with Discord. Friends Only and Private remain available.")
-                .font(.caption).foregroundStyle(.secondary).padding(18)
-            PlazaButton { NSWorkspace.shared.open(BugReport.emailURL()) } label: {
-                Label("Report a Bug", systemImage: "ladybug")
-            }.font(.caption).buttonStyle(.plain).foregroundStyle(PlazaStyle.teal)
-                .padding(.horizontal, 18).padding(.bottom, 18)
-                .help("Email alexanderhosier@squidproductions.org")
-        }.frame(width: 225).background(PlazaStyle.teal.opacity(0.04))
-    }
-    private func sectionButton(_ item: MiiverseSection, selected: String) -> some View {
-        PlazaButton { section = item.id } label: {
-            HStack(spacing: 8) {
-                if let id = item.appID, let app = model.topicApps.first(where: { $0.id == id }) {
-                    Image(nsImage: model.icon(app)).resizable().scaledToFit()
-                        .frame(width: 24, height: 24).accessibilityHidden(true)
-                } else {
-                    Image(systemName: item.id == "all" ? "square.grid.2x2" : item.id == "mine" ? "person.crop.circle" : item.id == "friends" ? "person.2" : item.id == "plaza" ? "sun.max" : item.id == "public" ? "globe" : "app")
-                        .frame(width: 24, height: 24).accessibilityHidden(true)
-                }
-                Text(item.label).lineLimit(2).multilineTextAlignment(.leading)
-                Spacer(minLength: 0)
-                Text(String(item.count)).font(.caption).monospacedDigit().foregroundStyle(.secondary)
-            }.font(.system(size: 13, weight: selected == item.id ? .semibold : .regular))
-                .padding(10).frame(maxWidth: .infinity, alignment: .leading)
-                .background(selected == item.id ? PlazaStyle.teal.opacity(0.12) : .clear, in: RoundedRectangle(cornerRadius: 10))
-        }.buttonStyle(.plain).foregroundStyle(PlazaStyle.ink)
-            .accessibilityLabel(item.label).accessibilityValue("\(item.count) notes\(selected == item.id ? ", selected" : "")")
     }
     private func exportDrawing(_ note: LocalNote) {
         let panel = NSSavePanel(); panel.allowedContentTypes = [.png]; panel.nameFieldStringValue = "Plaza Drawing.png"
@@ -443,7 +404,6 @@ struct CharacterProfileView: View {
     let avatar:Avatar
     @Environment(\.dismiss) private var dismiss
     @State private var angle:CGFloat=0
-    @State private var journal=false
     @State private var editing=false
     private var saved:Bool { model.document.avatars.contains(where:{$0.id==avatar.id}) }
     var body: some View {
@@ -452,12 +412,10 @@ struct CharacterProfileView: View {
             if model.document.preferences.safeMode { Image(nsImage:AvatarArtwork.face(avatar)).resizable().scaledToFit().frame(height:260) }
             else { CharacterPreview(avatar:avatar,angle:angle,pose:3).frame(height:260).gesture(DragGesture().onChanged { angle=CGFloat($0.translation.width)*0.015 }) }
             if saved {
-                Text("\(model.document.notes.filter { $0.authorID==avatar.id }.count) local notes").foregroundStyle(.secondary)
-                HStack { PlazaButton("Read Character’s Notes") { journal=true }; PlazaButton("Customize Character") { editing=true }.buttonStyle(.borderedProminent).tint(PlazaStyle.teal) }
+                HStack { PlazaButton("Open Miiverse") { model.openMiiverse() }; PlazaButton("Customize Character") { editing=true }.buttonStyle(.borderedProminent).tint(PlazaStyle.teal) }
             } else { Text("This visitor is generated locally. They have no account or online activity.").font(.callout).foregroundStyle(.secondary).multilineTextAlignment(.center).padding(.horizontal,35) }
             Spacer(minLength:12)
         }.frame(width:500,height:470)
-        .sheet(isPresented:$journal) { MiiverseView(model:model,authorID:avatar.id) }
         .sheet(isPresented:$editing) { CharacterEditor(model:model,initialID:avatar.id) }
     }
 }

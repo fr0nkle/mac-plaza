@@ -37,6 +37,18 @@ final class FeatureTileTests: XCTestCase {
                 XCTAssertEqual(bitmap.colorAt(x: 0,y: 0)?.alphaComponent, 0)
                 XCTAssertGreaterThan(visible(bitmap), 4,"\(feature) \(row) must contain its feature")
                 XCTAssertLessThan(visible(bitmap), 144*96/2,"An isolated feature must not fill the tile with a head")
+                if feature == .brows && row == 2 {
+                    // Style 16 is an upward arch of dots. Image pixels use
+                    // top-down Y, so the middle dots must sit above the ends.
+                    var middleY = 0.0, outerY = 0.0, middleCount = 0.0, outerCount = 0.0
+                    for y in 0..<bitmap.pixelsHigh { for x in 0..<bitmap.pixelsWide {
+                        guard (bitmap.colorAt(x: x, y: y)?.alphaComponent ?? 0) > 0.2 else { continue }
+                        if (60..<84).contains(x) { middleY += Double(y); middleCount += 1 }
+                        else { outerY += Double(y); outerCount += 1 }
+                    } }
+                    XCTAssertGreaterThan(middleCount, 0); XCTAssertGreaterThan(outerCount, 0)
+                    XCTAssertLessThan(middleY / max(1, middleCount), outerY / max(1, outerCount), "FFL mask tiles must use the same upright orientation as the Mii")
+                }
                 results.append(try XCTUnwrap(bitmap.representation(using: .png,properties: [:])))
                 gallery.lockFocus(); image.draw(in: NSRect(x: column*144,y: (3-row)*96,width: 144,height: 96)); gallery.unlockFocus()
             }

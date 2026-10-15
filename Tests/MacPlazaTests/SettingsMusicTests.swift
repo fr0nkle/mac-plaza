@@ -6,11 +6,13 @@ import PlazaCore
 
 final class SettingsMusicTests: XCTestCase {
     @MainActor func testSettingsRecordingDecodesAndOldPreferencesUseQuietDefault() throws {
-        let player = try AVAudioPlayer(contentsOf: XCTUnwrap(PlazaAudio.soundtrackURL(for: .settings)))
-        XCTAssertTrue(player.prepareToPlay())
-        XCTAssertGreaterThan(player.duration, 110)
-        XCTAssertLessThan(player.duration, 125)
-        XCTAssertEqual(player.numberOfChannels, 2)
+        if let url = PlazaAudio.soundtrackURL(for: .settings) {
+            let player = try AVAudioPlayer(contentsOf: url)
+            XCTAssertTrue(player.prepareToPlay())
+            XCTAssertGreaterThan(player.duration, 110)
+            XCTAssertLessThan(player.duration, 125)
+            XCTAssertEqual(player.numberOfChannels, 2)
+        }
         let old = Data("{\"population\":160,\"pauseMotion\":false,\"pausePosts\":false,\"privatePresentation\":false,\"safeMode\":false}".utf8)
         XCTAssertNil(try JSONDecoder().decode(PlazaCore.Preferences.self, from: old).settingsMusicVolume)
         var document = PlazaDocument()

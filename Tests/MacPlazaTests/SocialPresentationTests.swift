@@ -54,7 +54,7 @@ final class SocialPresentationTests: XCTestCase {
         XCTAssertEqual(FriendMiiAssignments.plazaFriends(social.friends, capacity: 1).first?.id, social.friends.first?.id)
     }
 
-    func testPreviewRendersNativeSettingsAndFollowingNotes() async throws {
+    func testPreviewKeepsMiisSilentAndRendersExplicitDiscordFixtures() async throws {
         guard ProcessInfo.processInfo.environment["PLAZA_SOCIAL_QA"] == "1" else { throw XCTSkip("Set PLAZA_SOCIAL_QA=1 for social visual QA.") }
         _ = NSApplication.shared
         let directory = FileManager.default.temporaryDirectory.appendingPathComponent("MacPlaza-Social-QA-" + UUID().uuidString)
@@ -82,12 +82,7 @@ final class SocialPresentationTests: XCTestCase {
             return view.subviews.compactMap(noteLayer).first
         }
         let notes = try XCTUnwrap(noteLayer(host))
-        // The FFL renderer loads local assets asynchronously, especially when
-        // another Plaza instance is already using the GPU during visual QA.
-        for _ in 0..<200 where notes.visibleCardCount == 0 {
-            try await Task.sleep(for: .milliseconds(100)); host.layoutSubtreeIfNeeded()
-        }
-        XCTAssertGreaterThan(notes.visibleCardCount, 0, "At least one friend note must be visible in the sample plaza.")
+        XCTAssertEqual(notes.visibleCardCount, 0, "Sample-preview Miis must stay silent.")
         let output = URL(fileURLWithPath: FileManager.default.currentDirectoryPath).appendingPathComponent(".qa")
         try FileManager.default.createDirectory(at: output, withIntermediateDirectories: true)
         func capture(_ view: NSView, _ name: String) throws {
@@ -98,19 +93,14 @@ final class SocialPresentationTests: XCTestCase {
         try capture(host, "discord-friend-plaza.png")
         for friend in model.social.friends.filter({ $0.temporaryAvatar != true }) { model.social.hide(friend.id) }
         model.scene.setMoving(true)
-        // Rebuilding the roster retargets walkers; allow the head to clear nearby controls.
-        for _ in 0..<200 {
-            try await Task.sleep(for: .milliseconds(100)); host.layoutSubtreeIfNeeded()
-            if noteLayer(host)?.visibleCardCount ?? 0 > 0 { break }
-        }
         XCTAssertEqual(model.social.friends.count, 1)
         XCTAssertEqual(model.social.friends.first?.temporaryAvatar, true)
-        XCTAssertGreaterThan(try XCTUnwrap(noteLayer(host)).visibleCardCount, 0,
-                             "A friend without a published Mii must still have an overhead activity card.")
+        XCTAssertEqual(try XCTUnwrap(noteLayer(host)).visibleCardCount, 0,
+                       "Sample activities must not appear as actual Discord content.")
         try await Task.sleep(for: .seconds(1))
         try capture(host, "discord-temporary-friend-plaza.png")
         // A Discord roster may exceed the crowd population. Off-scene friends
-        // must not displace the visible friend's status card from the cycle.
+        // must not create speech from metadata or displace an owned Miiverse post.
         let visibleFriend = try XCTUnwrap(model.social.friends.first)
         let offScene = (0..<224).map { index in
             SharedMii(id: UUID().uuidString, displayName: "Off-scene \(index)", avatar: Avatar(),
@@ -119,21 +109,22 @@ final class SocialPresentationTests: XCTestCase {
         notes.configure(scene: model.scene, friends: offScene + [visibleFriend], paused: true,
                         largerText: false, islands: [], reserved: [], onSelect: { _ in })
         try await Task.sleep(for: .seconds(1))
-        XCTAssertGreaterThan(notes.visibleCardCount, 0, "Large friend lists must keep cycling through rendered Miis.")
+        XCTAssertEqual(notes.visibleCardCount, 0, "Friend metadata must not become speech.")
         var playingFriend = visibleFriend
+        playingFriend.discordID = "123"
         playingFriend.activities = [DiscordGameRecord(discordID: "123", name: "Sample Game", observedAt: Date().timeIntervalSince1970).activity]
         XCTAssertEqual(playingFriend.overheadText, "Playing Sample Game")
         notes.configure(scene: model.scene, friends: [playingFriend], paused: true,
                         largerText: false, islands: [], reserved: [], onSelect: { _ in })
         try await Task.sleep(for: .milliseconds(300))
-        XCTAssertGreaterThan(notes.visibleCardCount, 0, "Current Discord game activity must render on a temporary Mii.")
+        XCTAssertGreaterThan(notes.visibleCardCount, 0, "Discord games speak through the generated Mii.")
         try capture(notes, "discord-playing-preview.png")
         playingFriend.customStatus = DiscordCustomStatusRecord(discordID: "123", text: "☀️ Making something nice", observedAt: Date().timeIntervalSince1970)
         XCTAssertEqual(playingFriend.overheadText, "☀️ Making something nice")
         notes.configure(scene: model.scene, friends: [playingFriend], paused: true,
                         largerText: false, islands: [], reserved: [], onSelect: { _ in })
         try await Task.sleep(for: .milliseconds(300))
-        XCTAssertGreaterThan(notes.visibleCardCount, 0, "A visible custom status must render on a temporary Mii.")
+        XCTAssertGreaterThan(notes.visibleCardCount, 0, "Custom status speaks through the generated Mii.")
         try capture(notes, "discord-custom-status-preview.png")
         let customMii = try XCTUnwrap(model.document.avatars.first)
         model.social.assignMii(customMii.id, to: visibleFriend.id)

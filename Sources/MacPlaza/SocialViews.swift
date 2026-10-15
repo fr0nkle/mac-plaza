@@ -70,7 +70,6 @@ struct SocialSettingsView: View {
     @ObservedObject var social: SocialController
     @Environment(\.dismiss) private var dismiss
     @State private var selected: UUID?
-    @State private var note = ""
     @State private var sharing = false
     @State private var sharePresence = false
     @State private var shareActivity = false
@@ -82,7 +81,7 @@ struct SocialSettingsView: View {
     private var visibleFriends: [SharedMii] { matchingFriends(social.friends, query: friendSearch) }
     var body: some View {
         VStack(spacing: 0) {
-            SheetHeader(title: "Discord & Plaza friends", subtitle: "Your Mii, your friends, a little note overhead.") { dismiss() }
+            SheetHeader(title: "Discord & Plaza friends", subtitle: "Your Discord connection, Mii and Miiverse posts.") { dismiss() }
             Form {
                 Section(social.hasSession ? "Discord connection" : "1. Connect your Discord account") {
                     Text(social.message).font(.callout).textSelection(.enabled)
@@ -137,21 +136,19 @@ struct SocialSettingsView: View {
                             ForEach(model.document.avatars) { avatar in Text(avatar.name).tag(Optional(avatar.id)) }
                         }
                         PlazaButton("Create or edit a Mii…") { model.sheet = .characters }
-                        TextField("A little note for your friends", text: $note, axis: .vertical).lineLimit(3...5)
-                        Text("\(note.count)/280 characters").font(.caption).foregroundStyle(note.count > 280 ? .red : .secondary)
-                        Toggle("Share my chosen Mii and note with my Discord friends", isOn: Binding(get: { sharing && shareDiscordFriends }, set: { sharing = $0; shareDiscordFriends = $0 }))
-                        Text("With automatic sharing on, this Mac sends your current Discord friend IDs as the allowed audience for your Mii and note. It updates while connected; friends do not need a Plaza invitation. Turn sharing off and save to revoke access.").font(.caption).foregroundStyle(.secondary)
+                        Toggle("Share my chosen Mii with my Discord friends", isOn: Binding(get: { sharing && shareDiscordFriends }, set: { sharing = $0; shareDiscordFriends = $0 }))
+                        Text("With automatic sharing on, this Mac sends your current Discord friend IDs as the allowed audience for your Mii. It updates while connected; friends do not need a Plaza invitation. Turn sharing off and save to revoke access.").font(.caption).foregroundStyle(.secondary)
                         Toggle("Share my Discord availability and whether I’m in Plaza", isOn: $sharePresence)
                         Toggle("Share my current and recently used apps & games", isOn: $shareActivity)
-                        Text("Friends without a shared Mii receive a random temporary Mii for each sign-in or app session. Custom status text appears periodically overhead. Remembered Discord games can alternate with it, and shared notes can appear too.").font(.caption).foregroundStyle(.secondary)
+                        Text("Friends without a shared Mii receive a random temporary Mii for each sign-in or app session. Their Miis can speak their own Miiverse posts, Discord custom status, and current or recently played games, including Miis you assign manually.").font(.caption).foregroundStyle(.secondary)
                         Text("Optional activity sharing sends foreground application names and bundle IDs while this Mac is awake, including when Plaza is in the background. Friends gather around matching app islands. Shared Plaza app activity expires after 30 minutes; window titles, documents, and app contents are never shared.").font(.caption).foregroundStyle(.secondary)
                         PlazaButton("Save Shared Profile") {
                             if let avatar = model.document.avatars.first(where: { $0.id == selected }) {
-                                social.publish(avatar: avatar, note: note, sharing: sharing, sharePresence: sharePresence, shareActivity: shareActivity, shareDiscordFriends: shareDiscordFriends)
+                                social.publish(avatar: avatar, note: social.account?.note ?? "", sharing: sharing, sharePresence: sharePresence, shareActivity: shareActivity, shareDiscordFriends: shareDiscordFriends)
                             }
-                        }.disabled(social.busy || selected == nil || note.count > 280)
+                        }.disabled(social.busy || selected == nil)
                         Text(social.discordSharingMessage).font(.caption).foregroundStyle(.secondary)
-                        Text("Saving publishes this Mii’s appearance and note. Birthdays, creator details, private notes, drafts, local replies, app paths and renderer resources stay on your Mac. Public Miiverse posts and their author Miis/drawings share independently with your Discord friends. Discord friends’ availability comes directly from Discord. Custom status text and other games use the optional bot and respect Discord’s server visibility and profile privacy settings.")
+                        Text("Saving publishes this Mii’s appearance. Birthdays, creator details, private notes, drafts, local replies, app paths and renderer resources stay on your Mac. Public Miiverse posts and their author Miis/drawings share independently with your Discord friends. Discord friends’ availability comes directly from Discord. Custom status text and other games use the optional bot and respect Discord’s server visibility and profile privacy settings.")
                             .font(.caption).foregroundStyle(.secondary)
                     }
                     Section("Discord custom statuses & games") {
@@ -161,8 +158,8 @@ struct SocialSettingsView: View {
                             Link("Add Plaza bot to a shared Discord server…", destination: install)
                             Text("A server administrator only needs to do this once. If the bot is already installed in a shared server, you’re ready.").font(.caption).foregroundStyle(.secondary)
                         }
-                        Text("Friends’ custom Discord status text appears overhead when visible to the Plaza bot in a server you both share. Discord may hide it based on their profile privacy settings. Generic online, away, busy and offline bubbles are hidden. Game activity still gathers Miis around matching homescreen apps; add the game with the same name Discord displays. No Plaza invitation or linked Mii is needed.").font(.caption).foregroundStyle(.secondary)
-                        Text("Only your Discord friend IDs are sent to your Plaza service for this lookup. It returns current server-visible custom statuses and Playing activity; no messages are read. This Mac remembers each friend’s last visible game for up to two hours after play stops, including across relaunches. Friends do not need Plaza. Click an app to see who played recently, or watch for recent-game bubbles alongside custom statuses. History stays on this Mac and clears when you hide or remove a friend, lose shared-server coverage, unlink Discord, or turn this switch off. During connection gaps, remembered games are marked as recent. Hidden or unobserved activity cannot be recovered.").font(.caption).foregroundStyle(.secondary)
+                        Text("Friends’ custom Discord status is available in their friend details when visible to the Plaza bot in a server you both share. Discord may hide it based on their profile privacy settings. Custom statuses and current or recently played games can appear above their linked, randomly created, or manually assigned Miis. Generic online, away, busy and offline bubbles are hidden. Game activity still gathers Miis around matching homescreen apps; add the game with the same name Discord displays. No Plaza invitation or linked Mii is needed.").font(.caption).foregroundStyle(.secondary)
+                        Text("Only your Discord friend IDs are sent to your Plaza service for this lookup. It returns current server-visible custom statuses and Playing activity; no messages are read. This Mac remembers each friend’s last visible game for up to two hours after play stops, including across relaunches. Friends do not need Plaza. Click an app to see who played recently. Mii speech bubbles show Miiverse posts and their Discord friend’s custom status or current/recent game activity. History stays on this Mac and clears when you hide or remove a friend, lose shared-server coverage, unlink Discord, or turn this switch off. During connection gaps, remembered games are marked as recent. Hidden or unobserved activity cannot be recovered.").font(.caption).foregroundStyle(.secondary)
                     }
                     }
                     Section("Discord friends") {
@@ -250,7 +247,7 @@ struct SocialSettingsView: View {
     }
     private func restoreDraft() {
         selected = model.document.avatars.first(where: { $0.id == social.linkedAvatarID })?.id ?? model.document.primaryAvatarID ?? model.document.avatars.first?.id
-        note = social.account?.note ?? ""; sharing = social.account?.sharing ?? false
+        sharing = social.account?.sharing ?? false
         sharePresence = social.account?.sharePresence ?? false
         shareActivity = social.account?.shareActivity ?? false
         shareDiscordFriends = social.account?.shareDiscordFriends ?? false
@@ -293,7 +290,7 @@ struct FriendProfileView: View {
                     .padding(.horizontal, 24)
                 }
                 ForEach(Array(friend.activities.filter { $0.isRecent() }.enumerated()), id: \.offset) { _, activity in Text(activity.label).font(.caption).foregroundStyle(.secondary) }
-                if !friend.note.isEmpty { Text(friend.note).textSelection(.enabled).multilineTextAlignment(.center).padding(.horizontal, 28) }
+                FriendMiiversePostsView(model: model, social: social, friend: friend).padding(.horizontal, 24)
                 HStack {
                     PlazaButton("Hide Mii") { social.hide(friend.id); dismiss() }
                     if !social.previewing, social.contacts.contains(where: { $0.id == friend.id }) {
@@ -332,7 +329,7 @@ struct SocialFriendList: View {
                                 FriendStatusLabel(friend: friend)
                                 if let status = friend.customStatus, status.isCurrent { Text(status.text).font(.callout).lineLimit(3) }
                                 if let activity = friend.activities.first(where: { $0.isRecent() }) { Text(activity.label).font(.caption).foregroundStyle(.secondary) }
-                                if !friend.note.isEmpty { Text(friend.note).font(.callout).lineLimit(3) }
+                                FriendMiiversePostsView(model: model, social: social, friend: friend, compact: true)
                             }
                             Spacer()
                         }.padding(12).background(.white, in: RoundedRectangle(cornerRadius: 12))

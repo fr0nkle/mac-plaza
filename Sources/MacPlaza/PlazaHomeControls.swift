@@ -4,6 +4,7 @@ import SwiftUI
 /// in the ordinary window and on the wallpaper.
 struct PlazaHomeControls: View {
     @ObservedObject var model: PlazaModel
+    @ObservedObject private var updater = PlazaUpdater.shared
 
     var body: some View {
         VStack(spacing: 10) {
@@ -18,7 +19,7 @@ struct PlazaHomeControls: View {
                 }.help("View friends, their status and assigned Miis")
                 control("Settings", icon: "gearshape", width: 78) {
                     model.sheet = .preferences
-                }.help("Open plaza settings")
+                }.modifier(PlazaUpdateIndicator(available: updater.updateAvailable, label: "Settings"))
                 control("Mii Maker", icon: "person.crop.square", width: 78) {
                     model.sheet = .characters
                 }.help("Open Mii Maker to create and edit your Miis")

@@ -4,9 +4,21 @@ import PlazaCore
 @testable import MacPlaza
 
 final class UISoundTests: XCTestCase {
+    @MainActor private func soundFixture() throws -> URL {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        let audio = root.appendingPathComponent("Audio/UI")
+        try FileManager.default.createDirectory(at: audio, withIntermediateDirectories: true)
+        var wave = PlazaAudio.loop()
+        wave.replaceSubrange(44..<wave.count, with: Data(repeating: 0, count: wave.count - 44))
+        for cue in PlazaUISounds.Cue.allCases { try wave.write(to: audio.appendingPathComponent(cue.rawValue + ".wav")) }
+        return root
+    }
+
     @MainActor func testOriginalShortRecordingsAndBackRouting() throws {
         for cue in PlazaUISounds.Cue.allCases {
-            let url = try XCTUnwrap(PlazaUISounds.recordingURL(cue))
+            guard let url = PlazaUISounds.recordingURL(cue) else {
+                throw XCTSkip("Original UI recordings are optional local resources.")
+            }
             let file = try AVAudioFile(forReading: url)
             let duration = Double(file.length) / file.processingFormat.sampleRate
             XCTAssertTrue((0.05...0.15).contains(duration))
@@ -18,7 +30,9 @@ final class UISoundTests: XCTestCase {
         XCTAssertEqual(PlazaUISounds.cue(for: "Save Note"), .click)
     }
     @MainActor func testEffectsLeaveMusicAndPreviewUntouchedAndUseIndependentVolume() async throws {
-        let music = PlazaAudio(), effects = PlazaUISounds()
+        let fixture = try soundFixture()
+        defer { try? FileManager.default.removeItem(at: fixture) }
+        let music = PlazaAudio(), effects = PlazaUISounds(roots: [fixture])
         defer { effects.stop(); music.update(enabled: false, allowPreview: false) }
         music.update(enabled: true, volume: 0.000001)
         let before = try XCTUnwrap(music.backgroundPlayback.first)
@@ -33,7 +47,7 @@ final class UISoundTests: XCTestCase {
         XCTAssertTrue(after.playing)
         XCTAssertGreaterThan(after.time, before.time, "The music playhead keeps moving")
         XCTAssertEqual(music.backgroundPlayback.count, 1, "Effects must not start a music crossfade")
-        let url = try XCTUnwrap(PlazaAudio.soundtrackURL(for: .miiverse))
+        let url = fixture.appendingPathComponent("Audio/UI/click.wav")
         try music.preview(url, track: .miiverse, volume: 0.000001)
         effects.play(.click)
         XCTAssertEqual(music.previewTrack, .miiverse)
@@ -50,8 +64,10 @@ final class UISoundTests: XCTestCase {
         effects.play(.click)
         XCTAssertEqual(effects.playedCount, count + 1)
     }
-    @MainActor func testRapidClicksAreBoundedAndMissingFilesDoNotTrap() {
-        let effects = PlazaUISounds()
+    @MainActor func testRapidClicksAreBoundedAndMissingFilesDoNotTrap() throws {
+        let fixture = try soundFixture()
+        defer { try? FileManager.default.removeItem(at: fixture) }
+        let effects = PlazaUISounds(roots: [fixture])
         defer { effects.stop() }
         effects.configure(enabled: true, volume: 0.000001)
         for _ in 0..<30 { effects.play(.click); effects.play(.back) }

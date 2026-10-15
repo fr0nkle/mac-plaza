@@ -10,14 +10,14 @@ final class NoteWritingTests: XCTestCase {
         _ = NSApplication.shared
         let directory=FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         let model=PlazaModel(directory:directory)
-        defer { model.scene.setMoving(false);model.audio.update(enabled:false);try? FileManager.default.removeItem(at:directory) }
+        defer { model.miiverseWindow.close();model.scene.setMoving(false);model.audio.update(enabled:false);try? FileManager.default.removeItem(at:directory) }
         for _ in 0..<200 where !model.loaded {try await Task.sleep(for:.milliseconds(10))}
         let avatar=model.document.primaryAvatar
         var note=LocalNote(authorID:avatar.id,author:avatar.name,appID:nil,text:"Private Miiverse post")
         note.shared=false
         XCTAssertTrue(model.mutate {$0.notes=[note]})
         model.openMiiverse(note:note.id)
-        XCTAssertEqual(model.sheet?.id,"miiverse");XCTAssertTrue(model.sheet?.isFloatingMenu == true)
+        XCTAssertEqual(model.sheet?.id,"miiverse");XCTAssertFalse(model.sheet?.isFloatingMenu == true, "Miiverse uses a separate native window")
         XCTAssertEqual(model.selectedNoteID,note.id);XCTAssertEqual(model.musicTrack,.miiverse)
         XCTAssertEqual(model.document.notes.first?.shared,false)
         XCTAssertTrue(model.document.notes.first?.read == true)
@@ -40,7 +40,7 @@ final class NoteWritingTests: XCTestCase {
         let storage = DocumentStorage(url: directory.appendingPathComponent("plaza.json"))
         try await storage.save(document, revision: 1)
         let model = PlazaModel(directory: directory)
-        defer { model.scene.setMoving(false); model.audio.update(enabled: false); try? FileManager.default.removeItem(at: directory) }
+        defer { model.miiverseWindow.close(); model.scene.setMoving(false); model.audio.update(enabled: false); try? FileManager.default.removeItem(at: directory) }
         for _ in 0..<200 where !model.loaded { try await Task.sleep(for: .milliseconds(10)) }
         var expected = document; expected.notes = [fresh]
         XCTAssertEqual(model.document, expected)
@@ -54,7 +54,7 @@ final class NoteWritingTests: XCTestCase {
         _ = NSApplication.shared
         let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         let model = PlazaModel(directory: directory)
-        defer { model.scene.setMoving(false); model.audio.update(enabled: false); try? FileManager.default.removeItem(at: directory) }
+        defer { model.miiverseWindow.close(); model.scene.setMoving(false); model.audio.update(enabled: false); try? FileManager.default.removeItem(at: directory) }
         for _ in 0..<200 where !model.loaded { try await Task.sleep(for: .milliseconds(10)) }
         let avatar = model.document.primaryAvatar
         var note = LocalNote(authorID: avatar.id, author: avatar.name, appID: nil, text: "Expires")
@@ -80,7 +80,7 @@ final class NoteWritingTests: XCTestCase {
         let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         let model = PlazaModel(directory: directory)
         defer {
-            model.scene.setMoving(false); model.audio.update(enabled: false)
+            model.miiverseWindow.close(); model.scene.setMoving(false); model.audio.update(enabled: false)
             try? FileManager.default.removeItem(at: directory)
         }
         for _ in 0..<200 where !model.loaded { try await Task.sleep(for: .milliseconds(10)) }
@@ -93,7 +93,7 @@ final class NoteWritingTests: XCTestCase {
         XCTAssertEqual(model.noteAvatar(publicNote).id, model.document.primaryAvatar.id)
         XCTAssertEqual(model.noteAvatar(privateNote).id, secondary.id)
         model.bubbleSelections = [0, 1, 2]
-        XCTAssertEqual(model.journalPost().speaker.id, model.document.primaryAvatar.id, "The speech post attaches to the primary Mii without changing stored authors")
+        XCTAssertEqual(model.journalPost()?.speaker.id, model.document.primaryAvatar.id, "The speech post attaches to the primary Mii without changing stored authors")
         XCTAssertEqual(model.document, original)
         await model.flush(); try await model.storage.endSession()
     }
@@ -103,14 +103,16 @@ final class NoteWritingTests: XCTestCase {
         let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         let model = PlazaModel(directory: directory)
         defer {
-            model.scene.setMoving(false); model.audio.update(enabled: false)
+            model.miiverseWindow.close(); model.scene.setMoving(false); model.audio.update(enabled: false)
             try? FileManager.default.removeItem(at: directory)
         }
         for _ in 0..<200 where !model.loaded { try await Task.sleep(for: .milliseconds(10)) }
         let original = model.document
-        let recording = try AVAudioPlayer(contentsOf: XCTUnwrap(PlazaAudio.soundtrackURL(for: .miiverse)))
-        XCTAssertGreaterThan(recording.duration, 100)
-        XCTAssertLessThan(recording.duration, 115)
+        if let url = PlazaAudio.soundtrackURL(for: .miiverse) {
+            let recording = try AVAudioPlayer(contentsOf: url)
+            XCTAssertGreaterThan(recording.duration, 100)
+            XCTAssertLessThan(recording.duration, 115)
+        }
         model.sheet = .miiverse
         XCTAssertEqual(model.musicTrack, .miiverse)
         XCTAssertEqual(model.musicVolume, 0.10)
@@ -139,7 +141,7 @@ final class NoteWritingTests: XCTestCase {
         let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         let model = PlazaModel(directory: directory)
         defer {
-            model.scene.setMoving(false); model.audio.update(enabled: false)
+            model.miiverseWindow.close(); model.scene.setMoving(false); model.audio.update(enabled: false)
             try? FileManager.default.removeItem(at: directory)
         }
         for _ in 0..<200 where !model.loaded { try await Task.sleep(for: .milliseconds(10)) }
@@ -164,16 +166,17 @@ final class NoteWritingTests: XCTestCase {
         let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         let model = PlazaModel(directory: directory)
         defer {
-            model.scene.setMoving(false); model.audio.update(enabled: false)
+            model.miiverseWindow.close(); model.scene.setMoving(false); model.audio.update(enabled: false)
             try? FileManager.default.removeItem(at: directory)
         }
         for _ in 0..<200 where !model.loaded { try await Task.sleep(for: .milliseconds(10)) }
         XCTAssertTrue(model.loaded)
         let original = model.document
-        let url = try XCTUnwrap(PlazaAudio.soundtrackURL(for: .writing))
-        let player = try AVAudioPlayer(contentsOf: url)
-        XCTAssertGreaterThan(player.duration, 140)
-        XCTAssertLessThan(player.duration, 160)
+        if let url = PlazaAudio.soundtrackURL(for: .writing) {
+            let player = try AVAudioPlayer(contentsOf: url)
+            XCTAssertGreaterThan(player.duration, 140)
+            XCTAssertLessThan(player.duration, 160)
+        }
         model.sheet = .compose(nil)
         XCTAssertEqual(model.musicTrack, .writing)
         XCTAssertTrue(model.audio.backgroundPlayback.contains { $0.track == .writing && $0.playing })

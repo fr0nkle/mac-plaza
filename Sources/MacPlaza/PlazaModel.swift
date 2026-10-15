@@ -42,8 +42,14 @@ final class PlazaModel: ObservableObject {
     @Published var sheet: PlazaSheet? {
         didSet {
             if oldValue?.id == "characters", sheet?.id != "characters" { makerEditorVisible = false }
-            if sheet != nil { desktop.presentCompanionIfNeeded() }
-            else { desktop.dismissCompanionIfNeeded() }
+            if sheet?.id == "miiverse" {
+                desktop.dismissCompanionIfNeeded()
+                miiverseWindow.show()
+            } else {
+                if oldValue?.id == "miiverse" { miiverseWindow.close() }
+                if sheet != nil { desktop.presentCompanionIfNeeded() }
+                else { desktop.dismissCompanionIfNeeded() }
+            }
             updateAudio()
             if sheet == nil { offerDiagnosticsAfterInterruptedSession() }
         }
@@ -52,6 +58,7 @@ final class PlazaModel: ObservableObject {
     @Published var makerEditorVisible = false
     @Published private(set) var writingNoteDepth = 0
     @Published var sessionActive = true
+    @Published var miiverseVisible = false { didSet { if oldValue != miiverseVisible { updateAudio() } } }
     @Published var windowVisible = true
     @Published var wallpaperEnabled = false
     @Published var desktopInteractive = false
@@ -74,6 +81,7 @@ final class PlazaModel: ObservableObject {
     }
     @Published var desktopInsets = EdgeInsets()
     lazy var desktop = DesktopPlazaController(model: self)
+    lazy var miiverseWindow = MiiverseWindowController(model: self, frameAutosaveName: observesSystemAppLaunches ? MiiverseWindowController.frameName : nil)
     @Published var lowPower = ProcessInfo.processInfo.isLowPowerModeEnabled
     @Published var loginEnabled = SMAppService.mainApp.status == .enabled
     @Published var bubbleSelections = [0,1,2]
@@ -90,6 +98,8 @@ final class PlazaModel: ObservableObject {
     let music: PlazaMusicLibrary
     let social: SocialController
     let storage: DocumentStorage
+    let birthdayReceipt: BirthdayCelebrationReceipt
+    let birthdayCelebration = BirthdayCelebrationController()
     private var revision = 0
     private var undoLayouts: [[AppIsland]] = []
     private var iconCache: [String: NSImage] = [:]
@@ -104,14 +114,18 @@ final class PlazaModel: ObservableObject {
     var renderVisible: Bool { wallpaperEnabled ? desktopVisible : windowVisible }
     var isMoving: Bool {
         loaded && sessionActive && renderVisible && !listMode &&
-        (sheet == nil || (sheet?.isFloatingMenu == true && !menuFullScreen)) && !document.preferences.pauseMotion &&
+        (sheet == nil || sheet?.id == "miiverse" || (sheet?.isFloatingMenu == true && !menuFullScreen)) && !document.preferences.pauseMotion &&
         !document.preferences.safeMode && !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
+    }
+    var hasAlternateMiiverseMusic: Bool { music.url(for: .miiverseAlternate) != nil || PlazaAudio.soundtrackURL(for: .miiverseAlternate) != nil }
+    var miiverseMusicTrack: PlazaAudio.Track {
+        document.preferences.miiverseAlternateTheme == true && hasAlternateMiiverseMusic ? .miiverseAlternate : .miiverse
     }
     var musicTrack: PlazaAudio.Track {
         if writingNoteDepth > 0 || sheet?.id == "compose" { return .writing }
         if sheet?.id == "preferences" { return .settings }
         if sheet?.id == "friends" { return .friends }
-        if sheet?.id == "miiverse" { return .miiverse }
+        if sheet?.id == "miiverse" { return miiverseMusicTrack }
         return sheet?.id == "characters" || makerEditorVisible ? .maker : .plaza
     }
     var musicVolume: Double {
@@ -121,7 +135,7 @@ final class PlazaModel: ObservableObject {
         case .friends: return document.preferences.friendsMusicVolume ?? 0.10
         case .settings: return document.preferences.settingsMusicVolume ?? 0.10
         case .writing: return document.preferences.writingMusicVolume ?? 0.10
-        case .miiverse: return document.preferences.miiverseMusicVolume ?? 0.10
+        case .miiverse, .miiverseAlternate: return document.preferences.miiverseMusicVolume ?? 0.10
         }
     }
     var automaticMusicMuteReason: String? {
@@ -132,7 +146,7 @@ final class PlazaModel: ObservableObject {
     }
     var audioEligible: Bool {
         guard loaded, sessionActive, automaticMusicMuteReason == nil, !document.preferences.pauseMotion, !document.preferences.safeMode else { return false }
-        if musicTrack != .plaza { return windowVisible || desktopMenuVisible }
+        if musicTrack != .plaza { return windowVisible || desktopMenuVisible || miiverseVisible }
         // Small windows and hidden companion controls may keep music playing;
         // the window monitor separately detects a blocked plaza.
         return !listMode && (wallpaperEnabled || windowVisible)
@@ -142,7 +156,7 @@ final class PlazaModel: ObservableObject {
     func updateAudio() {
         updateUISounds()
         let volume = musicVolume
-        audio.update(enabled: (document.preferences.ambientSound ?? true) && audioEligible, volume: volume, track: musicTrack, customURL: music.url(for: musicTrack), allowPreview: sessionActive && automaticMusicMuteReason == nil && (windowVisible || desktopMenuVisible) && !document.preferences.safeMode)
+        audio.update(enabled: (document.preferences.ambientSound ?? true) && audioEligible, volume: volume, track: musicTrack, customURL: music.url(for: musicTrack), allowPreview: sessionActive && automaticMusicMuteReason == nil && (windowVisible || desktopMenuVisible || miiverseVisible) && !document.preferences.safeMode)
     }
     func updateUISounds() {
         guard observesSystemAppLaunches else { return }
@@ -216,6 +230,7 @@ final class PlazaModel: ObservableObject {
         observesSystemAppLaunches = directory == nil && !CommandLine.arguments.contains("--demo")
         social = SocialController(isolated: directory != nil || CommandLine.arguments.contains("--demo"))
         let base = directory ?? PlazaDataLocation.root
+        birthdayReceipt = BirthdayCelebrationReceipt(url: base.appendingPathComponent("birthday-celebration.json"))
         recentApps = RecentAppHistory(url: base.appendingPathComponent("recent-apps.json"))
         storage = DocumentStorage(url: base.appendingPathComponent("plaza.json"))
         music = PlazaMusicLibrary(directory: base.appendingPathComponent("Music"))
@@ -253,6 +268,7 @@ final class PlazaModel: ObservableObject {
             Task { @MainActor in
                 self?.advanceBubblePresentation(by: elapsed)
                 self?.applyPendingHomeRotation()
+                self?.checkBirthday()
                 if let self, now - self.lastNoteExpiryCheck >= 60 {
                     self.lastNoteExpiryCheck = now
                     self.expireNotes()
@@ -331,7 +347,7 @@ final class PlazaModel: ObservableObject {
         let room = max(0, population - document.avatars.count)
         let plazaFriends = FriendMiiAssignments.plazaFriends(social.friends, capacity: room, retaining: scene.fflCharacters.map(\.id))
         var seen = Set(document.avatars.map(\.id))
-        let noteAuthors = homeSharedNotes.map(\.author).filter { seen.insert($0.id).inserted }
+        let noteAuthors = homeSharedNotes.compactMap { PlazaSpeechPost.miiverse($0, friends: social.friends)?.speaker }.filter { seen.insert($0.id).inserted }
         // A public-note primary Mii takes priority over another profile appearance.
         var unique = Set(document.avatars.map(\.id))
         let roster = (noteAuthors + plazaFriends.map(\.avatar)).filter { unique.insert($0.id).inserted }
@@ -364,7 +380,7 @@ final class PlazaModel: ObservableObject {
             }
         }
         for note in homeSharedNotes.reversed() {
-            if let app = note.topic?.match(in: visibleApps) { assignments[note.author.id] = app.id }
+            if let app = note.topic?.match(in: visibleApps), let speaker = PlazaSpeechPost.miiverse(note, friends: social.friends)?.speaker { assignments[speaker.id] = app.id }
         }
         scene.setGathering(assignments, apps: visibleApps.map(\.id))
     }
@@ -633,7 +649,7 @@ final class PlazaModel: ObservableObject {
 
 enum PlazaSheet: Identifiable {
     case characters, friends, compose(UUID?), miiverse, activity, preferences, social, app(AppIsland), profile(Avatar), friend(SharedMii), steamGames(AppIsland?)
-    var isFloatingMenu: Bool { ["characters", "friends", "preferences", "compose", "activity", "miiverse"].contains(id) }
+    var isFloatingMenu: Bool { ["characters", "friends", "preferences", "compose", "activity"].contains(id) }
     var id: String {
         switch self { case .steamGames: return "steam-games"; case .friends: return "friends"; case .friend(let friend): return "friend-"+friend.id; case .social: return "social"; case .profile(let avatar): return "profile-"+avatar.id.uuidString; case .characters: return "characters"; case .compose: return "compose"; case .miiverse: return "miiverse"; case .activity: return "activity"; case .preferences: return "preferences"; case .app(let app): return app.id.uuidString }
     }

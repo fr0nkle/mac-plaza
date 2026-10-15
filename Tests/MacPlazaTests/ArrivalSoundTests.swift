@@ -6,7 +6,7 @@ import PlazaCore
 final class ArrivalSoundTests:XCTestCase {
     @MainActor func testBundledEffectsAreShortStereoOneShotsWithCleanBoundaries() throws {
         for cue in PlazaArrival.Cue.allCases {
-            let url=try XCTUnwrap(PlazaAudio.arrivalEffectURL(for:cue))
+            guard let url=PlazaAudio.arrivalEffectURL(for:cue) else { throw XCTSkip("Original arrival recordings are optional local resources.") }
             let file=try AVAudioFile(forReading:url)
             XCTAssertEqual(file.processingFormat.channelCount,2)
             let duration=Double(file.length)/file.processingFormat.sampleRate
@@ -31,7 +31,10 @@ final class ArrivalSoundTests:XCTestCase {
         let url=root.appendingPathComponent("Silent.wav")
         var silent=PlazaAudio.loop();silent.replaceSubrange(44..<silent.count,with:Data(repeating:0,count:silent.count-44))
         try silent.write(to:url)
-        let audio=PlazaAudio()
+        let recordings=root.appendingPathComponent("Audio")
+        try FileManager.default.createDirectory(at:recordings,withIntermediateDirectories:true)
+        for cue in PlazaArrival.Cue.allCases { try silent.write(to:recordings.appendingPathComponent(cue.rawValue+".wav")) }
+        let audio=PlazaAudio(resourceRoots:[root])
         defer {audio.update(enabled:false,allowPreview:false);try? FileManager.default.removeItem(at:root)}
         audio.update(enabled:true,volume:0,customURL:url)
         audio.playArrivalEffect(.drop,volume:0.0000001)

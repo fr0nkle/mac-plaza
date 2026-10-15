@@ -1,6 +1,33 @@
 import SwiftUI
 import PlazaCore
 
+struct PlazaUnreadActivityBadge: View {
+    var count: Int
+    var body: some View {
+        if count > 0 {
+            Text(count > 99 ? "99+" : String(count))
+                .font(.system(size: 10, weight: .bold)).foregroundStyle(.white)
+                .padding(.horizontal, 5).frame(minWidth: 19, minHeight: 19)
+                .background(Color.red, in: Capsule()).fixedSize()
+                .allowsHitTesting(false).accessibilityHidden(true)
+        }
+    }
+}
+
+struct PlazaMiiverseActivityButton: View {
+    @ObservedObject var social: SocialController
+    var onOpen: () -> Void
+    var body: some View {
+        PlazaButton(action: onOpen) {
+            Image(systemName: "bell").padding(8).contentShape(Rectangle())
+        }.overlay(alignment: .topTrailing) {
+            PlazaUnreadActivityBadge(count: social.unreadActivityCount).offset(x: 4, y: -4)
+        }.foregroundStyle(PlazaStyle.teal)
+            .accessibilityLabel("Activity, \(social.unreadActivityCount) unread notifications")
+            .help("View likes and replies to your Miiverse posts")
+    }
+}
+
 struct PlazaBottomControls: View {
     @ObservedObject var model: PlazaModel
     @ObservedObject var social: SocialController
@@ -26,18 +53,17 @@ struct PlazaBottomControls: View {
                     Label("Miiverse", systemImage: "bubble.left.and.bubble.right").frame(width: 118, height: 44)
                 }.buttonStyle(.plain).font(.system(size: 13, weight: .semibold, design: .rounded))
                     .background(.white.opacity(0.95), in: RoundedRectangle(cornerRadius: 16))
-                    .accessibilityLabel("Miiverse").help("Browse your notes and friends’ notes by app and section")
+                    .overlay(alignment: .topTrailing) {
+                        PlazaUnreadActivityBadge(count: social.unreadActivityCount).offset(x: -4, y: -4)
+                    }
+                    .accessibilityLabel("Miiverse, \(social.unreadActivityCount) unread notifications")
+                    .help("Browse your notes and friends’ notes by app and section")
             }
             HStack(spacing: 10) {
                 PlazaButton { model.sheet = .activity } label: {
                     Label("Activity", systemImage: "bell").frame(width: 152, height: 52)
                 }.overlay(alignment: .topTrailing) {
-                    if social.unreadActivityCount > 0 {
-                        Text(social.unreadActivityCount > 99 ? "99+" : String(social.unreadActivityCount))
-                            .font(.system(size: 10, weight: .bold)).foregroundStyle(.white)
-                            .padding(.horizontal, 5).frame(minWidth: 19, minHeight: 19)
-                            .background(Color.red, in: Capsule()).offset(x: -4, y: -4).allowsHitTesting(false)
-                    }
+                    PlazaUnreadActivityBadge(count: social.unreadActivityCount).offset(x: -4, y: -4)
                 }.accessibilityLabel("Activity, \(social.unreadActivityCount) unread notifications")
                 PlazaButton { model.sheet = .compose(nil) } label: {
                     Label("Write Note", systemImage: "square.and.pencil").frame(width: 118, height: 52)
@@ -53,6 +79,7 @@ struct PlazaActivityView: View {
     @ObservedObject var model: PlazaModel
     @ObservedObject var social: SocialController
     var onClose: (() -> Void)?
+    var fillsContent = false
     @Environment(\.dismiss) private var dismiss
     var body: some View {
         VStack(spacing: 0) {
@@ -101,7 +128,8 @@ struct PlazaActivityView: View {
                 Text("Activity updates while Mac Plaza is running.").font(.caption).foregroundStyle(.secondary)
             }.padding(18)
             if let message = social.activityMessage { Text(message).font(.caption).foregroundStyle(.secondary).padding(.horizontal, 18).padding(.bottom, 14) }
-        }.frame(width: 660, height: 640).background(PlazaStyle.paper)
+        }.frame(width: fillsContent ? nil : 660, height: fillsContent ? nil : 640)
+            .frame(maxWidth: fillsContent ? .infinity : nil, maxHeight: fillsContent ? .infinity : nil).background(PlazaStyle.paper)
         .task { await social.refreshActivity() }
     }
 }

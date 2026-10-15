@@ -143,7 +143,7 @@ extension NativeBoundaryTests {
 extension NativeBoundaryTests {
     @MainActor
     func testRequestedSoundtrackDecodesForLoopingPlayback() throws {
-        let url = try XCTUnwrap(PlazaAudio.soundtrackURL)
+        guard let url = PlazaAudio.soundtrackURL else { throw XCTSkip("Original plaza recording is an optional local resource.") }
         let player = try AVAudioPlayer(contentsOf: url)
         XCTAssertGreaterThan(player.duration, 1830)
         XCTAssertLessThan(player.duration, 1850)
@@ -153,7 +153,8 @@ extension NativeBoundaryTests {
 
     @MainActor
     func testMakerSoundtrackDecodesForLoopingPlayback() throws {
-        let player = try AVAudioPlayer(contentsOf: XCTUnwrap(PlazaAudio.soundtrackURL(for: .maker)))
+        guard let url = PlazaAudio.soundtrackURL(for: .maker) else { throw XCTSkip("Original Mii Maker recording is an optional local resource.") }
+        let player = try AVAudioPlayer(contentsOf: url)
         XCTAssertGreaterThan(player.duration, 590)
         XCTAssertLessThan(player.duration, 610)
         XCTAssertEqual(player.numberOfChannels, 2)

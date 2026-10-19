@@ -61,6 +61,4 @@ Windows/node_modules
 
 Windows/update-baseline/
 
-# Windows distribution has been retired; retain local experiments privately.
-Windows/
-.github/workflows/windows.yml
+

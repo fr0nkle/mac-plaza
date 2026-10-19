@@ -1,0 +1,16 @@
+const {test}=require('node:test'),assert=require('node:assert/strict'),{randomUUID}=require('node:crypto');
+const core=require('../src/core.cjs'),portable=require('../src/portable.cjs');
+test('Miiverse draft visibility survives portable export and defaults to public for older drafts',()=>{
+  const doc=core.document();doc.avatars=[doc.avatar];doc.draft.visibility='private';doc.draft.text='Keep private';
+  const value=portable.exportDocument(doc,[]);assert.equal(value.draft.shared,false);
+  assert.equal(portable.importDocument(value,doc).draft.visibility,'private');
+  delete value.draft.shared;assert.equal(portable.importDocument(value,doc).draft.visibility,'public');
+});
+test('portable Mac documents omit local app paths and convert Foundation dates in both directions',()=>{
+  const doc=core.document();doc.avatars=[doc.avatar];doc.settings={population:160,rotateHome:true};doc.privateNotes=[{id:randomUUID(),author:doc.avatar,text:'Private',drawing:[],drawingDescription:'',created:1700000000}];doc.remoteNotes=[{text:'Remote friend note'}];
+  const value=portable.exportDocument(doc,[{id:randomUUID(),label:'Steam',bundleID:'com.valvesoftware.steam',path:'C:/private/Steam.exe',bookmark:'private'}]);
+  assert.equal(value.apps[0].path,undefined);assert.equal(value.apps[0].bookmark,undefined);assert.equal(value.notes.length,1);assert.equal(value.notes[0].shared,false);assert.equal(value.notes[0].created,1700000000-978307200);
+  const restored=portable.importDocument(value,doc);assert.equal(restored.privateNotes[0].created,1700000000);assert.deepEqual(restored.remoteNotes,doc.remoteNotes);assert.equal(restored.settings.rotateHome,true);
+});
+
+test('private replies and portable app communities survive a Mac document round trip',()=>{const doc=core.document(),id=randomUUID(),replyID=randomUUID();doc.avatars=[doc.avatar];doc.privateNotes=[{id:randomUUID(),author:doc.avatar,text:'Private',drawing:[],drawingDescription:'',created:1900000000,topic:{steamAppID:620,bundleID:'steam.app.620',label:'Portal'},replies:[{id:replyID,author:doc.avatar,text:'Local reply',created:1900000001}]}];const exported=portable.exportDocument(doc,[{id,label:'Portal',bundleID:'steam.app.620',steamAppID:620}]);assert.equal(exported.notes[0].appID,id);const imported=portable.importDocument(exported,doc);assert.equal(imported.privateNotes[0].topic.steamAppID,620);assert.equal(imported.privateNotes[0].replies[0].id,replyID);assert.equal(imported.privateNotes[0].replies[0].created,1900000001);});

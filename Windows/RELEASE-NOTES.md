@@ -1,0 +1,5 @@
+Plaza for Windows 0.4.0 adds automatic updates, with signed release metadata and a verified installer checksum. System Settings → System Update offers automatic checks, optional automatic download/installation, and Restart and Install. Automatic installation occurs when you next open Plaza, preserving Miis, notes, drafts, settings and imported resources. Install the Setup version once to enable updates; portable ZIP users can check for releases and use the website downloads.
+
+Miiverse app communities now show their app icons. Wallpaper mode keeps only Return to Desktop in the top-left corner, matching Mac Plaza 0.20.3.
+
+Tested on GitHub's Windows runner, including an installed older baseline updating to this installer, automatic relaunch and saved-data preservation. Unit tests reject tampered metadata, invalid installers, truncated downloads and older versions. Real Discord account testing between a personal Windows device and a Mac remains unverified. This preview has signed update metadata but the installer is not Authenticode-signed and may show SmartScreen's publisher warning. Windows 10/11 x64.

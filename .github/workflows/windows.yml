@@ -31,6 +31,7 @@ jobs:
       - run: python -m pip install -r ../Server/requirements.txt
       - run: pnpm build:engine
       - run: pnpm test
+      - run: pnpm test:runtime
       - run: pnpm test:shared
       - run: pnpm test:contracts
         env:

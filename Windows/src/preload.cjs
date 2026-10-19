@@ -4,6 +4,6 @@ contextBridge.exposeInMainWorld('plaza', { call: async (action, value) => {
   if (!result.ok) throw new Error(result.error);
   return result.value;
 },frame:args=>ipcRenderer.invoke('plaza-frame',args),subscribe:(name,callback)=>{
-  if(!['plaza-state','plaza-snapshot','plaza-wallpaper','plaza-environment','plaza-error','plaza-music-role','plaza-music-preview','plaza-panel-context'].includes(name))throw new Error('Unknown event.');
+  if(!['plaza-state','plaza-snapshot','plaza-wallpaper','plaza-environment','plaza-error','plaza-music-role','plaza-music-preview','plaza-panel-context','plaza-stop-preview'].includes(name))throw new Error('Unknown event.');
   const listener=(_event,value)=>callback(value);ipcRenderer.on(name,listener);return()=>ipcRenderer.removeListener(name,listener);
 } });

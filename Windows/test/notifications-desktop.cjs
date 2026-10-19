@@ -1,0 +1,28 @@
+'use strict';
+const {_electron:electron}=require('playwright'),assert=require('node:assert/strict'),fs=require('node:fs/promises'),path=require('node:path'),os=require('node:os'),{spawn}=require('node:child_process'),{randomUUID}=require('node:crypto');
+const core=require('../src/core.cjs'),{miiverse}=require('./windows.cjs');
+(async()=>{
+  const root=path.resolve(__dirname,'..'),directory=await fs.mkdtemp(path.join(os.tmpdir(),'plaza-notifications-'));let app;
+  const fixture=spawn(process.env.PYTHON||'python3',[path.join(__dirname,'service_fixture.py')],{stdio:['ignore','pipe','pipe']});
+  try{
+    const auth=await new Promise((resolve,reject)=>{let s='';fixture.stdout.on('data',b=>{s+=b;if(s.includes('\n'))resolve(JSON.parse(s.split('\n')[0]));});fixture.on('error',reject);fixture.on('exit',code=>reject(Error('Fixture exited '+code)));fixture.stderr.on('data',b=>process.stderr.write(b));});
+    const api=async(token,method,route,body)=>{const r=await fetch(auth.origin+'/v1/'+route,{method,headers:{Authorization:'Bearer '+token,'Content-Type':'application/json'},...(body?{body:JSON.stringify(body)}:{})});assert.equal(r.status,200);return r.json();};
+    const author=core.avatar('Windows'),note={id:randomUUID(),author,text:'Notification target',drawing:[],drawingDescription:'',created:Date.now()/1000,audience:'public'};
+    await api(auth.windows,'PUT','notes',{notes:[core.wireNote(note)],primaryAvatar:core.publicAvatar(author)});const remote=(await api(auth.mac,'GET','notes/threads')).notes.find(n=>n.sourceID===note.id);
+    const reply=text=>api(auth.mac,'PUT','notes/'+remote.id+'/replies/'+randomUUID(),{author:auth.macNote.author,text});
+    await api(auth.mac,'PUT','notes/'+remote.id+'/like',{liked:true});await reply('An existing reply');
+    const offline=core.document();offline.settings={population:20,ambientSound:false};const linked={...core.document(),avatar:author,avatars:[author],settings:{population:20,ambientSound:false,privatePresentation:true}};
+    await fs.writeFile(path.join(directory,'plaza.json'),JSON.stringify({audienceVersion:1,origin:auth.origin,accounts:{offline,[auth.origin+'/'+auth.accountID]:linked}}));
+    const launch=async()=>{app=await electron.launch({...(process.env.PLAZA_EXECUTABLE?{executablePath:process.env.PLAZA_EXECUTABLE}:{}),args:[...(process.env.PLAZA_EXECUTABLE?[]:[root]),'--user-data-dir='+directory],timeout:60000});return app.firstWindow();};
+    let page=await launch();const encrypted=await app.evaluate(({safeStorage},s)=>safeStorage.encryptString(JSON.stringify(s)).toString('base64'),{origin:auth.origin,token:auth.windows,accountID:auth.accountID});await fs.writeFile(path.join(directory,'session.bin'),Buffer.from(encrypted,'base64'));await app.close();app=null;
+    page=await launch();const errors=[];page.on('pageerror',e=>errors.push(e.message));await page.waitForFunction(async()=>(await plaza.call('state')).unreadCount===2);assert(await page.locator('#activity-toast').isHidden(),'First-load history must be quiet');
+    await page.click('#miiverse-button');let panel=await miiverse(app);panel.on('pageerror',e=>errors.push(e.message));await panel.getByRole('button',{name:'Notifications, 2 unread',exact:true}).click();assert.equal(await panel.locator('#miiverse-activity .activity-row').count(),2);
+    await panel.click('#miiverse-mark-all');await panel.getByRole('button',{name:'Notifications, 0 unread',exact:true}).waitFor();await panel.evaluate(()=>plaza.call('refresh'));assert.equal((await api(auth.windows,'GET','notes/activity')).unreadCount,0);
+    await panel.getByRole('button',{name:'Activity Feed',exact:true}).click();const input=panel.getByRole('textbox',{name:'Reply to Windows Friend',exact:true});await input.fill('Unsent local reply');await input.evaluate(n=>n.setSelectionRange(2,5));await panel.evaluate(()=>plaza.call('settings',{largerText:true}));
+    assert.equal(await input.inputValue(),'Unsent local reply');assert.deepEqual(await input.evaluate(n=>({active:document.activeElement===n,start:n.selectionStart,end:n.selectionEnd})),{active:true,start:2,end:5});
+    await panel.click('#miiverse-close');await reply('A new reply');await page.locator('#activity-toast').waitFor({state:'visible',timeout:25000});assert.equal(await page.locator('#activity-toast-message').textContent(),'New activity on your notes');assert.equal(await page.locator('#activity-badge').textContent(),'1');
+    await page.click('#activity-toast-open');panel=await miiverse(app);await panel.locator('#miiverse-notes').getByText('A new reply',{exact:true}).waitFor();assert.equal(await panel.locator('#miiverse-notes .note').count(),1);await page.waitForFunction(async()=>(await plaza.call('state')).unreadCount===0);assert(await page.locator('#activity-toast').isHidden());
+    await panel.evaluate(()=>plaza.call('refresh'));assert.equal((await api(auth.windows,'GET','notes/activity')).unreadCount,0);await panel.evaluate(()=>plaza.call('logout'));await panel.getByRole('button',{name:'Notifications, 0 unread',exact:true}).click();assert.equal(await panel.locator('#miiverse-activity .activity-row').count(),0);assert.deepEqual(errors,[]);
+    console.log('PASS: quiet initial activity history, notification page/read-all delivered to the same service, reply draft/focus/selection survive refresh, privacy-safe new-activity toast and unread badge, exact-post routing/read acknowledgement, and account isolation after logout.');
+  }finally{if(app)await app.close();fixture.kill();await fs.rm(directory,{recursive:true,force:true,maxRetries:10,retryDelay:100});}
+})().catch(e=>{console.error(e);process.exitCode=1;});

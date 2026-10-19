@@ -19,7 +19,13 @@
     "test:updates": "node test/updates-desktop.cjs",
     "test:contracts": "node test/contracts.cjs",
     "test:shared": "node scripts/test-shared.cjs",
-    "test:window": "node test/miiverse-desktop.cjs"
+    "test:window": "node test/miiverse-desktop.cjs",
+    "test:current": "node test/current-miiverse.cjs",
+    "test:library": "node test/mii-library.cjs",
+    "test:runtime": "node test/shared-runtime.cjs",
+    "test:pack": "node test/pack-desktop.cjs",
+    "test:recovery": "node test/recovery-desktop.cjs",
+    "test:notifications": "node test/notifications-desktop.cjs"
   },
   "devDependencies": {
     "electron": "44.7.0",

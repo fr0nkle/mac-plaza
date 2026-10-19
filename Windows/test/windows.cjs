@@ -8,4 +8,5 @@ async function miiverse(app){
   }
   throw Error('The independent Miiverse window did not open.');
 }
-module.exports={miiverse};
+async function closePanel(page){await page.click(await page.locator('#miiverse').isVisible()?'#miiverse-close':'#close-panel');}
+module.exports={miiverse,closePanel};

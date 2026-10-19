@@ -23,6 +23,7 @@ node node_modules/electron/install.js
 pnpm build:engine
 pnpm test
 pnpm test:shared
+pnpm test:runtime
 pnpm test:contracts
 ```
 
@@ -52,6 +53,23 @@ Obtain the official Discord Social SDK **1.10.19337** through the project's
 existing licensed access. Supply Windows x64 `include/`, `lib/release/`,
 `bin/release/` and `License-Notices.txt` beneath native/sdk/. Do not substitute
 unofficial binaries or publish the vendor archive.
+
+The original project already has an unpacked Windows SDK. A local copy is staged
+in this isolated tree's ignored native/sdk/ for review; its Discord DLL is x64.
+The vendor archive was absent, so its archive checksum was not reverified. Keep
+this dependency private; do not add it to Git.
+
+For matching local audio, stage the existing Mac recordings explicitly:
+
+```sh
+python scripts/prepare-music.py --source "/path/to/Mac Resources/Audio"
+```
+
+This copies all seven soundtrack roles and click/back effects into the ignored
+native/runtime/Audio folder and records hashes. It never downloads. This task
+used the existing local project recordings. A source-only clone retains generated
+ambience and user-import controls when recordings are absent; including these
+recordings in any future distribution needs separate review.
 
 In a Visual Studio developer PowerShell, from Windows/:
 
@@ -92,12 +110,27 @@ pnpm test:parity
 pnpm test:desktop
 pnpm test:features
 pnpm test:window
+pnpm test:current
+pnpm test:library
+pnpm test:recovery
+pnpm test:notifications
 ```
 
 Windows also exercises native paths where platform guards allow. Optional
 PLAZA_FFL_RESOURCE and PLAZA_BODY_RESOURCE point to locally owned FFL and converted
 body fixtures; never upload those files. Fallback rendering and generated ambience
-require no console resources or bundled recording.
+require no console resources or bundled recording. `test:pack` accepts an optional
+PLAZA_RESOURCE_PACK pointing to a privately owned .plazapack; it verifies actual
+heads/bodies, all 172 animations, six audio files, backup and preserved Miis in a
+temporary profile. No resource/music is copied into tracked source.
+
+Run GUI suites sequentially to avoid competing for focus and audio. `test:runtime`
+exercises the actual Swift game-history and independent stationary-post clock.
+`test:recovery` uses semantically invalid saves, restores a valid backup, and
+checks safe/reduced-motion mode and update UI state; signature validation is in
+unit tests. `test:notifications` uses only the synthetic loopback service and checks
+quiet history, read-all delivery, privacy-safe alerts, exact-post routing, reply
+focus and cross-window account isolation.
 
 After Windows tests pass, local packaging is:
 

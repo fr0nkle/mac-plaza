@@ -34,6 +34,17 @@ func perform(_ command: String, _ args: [String:Any]) throws -> Any {
         guard recent.count<=1000,games.count<=1000,fallback.count<=1000 else{throw PlazaError.invalid("Too many app shortcuts.")}
         var random=SystemRandomNumberGenerator()
         return try encode(HomeScreenRotation.select(recent:recent,friendGames:games,fallback:fallback,previous:args["previous"] as? [String] ?? [],using:&random))
+    case "newAvatar": return try encode(Avatar(name: "New Mii"))
+    case "normalizeAvatar": return try encode(decode(args["avatar"] ?? [:], Avatar.self).validated())
+    case "gameHistory":
+        var history = try args["history"].map { try decode($0, DiscordGameHistory.self) } ?? DiscordGameHistory()
+        let now = Date(timeIntervalSince1970: args["now"] as? Double ?? Date().timeIntervalSince1970)
+        let friends = try decode(args["friends"] ?? [], [DiscordFriendRecord].self)
+        guard friends.count <= 1000 else { throw PlazaError.invalid("Too many friends.") }
+        if args["restore"] as? Bool == true { history.restore(at: now) }
+        if let snapshot = args["snapshot"] { try history.update(decode(snapshot, DiscordGameSnapshot.self), friends: friends, at: now) }
+        else { history.retain(friendIDs: Set(friends.map(\.discordID)), at: now); history.suspend(at: now) }
+        return ["history": try encode(history), "games": try encode(history.records(at: now))]
     case "sharedNotes":
         let snapshot = try decode(args, SharedJournalSnapshot.self).validated()
         return try encode(snapshot)
@@ -84,14 +95,14 @@ func perform(_ command: String, _ args: [String:Any]) throws -> Any {
         if let id=pendingArrival,let index=characters.firstIndex(where:{$0.id==id}){simulation.beginArrival(index:index);pendingArrival=nil}
         return ["avatars":try characters.map {a -> [String:Any] in var value=try rendering(a);value["avatar"]=try encode(a);return value},"originalControllers":original]
     case "frame":
-        let dt=min(0.1,max(0,args["dt"] as? Double ?? 1.0/30));viewport(args);simulation.step(dt);posts.advance(by:dt,held:args["postsHeld"] as? Bool == true || simulation.entranceElapsed != nil)
+        let dt=min(0.1,max(0,args["dt"] as? Double ?? 1.0/30));viewport(args);simulation.step(args["pauseMotion"] as? Bool == true ? 0 : dt);posts.advance(by:dt,held:args["postsHeld"] as? Bool == true || simulation.entranceElapsed != nil || simulation.arrivalElapsed != nil)
         let depth=48*height/width/(16/sqrt(22*22+16*16))
         let poses=simulation.walkers.enumerated().map { i,w -> [Double] in
             let drop=i==simulation.arrivalIndex ? PlazaArrival.height(at:simulation.arrivalElapsed ?? 0):0
             let base:[Double]=[(w.position.x-0.5)*48,(w.position.y-0.5)*depth,drop,w.angle,Double(w.state),w.phase,w.motion,w.partner != nil && w.greeting<=0 ? 1:0,w.blink ? 1:0,Double(w.mood),w.animationTime,w.lookYaw,w.turn,Double(w.activity.rawValue),w.activityTime,w.activityDuration,simulation.animationClock]
             return base+(simulation.originalSample(i)?.bridge ?? [])
         }
-        return ["arrivalFocus":simulation.arrivalElapsed.map{PlazaArrival.focus(at:$0)} as Any? ?? NSNull(),"islandEntrance":simulation.islands.map{p -> [Double] in let progress=simulation.entranceElapsed.map{PlazaEntrance.iconProgress(at:p,elapsed:$0)} ?? 1;return [PlazaEntrance.iconScale(progress:progress),progress>0 ? 1:0]},"postPresentation":posts.presentation == .journal ? "journal":posts.presentation == .friends ? "friends":"quiet","poses":poses,"identities":characters.map{$0.id.uuidString},"entrance":simulation.entranceElapsed as Any? ?? NSNull(),"arrival":simulation.arrivalElapsed as Any? ?? NSNull()]
+        return ["arrivalFocus":simulation.arrivalElapsed.map{PlazaArrival.focus(at:$0)} as Any? ?? NSNull(),"islandEntrance":simulation.islands.map{p -> [Double] in let progress=simulation.entranceElapsed.map{PlazaEntrance.iconProgress(at:p,elapsed:$0)} ?? 1;return [PlazaEntrance.iconScale(progress:progress),progress>0 ? 1:0]},"postCount":posts.bubbleCount,"postPresentation":posts.presentation == .journal ? "journal":posts.presentation == .friends ? "friends":"quiet","poses":poses,"identities":characters.map{$0.id.uuidString},"entrance":simulation.entranceElapsed as Any? ?? NSNull(),"arrival":simulation.arrivalElapsed as Any? ?? NSNull()]
     case "music":return ["data":Soundtrack.loop().base64EncodedString()]
     case "renderAvatar":return try rendering(decode(args["avatar"] ?? [:],Avatar.self).validated())
     case "fallback":return CharacterRig.fallback(try decode(args["avatar"] ?? [:],Avatar.self).validated())

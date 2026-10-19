@@ -43,7 +43,11 @@ async function main(){
     await call(auth.windows,'PUT','notes',{notes:core.mergeNotes((await call(auth.windows,'GET','notes/owned')).notes,auth.accountID,{[publicNote.id]:null})});
     assert(!(await call(auth.mac,'GET','notes/threads')).notes.some(n=>n.id===shared.id));
     const macOwner=received.ownerID;await call(auth.stranger,'POST','friends/block',{id:macOwner});assert(!(await call(auth.stranger,'GET','notes/threads')).notes.some(n=>n.ownerID===macOwner));
-    console.log('PASS: Mac Swift ↔ Windows wire contracts, real local HTTP transport, shared primary Miis, Steam topics, drawings, three audiences/legacy privacy, verified Discord names, likes/replies, owner permissions, retraction, block precedence and unauthenticated rejection.');
+    const library=core.document(),secondary=core.avatar('Secondary');library.avatar=windows;library.avatars=[windows,secondary];library.remoteNotes=(await call(auth.windows,'GET','notes/owned')).notes;
+    library.privateNotes=[{...note('Portable private','private'),author:secondary,replies:[{id:randomUUID(),author:secondary,text:'Local discussion',created:now}]}];library.draft={text:'Portable draft',visibility:'friends',drawing:[],drawingDescription:'',authorID:secondary.id,topic:publicNote.topic};
+    const appID=randomUUID(),portableMac=await engine.call('portable',{document:portable.exportDocument(library,[{id:appID,label:'Portal 2',bundleID:'steam.app.620',steamAppID:620,path:'C:/local-only'}],auth.accountID)}),roundtrip=portable.importDocument(portableMac,core.document(),auth.accountID);
+    assert.equal(roundtrip.privateNotes[0].author.name,'Secondary');assert.equal(roundtrip.privateNotes[0].replies[0].text,'Local discussion');assert.equal(roundtrip.privateNotes[0].created,now);assert.equal(Object.values(roundtrip.pending).filter(Boolean).length,2);assert(Object.values(roundtrip.pending).filter(Boolean).every(n=>n.audience==='friends'));assert.equal(roundtrip.draft.visibility,'friends');assert.equal(roundtrip.draft.topic.steamAppID,620);assert.equal(portableMac.apps[0].path,undefined);
+    console.log('PASS: Mac Swift ↔ Windows wire and portable contracts, real local HTTP transport, shared primary Miis, Steam topics, drawings, three audiences/legacy privacy, verified Discord names, likes/replies, owner permissions, retraction, block precedence, unauthenticated rejection and Foundation-date/local-discussion/draft round trips.');
   }finally{clearTimeout(timeout);engine?.close();fixture.kill();}
 }
 main().catch(error=>{console.error(error);process.exitCode=1;});

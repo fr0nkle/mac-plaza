@@ -11,18 +11,20 @@ and authenticated Plaza `/v1` service. Public, Friends Only and Private posts
 retain their audiences; older Windows shared posts and drafts remain friends-only
 when upgraded. No separate Windows community is introduced.
 
-The first slice adds explicit audiences, a legacy migration, shared HTTP transport
-and contract tests, latest published primary-Mii identity matching, and an
-independent resizable Miiverse window. The main plaza continues behind it.
-Birthday effects, the current Mac Miiverse navigation/theme controls, and remaining
-visual and OS parity are tracked in the checklist.
+The local implementation includes the current four-page Miiverse UI, ranked
+communities, primary birthday controls and annual overlay, alternate theme import,
+independent resizable Miiverse, Mii library/profile flows, portable shared/private
+journals, notification routing, and source-derived crowd/post/game-history logic.
+Compatibility and desktop fixtures run on macOS; Windows native compilation,
+OS integration and authorized real two-device validation remain pending.
 
 - [Feature inventory, architecture and staged checklist](PORT-PLAN.md)
 - [Build, isolated run and test instructions](BUILDING.md)
 - Task workspace `HANDOFF.md` records the local branch, evidence and blockers.
 
 User-imported console resources and recordings are optional and excluded from
-source/builds. No soundtrack download is required for the fallback renderer.
+Git. Existing Mac recordings can be staged locally for matching music/effects;
+this private dependency staging is not a distribution approval. No soundtrack download is required for the fallback renderer.
 Original code is MIT; the combined FFL renderer includes AGPL-3.0-only components.
 Preserve notices and corresponding source; see [LICENSING.md](../LICENSING.md).
 Discord, Swift and Electron dependencies retain their separate notices.

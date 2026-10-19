@@ -1,11 +1,24 @@
-"""Reuse the Miiverse recording already distributed in the pinned Mac release."""
-import hashlib,io,pathlib,urllib.request,zipfile
-url='https://github.com/fr0nkle/mac-plaza/releases/download/v0.20.2/Mac-Plaza-0.20.2.zip'
-with urllib.request.urlopen(url,timeout=120) as response:data=response.read(50*1024*1024)
-if hashlib.sha256(data).hexdigest()!='a50d42d243ea683cafa59e89d01becffb61564736a940ba6e6877b3ec78ea794':raise ValueError('Mac soundtrack source checksum mismatch')
-folder=pathlib.Path(__file__).resolve().parents[1]/'native/runtime/Audio';folder.mkdir(parents=True,exist_ok=True)
-with zipfile.ZipFile(io.BytesIO(data)) as archive:
-    recording=archive.read('Mac Plaza.app/Contents/Resources/Audio/miiverse.m4a')
-    if len(recording)!=1760963:raise ValueError('Unexpected Miiverse recording size')
-    (folder/'miiverse.m4a').write_bytes(recording)
-(folder/'SOURCE.txt').write_text('Miiverse recording reused unchanged from Mac Plaza 0.20.2. Separate soundtrack rights apply; excluded from corresponding source.\nSource: '+url+'\nSHA256: '+hashlib.sha256(recording).hexdigest()+'\n')
+"""Stage existing local Mac audio for private Windows review; never downloads."""
+import argparse
+import hashlib
+import json
+from pathlib import Path
+import shutil
+
+parser = argparse.ArgumentParser(description=__doc__)
+parser.add_argument('--source', required=True, type=Path, help='Existing Mac Resources/Audio folder')
+parser.add_argument('--output', type=Path, default=Path(__file__).resolve().parents[1] / 'native/runtime/Audio')
+args = parser.parse_args()
+files = ['warawara-home.m4a', 'mii-maker.m4a', 'friends-menu.m4a', 'system-settings.m4a', 'note-writing.m4a', 'miiverse.m4a', 'miiverse-alternate.m4a', 'UI/click.wav', 'UI/back.wav']
+manifest = []
+for name in files:
+    source = args.source / name
+    if not source.is_file() or not 0 < source.stat().st_size <= 256 * 1024 * 1024:
+        parser.error(f'Missing or out-of-range local audio: {name}')
+    manifest.append({'file': name, 'sha256': hashlib.sha256(source.read_bytes()).hexdigest()})
+for name in files:
+    target = args.output / name
+    target.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copy2(args.source / name, target)
+(args.output / 'SOURCE.json').write_text(json.dumps({'source': 'Existing local Mac Resources/Audio; separate soundtrack rights apply. Private staging only.', 'files': manifest}, indent=2) + '\n')
+print(f'Staged {len(files)} existing local recordings; no network access.')

@@ -6,25 +6,14 @@ function validateFriends(value){
   const ids=new Set();for(const friend of value.friends){if(typeof friend.discordID!=='string'||!/^\d{1,20}$/.test(friend.discordID)||BigInt(friend.discordID)===0n||BigInt(friend.discordID)>=2n**64n||ids.has(friend.discordID)||typeof friend.displayName!=='string'||!friend.displayName.trim()||[...friend.displayName].length>80||!['online','idle','dnd','offline','unknown'].includes(friend.presence))throw new Error('Discord returned an invalid friend.');ids.add(friend.discordID);}
   if(value.state!=='ready'&&value.friends.length)throw new Error('Discord friends are not ready.');return value;
 }
-const identity=value=>String(value||'').toLowerCase();
-function publicMiis(friends,notes){
-  const latest=new Map();
-  for(const note of [...notes].sort((a,b)=>b.created-a.created)){
-    const owners=friends.filter(f=>note.ownerID&&identity(f.id)===identity(note.ownerID));
-    const linked=friends.filter(f=>note.discordID&&f.discordID===note.discordID);
-    if(owners.length>1||linked.length>1)continue;
-    const friend=owners[0]||linked[0];if(!friend)continue;
-    if(owners[0]&&note.discordID&&friend.discordID&&note.discordID!==friend.discordID)continue;
-    if(owners[0]&&linked[0]&&identity(owners[0].id)!==identity(linked[0].id))continue;
-    if(!latest.has(friend.id)){validateAvatar(note.author);latest.set(friend.id,note);}
-  }
-  return friends.map(friend=>{const note=latest.get(friend.id);return note?{...friend,avatar:note.author,displayName:note.displayName||friend.displayName,temporaryAvatar:false,locallyAssignedAvatar:false}:friend;});
-}
+const {friendFor,conflictingIdentity}=require('./catalog.cjs');
+function publicMiis(friends,notes){const latest=new Map();for(const note of [...notes].sort((a,b)=>b.created-a.created)){const friend=friendFor(note,friends);if(friend&&!latest.has(friend.id)){validateAvatar(note.author);latest.set(friend.id,note);}}
+ return friends.map(f=>{const n=latest.get(f.id);return n?{...f,avatar:n.author,displayName:n.displayName||f.displayName,temporaryAvatar:false,locallyAssignedAvatar:false}:f;});}
 class FriendRoster{
   constructor(){this.temporary=new Map();}
   reset(){this.temporary.clear();}
   resolve(records,snapshot,document,games={games:[],customStatuses:[]},threads=[]){
-    const linked=new Map(publicMiis(snapshot.friends,threads).map(f=>[f.discordID,f]));for(const note of [...threads].sort((a,b)=>b.created-a.created)){if(note.discordID&&!linked.has(note.discordID))linked.set(note.discordID,{id:note.ownerID,discordID:note.discordID,displayName:note.displayName,avatar:note.author,note:''});}const hidden=new Set(document.hiddenFriends||[]);const now=Date.now()/1000;
+    const linked=new Map(publicMiis(snapshot.friends,threads).map(f=>[f.discordID,f]));for(const note of [...threads].sort((a,b)=>b.created-a.created)){if(note.discordID&&!linked.has(note.discordID)&&!conflictingIdentity(note,snapshot.friends))linked.set(note.discordID,{id:note.ownerID,discordID:note.discordID,displayName:note.displayName,avatar:note.author,note:''});}const hidden=new Set(document.hiddenFriends||[]);const now=Date.now()/1000;
     const roster=[];for(const record of records){if(hidden.has(record.discordID))continue;let shared=linked.get(record.discordID);
       if(shared){validateAvatar(shared.avatar);shared={...shared,presence:record.presence};}
       else{
@@ -33,8 +22,8 @@ class FriendRoster{
         shared={...record,id:fallback.id,avatar:a,note:'',temporaryAvatar:true,locallyAssignedAvatar:!!assignment};
       }
       const visible=!['offline','unknown'].includes(record.presence);
-      const activity=games.games?.find(g=>g.discordID===record.discordID&&now-g.observedAt>=-60&&now-g.observedAt<90);
-      if(activity&&visible)shared.activities=[{name:activity.name,source:'discord',active:activity.active!==false,observedAt:activity.observedAt}];
+      const activity=games.games?.find(g=>g.discordID===record.discordID&&now-g.observedAt>=-60&&now-g.observedAt<(g.active===false?7200:90));
+      if(activity&&(activity.active===false||visible))shared.activities=[...(shared.activities||[]).filter(a=>a.source!=='discord'),{name:activity.name,source:'discord',active:activity.active!==false,observedAt:activity.observedAt}];
       const custom=games.customStatuses?.find(g=>g.discordID===record.discordID&&now-g.observedAt>=-60&&now-g.observedAt<90);if(custom&&visible)shared.customStatus=custom;
       roster.push({...shared,displayName:record.displayName,discordID:record.discordID,presence:record.presence});
     }

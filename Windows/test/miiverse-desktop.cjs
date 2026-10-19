@@ -1,6 +1,6 @@
 'use strict';
 const {_electron:electron}=require('playwright'),assert=require('node:assert/strict'),fs=require('node:fs/promises'),path=require('node:path'),os=require('node:os');
-const core=require('../src/core.cjs'),{miiverse}=require('./windows.cjs');
+const core=require('../src/core.cjs'),{miiverse,closePanel}=require('./windows.cjs');
 async function main(){
   const directory=await fs.mkdtemp(path.join(os.tmpdir(),'plaza-window-')),root=path.resolve(__dirname,'..');let app;
   try{
@@ -17,16 +17,16 @@ async function main(){
     await plaza.waitForFunction(async previous=>JSON.stringify((await plazaScene.surface().call('diagnostics')).roster)!==previous,positions);
     await app.evaluate(({BrowserWindow})=>BrowserWindow.getAllWindows().find(w=>w.getTitle()==='Miiverse').setSize(800,600));
     await panel.waitForFunction(()=>innerWidth<=800);assert.equal(await panel.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),true);
-    await panel.getByRole('button',{name:'My Notes · 0',exact:true}).click();
+    await panel.getByRole('button',{name:'Communities',exact:true}).click();
     await app.evaluate(({BrowserWindow})=>BrowserWindow.getAllWindows().find(w=>w.getTitle()==='Miiverse').minimize());
     await plaza.waitForFunction(()=>PlazaMusic.diagnostics().role==='plaza');
     await app.evaluate(({BrowserWindow})=>BrowserWindow.getAllWindows().find(w=>w.getTitle()==='Miiverse').restore());
     await plaza.waitForFunction(()=>PlazaMusic.diagnostics().role==='miiverse');
     assert.deepEqual(await app.evaluate(({BrowserWindow})=>BrowserWindow.getAllWindows().find(w=>w.getTitle()==='Miiverse').getSize()),[800,600]);
-    await panel.click('#close-panel');await plaza.waitForFunction(()=>PlazaMusic.diagnostics().role==='plaza');
+    await closePanel(panel);await plaza.waitForFunction(()=>PlazaMusic.diagnostics().role==='plaza');
     assert.equal((await plaza.evaluate(()=>plaza.call('state'))).document.draft.text,'Keep this draft');
     await plaza.click('#miiverse-button');panel=await miiverse(app);
-    assert.equal(await panel.locator('#communities .selected').textContent(),'All Notes · 0');
+    assert.equal(await panel.locator('#miiverse-page-title').textContent(),'Activity Feed');assert(await panel.locator('#miiverse-feed').isVisible());
     await fs.mkdir(path.join(root,'test-results'),{recursive:true});await panel.screenshot({path:path.join(root,'test-results/miiverse-window-800.png')});
     await app.close();app=null;
     plaza=await launch();await plaza.click('#miiverse-button');panel=await miiverse(app);

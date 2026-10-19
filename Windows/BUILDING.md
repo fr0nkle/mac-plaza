@@ -147,3 +147,15 @@ unsigned installer/portable ZIP, verifies runtime/source/checksums, and publishe
 an UNTESTED GitHub prerelease. It leaves the Mac release and signed updater feed
 unchanged. The standalone SDK stays in an unpublished build-input draft. Native app, installer/updater and
 two-device acceptance remain separate gates in PORT-PLAN.md.
+
+
+## Preview update delivery
+
+Preview builds use the dedicated signed windows-preview-update.json feed and
+require channel preview. Mac updates and the legacy Windows stable URL are
+untouched. See RELEASE-PROCESS.md: an explicit tag builds/tests/publishes preview
+artifacts; the existing signing Mac then verifies them, signs metadata locally and
+publishes the Site. No signing key is uploaded to CI. The Windows workflow also
+exercises a disposable installed older baseline with ephemeral test signatures,
+manual and automatic replacement, relaunch and saved data/resource preservation.
+Those fixtures are excluded from public release artifacts.

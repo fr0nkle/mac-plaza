@@ -8,3 +8,7 @@ const pe=fs.readFileSync(path.join(dist,'win-unpacked/Plaza.exe'));assert.equal(
 assert(!fs.existsSync(path.join(native,'Audio')),'Public preview must exclude local recordings');
 const files={};for(const name of artifacts){const file=path.join(dist,name),bytes=fs.readFileSync(file);assert(bytes.length>1000,`Empty artifact: ${name}`);const sha256=crypto.createHash('sha256').update(bytes).digest('hex');fs.writeFileSync(file+'.sha256',sha256+'  '+name+'\n');files[name]={size:bytes.length,sha256,url:`https://github.com/fr0nkle/mac-plaza/releases/download/windows-v${version}/${name}`};}
 fs.writeFileSync(path.join(dist,'windows-preview.json'),JSON.stringify({version,platform:'win32',arch:'x64',status:'untested',unsigned:true,macParityTarget:'0.23.0',files},null,2)+'\n');console.log('Verified x64 app, required native/runtime files, source, excluded recordings and checksums.');
+
+const installer=artifacts[0],info=files[installer];
+fs.writeFileSync(path.join(dist,'windows-update-candidate.json'),JSON.stringify({schema:1,channel:'preview',platform:'win32',arch:'x64',version,url:info.url,size:info.size,sha256:info.sha256,notes:fs.readFileSync(path.join(root,'TESTING.md'),'utf8')},null,2)+'\n');
+console.log('Prepared unsigned preview metadata for the local signing/publication step.');

@@ -9,10 +9,10 @@ import tempfile
 
 installer, signer, output = map(Path, sys.argv[1:4])
 version = installer.name.removeprefix('Plaza-Windows-').removesuffix('-Setup-x64.exe')
-payload = json.dumps(dict(schema=1, platform='win32', arch='x64', version=version,
+payload = json.dumps(dict(schema=1, channel='preview', platform='win32', arch='x64', version=version,
     url=f'https://github.com/fr0nkle/mac-plaza/releases/download/windows-v{version}/{installer.name}',
     size=installer.stat().st_size, sha256=hashlib.sha256(installer.read_bytes()).hexdigest(),
-    notes=(Path(__file__).resolve().parents[1] / 'RELEASE-NOTES.md').read_text()), separators=(',', ':')).encode()
+    notes=(Path(__file__).resolve().parents[1] / 'TESTING.md').read_text()), separators=(',', ':')).encode()
 with tempfile.TemporaryDirectory(prefix='plaza-update-sign-') as folder:
     source = Path(folder) / 'manifest.json'
     source.write_bytes(payload)

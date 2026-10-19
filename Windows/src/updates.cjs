@@ -2,7 +2,8 @@
 // The signing key stays in the developer's macOS Keychain. Only its public half ships.
 const fs=require('node:fs/promises'),path=require('node:path'),crypto=require('node:crypto');
 const PUBLIC_KEY='nb75UIGtfJC3VgrIPHOZWMKdZoo9l8ZpQUqenSJgGXE=';
-const FEED='https://plaza.squidproductions.org/windows-update.json';
+const CHANNEL='preview';
+const FEED='https://plaza.squidproductions.org/windows-preview-update.json';
 const MAX_SIZE=512*1024*1024;
 function version(value){if(typeof value!=='string'||!/^\d{1,6}\.\d{1,6}\.\d{1,6}$/.test(value))throw Error('Invalid update version.');return value.split('.').map(Number);}
 function newer(a,b){const aa=version(a),bb=version(b);for(let i=0;i<3;i++)if(aa[i]!==bb[i])return aa[i]>bb[i];return false;}
@@ -12,7 +13,7 @@ function manifest(envelope,key=PUBLIC_KEY){
   if(!crypto.verify(null,bytes,publicKey,Buffer.from(envelope.signature,'base64')))throw Error('The update signature could not be verified.');
   const info=JSON.parse(bytes.toString('utf8'));version(info.version);
   const expected=`https://github.com/fr0nkle/mac-plaza/releases/download/windows-v${info.version}/Plaza-Windows-${info.version}-Setup-x64.exe`;
-  if(info.schema!==1||info.platform!=='win32'||info.arch!=='x64'||info.url!==expected||!Number.isSafeInteger(info.size)||info.size<1||info.size>MAX_SIZE||typeof info.sha256!=='string'||!/^[a-f0-9]{64}$/.test(info.sha256)||typeof info.notes!=='string'||info.notes.length>8000)throw Error('The update is not a valid Plaza Windows installer.');
+  if(info.schema!==1||info.channel!==CHANNEL||info.platform!=='win32'||info.arch!=='x64'||info.url!==expected||!Number.isSafeInteger(info.size)||info.size<1||info.size>MAX_SIZE||typeof info.sha256!=='string'||!/^[a-f0-9]{64}$/.test(info.sha256)||typeof info.notes!=='string'||info.notes.length>8000)throw Error('The update is not a valid Plaza Windows installer.');
   return info;
 }
 async function verifyFile(file,info){const handle=await fs.open(file,'r');try{const stat=await handle.stat();if(!stat.isFile()||stat.size!==info.size)throw Error('The update download is incomplete.');const hash=crypto.createHash('sha256');for await(const chunk of handle.createReadStream({autoClose:false}))hash.update(chunk);if(hash.digest('hex')!==info.sha256)throw Error('The update checksum does not match its signed release.');}finally{await handle.close();}}
@@ -29,4 +30,4 @@ class Updater{
   async performDownload(){if(!this.installed)throw Error('Use the Windows Setup download first.');if(!this.info||!this.envelope)throw Error('Check for an update first.');const info=manifest(this.envelope,this.key);if(!newer(info.version,this.current))throw Error('This update is not newer than Plaza.');await fs.mkdir(this.directory,{recursive:true});this.set('downloading',`Downloading Plaza ${info.version}…`,{progress:0});const file=path.join(this.directory,'installer.part');await fs.rm(file,{force:true});const handle=await fs.open(file,'wx',0o600);try{const response=await this.fetch(info.url,{redirect:'follow',signal:AbortSignal.timeout(600000),credentials:'omit'});if(!response.ok||!response.url.startsWith('https://'))throw Error('The installer could not be downloaded securely.');let size=0,last=0;for await(const chunk of response.body){size+=chunk.length;if(size>info.size)throw Error('The installer exceeds its signed size.');await handle.writeFile(chunk);const progress=Math.floor(size/info.size*100);if(progress>last){last=progress;this.set('downloading',`Downloading Plaza ${info.version}…`,{progress});}}await handle.sync();}finally{await handle.close();}await verifyFile(file,info);await fs.rename(file,path.join(this.directory,'installer.exe'));await fs.writeFile(path.join(this.directory,'pending.json'),JSON.stringify(this.envelope),{mode:0o600});this.ready=this.envelope;this.set('ready',`Plaza ${info.version} is ready. Restart now to install. With automatic installation enabled, it installs when you next open Plaza.`);return this.state();}
   async install(relaunch=true){if(!this.installed||!this.ready||this.busy)throw Error('Download and verify an update first.');const info=manifest(this.ready,this.key);if(!newer(info.version,this.current))throw Error('This update is not newer than Plaza.');await verifyFile(path.join(this.directory,'installer.exe'),info);await fs.writeFile(path.join(this.directory,'attempted.txt'),info.sha256,{mode:0o600});await this.startWorker(relaunch);this.set('installing','Closing Plaza to install the verified update…');}
 }
-module.exports={Updater,PUBLIC_KEY,FEED,manifest,newer,verifyFile,readBounded};
+module.exports={Updater,PUBLIC_KEY,CHANNEL,FEED,manifest,newer,verifyFile,readBounded};

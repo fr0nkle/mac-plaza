@@ -86,6 +86,30 @@ jobs:
           git -C .. archive --format=zip --prefix="Mii-Plaza-Windows-$version-Source/" --output="Windows/dist/Plaza-Windows-$version-Source.zip" HEAD
           Copy-Item TESTING.md "dist/Windows-Testing-Readme.md"
           pnpm verify:package
+      - name: Build disposable installed-update baseline
+        run: node scripts/build-update-baseline.cjs
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+      - name: Test installed manual and automatic preview updates
+        shell: pwsh
+        run: |
+          $installed = Join-Path $env:RUNNER_TEMP 'Plaza-Update-Test'
+          $setup = (Resolve-Path 'update-baseline/Plaza-Update-Baseline.exe').Path
+          $process = Start-Process -FilePath $setup -ArgumentList @('/S', "/D=$installed") -Wait -PassThru
+          if ($process.ExitCode -ne 0) { throw 'Could not install disposable updater baseline.' }
+          $env:PLAZA_UPDATE_BASELINE = Join-Path $installed 'Plaza.exe'
+          $version = (Get-Content package.json | ConvertFrom-Json).version
+          $env:PLAZA_UPDATE_INSTALLER = (Resolve-Path "dist/Plaza-Windows-$version-Setup-x64.exe").Path
+          pnpm test:updates
+          if ($LASTEXITCODE -ne 0) { throw 'Installed updater validation failed.' }
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: windows-update-evidence
+          if-no-files-found: ignore
+          path: |
+            Windows/test-results/windows-update-install.json
+            Windows/test-results/windows-update-ready.png
       - uses: actions/upload-artifact@v4
         with:
           name: windows-preview
@@ -96,6 +120,7 @@ jobs:
             Windows/dist/*.zip
             Windows/dist/*.sha256
             Windows/dist/windows-preview.json
+            Windows/dist/windows-update-candidate.json
             Windows/dist/Windows-Testing-Readme.md
   release:
     if: startsWith(github.ref, 'refs/tags/windows-v')
@@ -115,3 +140,9 @@ jobs:
         shell: bash
         run: |
           gh release create "$GITHUB_REF_NAME" windows-preview/* --repo "$GITHUB_REPOSITORY" --verify-tag --prerelease --latest=false --title "Plaza for Windows ${GITHUB_REF_NAME#windows-v} — UNTESTED preview" --notes-file Windows/TESTING.md
+
+      - name: Explain the required local signed-feed publication
+        shell: bash
+        run: |
+          echo '### Windows preview artifacts published' >> "$GITHUB_STEP_SUMMARY"
+          echo 'Complete Windows/RELEASE-PROCESS.md on the existing signing Mac, then publish the Site. Source pushes do not deliver updates. No signing key is stored in GitHub.' >> "$GITHUB_STEP_SUMMARY"

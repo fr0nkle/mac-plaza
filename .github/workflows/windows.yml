@@ -42,6 +42,13 @@ jobs:
         env:
           PYTHON: python
       - run: python -B -m unittest discover -s ../Server
+      - uses: actions/upload-artifact@v4
+        if: startsWith(github.ref, 'refs/tags/windows-v')
+        with:
+          name: windows-shared-runtime
+          if-no-files-found: error
+          retention-days: 1
+          path: Windows/native/runtime/
   package:
     if: startsWith(github.ref, 'refs/tags/windows-v')
     needs: contracts
@@ -62,10 +69,10 @@ jobs:
       - uses: pnpm/action-setup@v4
         with:
           version: '11.25.0'
-      - uses: compnerd/gha-setup-swift@bbae8ce86bac5a3449f3992b3d88bc4ca25f2057
+      - uses: actions/download-artifact@v4
         with:
-          swift-version: swift-6.4.1-release
-          swift-build: 6.4.1-RELEASE
+          name: windows-shared-runtime
+          path: Windows/native/runtime
       - uses: compnerd/gha-setup-vsdevenv@f1ba60d553a3216ce1b89abe0201213536bc7557
       - run: pnpm install --frozen-lockfile --ignore-scripts --config.block-exotic-subdeps=false
       - run: node node_modules/electron/install.js
@@ -73,7 +80,6 @@ jobs:
         run: ./scripts/prepare-native.ps1
         env:
           GH_TOKEN: ${{ github.token }}
-      - run: pnpm build:engine
       - name: Package unsigned testing installer and portable app
         run: pnpm dist
         env:
@@ -91,6 +97,7 @@ jobs:
         env:
           CSC_IDENTITY_AUTO_DISCOVERY: 'false'
       - name: Test installed manual and automatic preview updates
+        timeout-minutes: 8
         shell: pwsh
         run: |
           $installed = Join-Path $env:RUNNER_TEMP 'Plaza-Update-Test'

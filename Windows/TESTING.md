@@ -1,4 +1,4 @@
-# Plaza for Windows 0.4.3 — UNTESTED testing preview
+# Plaza for Windows 0.4.4 — UNTESTED testing preview
 
 This is an early Windows x64 preview for friends to test. It has not completed
 hands-on Windows testing or been certified to match Mac Plaza 0.23.0. Expect bugs.

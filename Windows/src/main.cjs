@@ -449,7 +449,14 @@ app.whenReady().then(async () => {
     await new Promise((resolve,reject)=>{child.once('spawn',resolve);child.once('error',reject);});child.unref();
   }});
   await updater.load();
-  if(process.platform==='win32'&&store.settings.automaticUpdateDownloads&&updater.ready&&updater.autoInstallAllowed!==false&&!recoveryRequired){try{await updater.install();app.quit();return;}catch{updater.set('error','The update could not be installed. Please retry from System Update.');}}
+  // Bootstrap precedes windows, the native bridge and engine. Record only updater
+  // flags for recovery diagnostics, then exit directly after durable saves and
+  // worker handoff; ordinary UI shutdown has no resources to release on this path.
+  if(process.platform==='win32'){
+    await fs.mkdir(updateDirectory,{recursive:true}).catch(()=>{});
+    await fs.writeFile(path.join(updateDirectory,'startup.json'),JSON.stringify({current:app.getVersion(),phase:updater.state().phase,installed:installedUpdater,automatic:!!store.settings.automaticUpdateDownloads,ready:!!updater.ready,autoInstallAllowed:updater.autoInstallAllowed!==false,recoveryRequired})).catch(()=>{});
+    if(store.settings.automaticUpdateDownloads&&updater.ready&&updater.autoInstallAllowed!==false&&!recoveryRequired){try{await save();await updater.install();await fs.rm(path.join(root(),'active-session'),{force:true});quitting=true;app.exit(0);return;}catch{updater.set('error','The update could not be installed. Please retry from System Update.');}}
+  }
 
   birthdayReceipt=new birthday.BirthdayReceipt(path.join(root(),'birthday-celebration.json'));birthdayOverlay=new birthday.BirthdayOverlay(BrowserWindow);
   await fs.rm(path.join(root(),'Music/.preview'),{recursive:true,force:true});engine=new Engine(app.isPackaged);

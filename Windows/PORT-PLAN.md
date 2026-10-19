@@ -102,3 +102,12 @@ Every row still requires comparison on Windows; none is certified as runtime par
 
 Build/run commands are in BUILDING.md. Remaining platform tests are pending due to
 an unavailable Windows environment, not an approval denial.
+
+## Requested testing release
+
+The user subsequently requested a GitHub windows branch and a public website
+download explicitly marked untested for friends. The 0.4.1 preview workflow now
+separates branch contract checks from tag-triggered unsigned preview packaging.
+Public downloads exclude local Nintendo audio and standalone vendor SDK inputs.
+This authorizes the testing app release and site update; it does not establish
+hands-on Windows parity or authorize a stable/automatic-update release.

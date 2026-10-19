@@ -1,6 +1,6 @@
 {
   "name": "plaza-windows",
-  "version": "0.4.0",
+  "version": "0.4.1",
   "private": true,
   "description": "Plaza for Windows \u2014 shared notes with your Mac friends",
   "author": "Squid Productions",
@@ -26,7 +26,8 @@
     "test:pack": "node test/pack-desktop.cjs",
     "test:recovery": "node test/recovery-desktop.cjs",
     "test:notifications": "node test/notifications-desktop.cjs",
-    "test:list": "node test/list-desktop.cjs"
+    "test:list": "node test/list-desktop.cjs",
+    "verify:package": "node scripts/verify-package.cjs"
   },
   "devDependencies": {
     "electron": "44.7.0",

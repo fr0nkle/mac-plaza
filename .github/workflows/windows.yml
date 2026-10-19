@@ -1,13 +1,18 @@
-name: Windows port contract validation
-# Manual validation only. This port is not connected to release publishing.
+name: Windows preview build
 on:
+  push:
+    branches: [windows]
+    tags: ['windows-v*']
   workflow_dispatch:
 permissions:
   contents: read
+concurrency:
+  group: windows-${{ github.ref }}
+  cancel-in-progress: false
 jobs:
   contracts:
     runs-on: windows-latest
-    timeout-minutes: 30
+    timeout-minutes: 35
     defaults:
       run:
         working-directory: Windows
@@ -37,5 +42,72 @@ jobs:
         env:
           PYTHON: python
       - run: python -B -m unittest discover -s ../Server
-# Desktop tests also require the licensed Discord SDK and native bridge.
-# See Windows/BUILDING.md. No SDK, installer, or signing key is uploaded.
+  package:
+    if: startsWith(github.ref, 'refs/tags/windows-v')
+    needs: contracts
+    runs-on: windows-latest
+    timeout-minutes: 40
+    defaults:
+      run:
+        working-directory: Windows
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - uses: pnpm/action-setup@v4
+        with:
+          version: '11.25.0'
+      - uses: compnerd/gha-setup-swift@bbae8ce86bac5a3449f3992b3d88bc4ca25f2057
+        with:
+          swift-version: swift-6.4.1-release
+          swift-build: 6.4.1-RELEASE
+      - uses: compnerd/gha-setup-vsdevenv@f1ba60d553a3216ce1b89abe0201213536bc7557
+      - run: pnpm install --frozen-lockfile --ignore-scripts --config.block-exotic-subdeps=false
+      - run: node node_modules/electron/install.js
+      - name: Compile Windows bridge with private vendor input
+        run: ./scripts/prepare-native.ps1
+        env:
+          GH_TOKEN: ${{ github.token }}
+      - run: pnpm build:engine
+      - name: Package unsigned testing installer and portable app
+        run: pnpm dist
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+      - name: Include corresponding source and testing instructions
+        shell: pwsh
+        run: |
+          $version = (Get-Content package.json | ConvertFrom-Json).version
+          if ($env:GITHUB_REF_NAME -ne "windows-v$version") { throw 'Tag and application version differ.' }
+          git -C .. archive --format=zip --prefix="Mii-Plaza-Windows-$version-Source/" --output="Windows/dist/Plaza-Windows-$version-Source.zip" HEAD
+          Copy-Item TESTING.md "dist/Windows-Testing-Readme.md"
+          pnpm verify:package
+      - uses: actions/upload-artifact@v4
+        with:
+          name: windows-preview
+          if-no-files-found: error
+          retention-days: 14
+          path: |
+            Windows/dist/*.exe
+            Windows/dist/*.zip
+            Windows/dist/*.sha256
+            Windows/dist/windows-preview.json
+            Windows/dist/Windows-Testing-Readme.md
+  release:
+    if: startsWith(github.ref, 'refs/tags/windows-v')
+    needs: package
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: windows-preview
+          path: windows-preview
+      - name: Publish explicitly untested prerelease
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          gh release create "$GITHUB_REF_NAME" windows-preview/* --repo "$GITHUB_REPOSITORY" --verify-tag --prerelease --latest=false --title "Plaza for Windows ${GITHUB_REF_NAME#windows-v} — UNTESTED preview" --notes-file Windows/TESTING.md

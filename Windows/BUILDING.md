@@ -140,7 +140,10 @@ $env:CSC_IDENTITY_AUTO_DISCOVERY='false'
 pnpm dist
 ```
 
-This uses `--publish never`. Do not invoke signing/release/update-publishing
-scripts. The manual workflow validates shared core/protocols only, with read-only
-repository permissions; it was not dispatched. Native app, installer/updater and
+This uses `--publish never` for local builds. The Windows preview workflow validates
+shared core/protocols on pushes to the windows branch. An explicitly pushed
+windows-v<version> tag additionally compiles the Windows native bridge, packages an
+unsigned installer/portable ZIP, verifies runtime/source/checksums, and publishes
+an UNTESTED GitHub prerelease. It leaves the Mac release and signed updater feed
+unchanged. The standalone SDK stays in an unpublished build-input draft. Native app, installer/updater and
 two-device acceptance remain separate gates in PORT-PLAN.md.

@@ -1,8 +1,8 @@
 # Mii Plaza Windows port — local development
 
-This branch starts parity with **Mac Plaza 0.23.0** using the existing local
-Windows 0.4 foundation. It is unfinished and has not been released or certified
-on Windows. Historical Windows downloads were retired in the Mac repository;
+This branch provides an **untested Windows preview** and starts parity with **Mac Plaza 0.23.0** using the existing local
+Windows 0.4 foundation. It remains unfinished and has not completed hands-on Windows validation. See
+[testing notes](TESTING.md). Historical Windows downloads were retired in the Mac repository;
 do not treat their release notes or prior CI claims as current proof.
 
 The Electron UI uses the same Swift PlazaCore crowd, Mii codec, portable models,

@@ -1,3 +1,7 @@
+# Historical Windows 0.4 notes
+
+These describe the inherited implementation before this local Mac 0.23 parity task. They are not validation or release claims for this branch. See PORT-PLAN.md and BUILDING.md.
+
 Plaza for Windows 0.4.0 adds automatic updates, with signed release metadata and a verified installer checksum. System Settings → System Update offers automatic checks, optional automatic download/installation, and Restart and Install. Automatic installation occurs when you next open Plaza, preserving Miis, notes, drafts, settings and imported resources. Install the Setup version once to enable updates; portable ZIP users can check for releases and use the website downloads.
 
 Miiverse app communities now show their app icons. Wallpaper mode keeps only Return to Desktop in the top-left corner, matching Mac Plaza 0.20.3.

@@ -1,7 +1,8 @@
 const fs=require('node:fs'),path=require('node:path'),{spawnSync}=require('node:child_process');
 const windows=path.resolve(__dirname,'..');
 require('./prepare-shared.cjs');
-const result=spawnSync('swift',['build',...(process.platform==='darwin'?['--disable-sandbox']:[]),'-c','release','--package-path',path.join(windows,'Engine')],{stdio:'inherit'});if(result.status!==0)process.exit(result.status||1);
+const moduleCache=path.join(windows,'Engine/.build/module-cache');fs.mkdirSync(moduleCache,{recursive:true});
+const result=spawnSync('swift',['build',...(process.platform==='darwin'?['--disable-sandbox']:[]),'-c','release','--package-path',path.join(windows,'Engine')],{stdio:'inherit',env:{...process.env,CLANG_MODULE_CACHE_PATH:process.env.CLANG_MODULE_CACHE_PATH||moduleCache,SWIFTPM_MODULECACHE_OVERRIDE:process.env.SWIFTPM_MODULECACHE_OVERRIDE||moduleCache}});if(result.status!==0)process.exit(result.status||1);
 const output=path.join(windows,'native/runtime');fs.mkdirSync(output,{recursive:true});
 const binary=path.join(windows,'Engine/.build/release',process.platform==='win32'?'PlazaEngine.exe':'PlazaEngine');fs.copyFileSync(binary,path.join(output,path.basename(binary)));
 if(process.platform==='win32'){

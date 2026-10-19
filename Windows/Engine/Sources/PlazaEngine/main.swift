@@ -34,6 +34,12 @@ func perform(_ command: String, _ args: [String:Any]) throws -> Any {
         guard recent.count<=1000,games.count<=1000,fallback.count<=1000 else{throw PlazaError.invalid("Too many app shortcuts.")}
         var random=SystemRandomNumberGenerator()
         return try encode(HomeScreenRotation.select(recent:recent,friendGames:games,fallback:fallback,previous:args["previous"] as? [String] ?? [],using:&random))
+    case "sharedNotes":
+        let snapshot = try decode(args, SharedJournalSnapshot.self).validated()
+        return try encode(snapshot)
+    case "publishNotes":
+        let document = try decode(args["document"] ?? [:], PlazaDocument.self).validated()
+        return try encode(SharedJournalNote.publishing(notes: document.notes, apps: document.apps, primary: document.primaryAvatar))
     case "portable":
         let data=try JSONSerialization.data(withJSONObject:args["document"] ?? [:])
         return try encode(DocumentStorage.decode(data).portable())

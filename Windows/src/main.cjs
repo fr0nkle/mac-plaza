@@ -1,9 +1,12 @@
 'use strict';
-const { app, BrowserWindow, ipcMain, shell, safeStorage, dialog, Menu, powerMonitor, Notification, protocol, net, nativeImage, clipboard, utilityProcess } = require('electron');
+const { app, BrowserWindow, ipcMain, shell, safeStorage, dialog, Menu, powerMonitor, Notification, protocol, net, nativeImage, clipboard, utilityProcess, screen } = require('electron');
 const fs = require('node:fs/promises');
 const path = require('node:path');
 const { randomBytes, createHash } = require('node:crypto');
 const core = require('./core.cjs');
+const {ServiceClient}=require('./service-client.cjs');
+const serviceClient=new ServiceClient((...args)=>globalThis.fetch(...args));
+const miiverseWindow=require('./miiverse-window.cjs');
 const {Engine}=require('./engine.cjs');
 const {Wallpaper}=require('./wallpaper.cjs');
 const {FriendRoster,validateFriends,recipients}=require('./social.cjs');
@@ -115,25 +118,15 @@ async function audience(){
   if(signature===lastAudienceSignature&&Date.now()-lastAudienceAt<300000)return;
   await request('PUT','/v1/discord/recipients',{discordIDs:ids});lastAudienceSignature=signature;lastAudienceAt=Date.now();
 }
-async function publishProfile(){if(session){doc().profilePending=true;await save();const owned=await request('GET','/v1/notes/owned');if(owned.notes.length)await request('PUT','/v1/notes',{notes:core.mergeNotes(owned.notes,session.accountID,doc().pending),primaryAvatar:core.publicAvatar(doc().avatar)});await request('PUT','/v1/profile',{avatar:doc().avatar,note:doc().profileNote||'',sharing:!!doc().shareProfile,sharePresence:doc().sharePresence!==false,shareActivity:!!doc().shareActivity,shareDiscordFriends:!!doc().shareProfile});doc().profilePending=false;await save();}}
+async function publishProfile(){if(session){doc().profilePending=true;await save();const owned=await request('GET','/v1/notes/owned');if(owned.notes.length)await request('PUT','/v1/notes',{notes:core.mergeNotes(owned.notes,session.accountID,doc().pending),primaryAvatar:core.publicAvatar(doc().avatar)});await request('PUT','/v1/profile',{avatar:core.publicAvatar(doc().avatar),note:doc().profileNote||'',sharing:!!doc().shareProfile,sharePresence:doc().sharePresence!==false,shareActivity:!!doc().shareActivity,shareDiscordFriends:!!doc().shareProfile});doc().profilePending=false;await save();}}
 async function persistSession() {
   if (!safeStorage.isEncryptionAvailable()) throw new Error('Windows credential encryption is unavailable. Sign-in was not saved.');
   await atomic(path.join(root(), 'session.bin'), safeStorage.encryptString(JSON.stringify(session)));
 }
 async function request(method, route, body, auth = session) {
-  if (!auth) throw new Error('Connect Discord first.');
-  const headers = { 'Content-Type': 'application/json' };
-  if (auth.token) headers.Authorization = 'Bearer ' + auth.token;
-  let response;
-  try { response = await fetch(core.endpoint(auth.origin) + route, { method, headers,
-    body: body === undefined ? undefined : JSON.stringify(body), redirect: 'error', signal: AbortSignal.timeout(20000) }); }
-  catch { throw new Error('The Plaza service is unavailable. Your saved notes and draft are safe. Try again when it is online.'); }
-  const text = await response.text();
-  if (text.length > 8_000_000) throw new Error('Service response is too large.');
-  let data; try { data = JSON.parse(text); } catch { throw new Error('The service returned an unreadable response.'); }
-  if (!response.ok) { const error = new Error(data.error || 'The service rejected the request.'); error.status = response.status; throw error; }
-  return data;
+  return serviceClient.request(method,route,body,auth);
 }
+
 async function refresh() {
   await ensureSDK();await attachDirectSession();
   if(!session)return localSnapshot();
@@ -184,16 +177,17 @@ const actions = {
   note: async value => {
     core.validateNote(value.note);
     if (core.expired(value.note)) throw new Error('This note has expired. Write a new note to post it again.');
-    if (value.visibility === 'public') {
-      if (!session) throw new Error('Connect Discord before sharing with friends.');
-      doc().pending[value.note.id] = value.note;
+    if (!['private', 'friends', 'public'].includes(value.visibility)) throw new Error('Choose a valid post visibility.');
+    if (value.visibility !== 'private') {
+      if (!session) throw new Error('Connect Discord before sharing a post.');
+      doc().pending[value.note.id] = {...value.note, audience: value.visibility, author: structuredClone(doc().avatar)};
       doc().privateNotes = doc().privateNotes.filter(n => n.id !== value.note.id);
     } else {
       if (!doc().privateNotes.some(n => n.id === value.note.id) && doc().privateNotes.length >= 200) throw new Error('You have reached the private post limit.');
       const previous=doc().privateNotes.find(n=>n.id===value.note.id);doc().privateNotes = doc().privateNotes.filter(n => n.id !== value.note.id).concat({...value.note,replies:previous?.replies||value.note.replies||[],liked:previous?.liked??value.note.liked??false});
       if (session) doc().pending[value.note.id] = null;
     }
-    if(!value.preserveDraft)doc().draft = { text: '', drawing: [], drawingDescription: '' }; await save();
+    if(!value.preserveDraft)doc().draft = { text: '', drawing: [], drawingDescription: '', visibility: 'public' }; await save();
     return sync();
   },
   deleteNote: async id => {
@@ -333,7 +327,7 @@ Object.assign(actions,{
   commitMusic:async token=>{const pending=musicImports.get(token);if(!pending)throw new Error('Music selection expired.');const target=path.join(root(),'Music',token+path.extname(pending.file));await fs.rename(pending.file,target);store.music ||= {};const previous=store.music[pending.kind];store.music[pending.kind]={file:target,name:pending.name};try{await save();}catch(error){if(previous)store.music[pending.kind]=previous;else delete store.music[pending.kind];await fs.rm(target,{force:true});throw error;}musicImports.delete(token);if(previous)await fs.rm(previous.file,{force:true}).catch(()=>{});broadcast();return publicState();},
   exportPlaza:async()=>{const document=await engine.call('portable',{document:portable.exportDocument(doc(),store.apps||[])});const picked=await dialog.showSaveDialog(BrowserWindow.getFocusedWindow()||window,{defaultPath:'My-Plaza.json',filters:[{name:'Portable Plaza',extensions:['json']}]});if(!picked.canceled)await fs.writeFile(picked.filePath,JSON.stringify(document,null,2));return{};},
   importPlaza:async()=>{const picked=await dialog.showOpenDialog(BrowserWindow.getFocusedWindow()||window,{filters:[{name:'Portable Plaza',extensions:['json']}],properties:['openFile']});if(picked.canceled)return publicState();const file=picked.filePaths[0];if((await fs.stat(file)).size>12000000)throw new Error('Plaza files must be smaller than 12 MB.');const document=await engine.call('portable',{document:JSON.parse(await fs.readFile(file,'utf8'))});const choice=await dialog.showMessageBox(BrowserWindow.getFocusedWindow()||window,{type:'question',buttons:['Import Plaza','Cancel'],defaultId:1,cancelId:1,message:`Import ${document.avatars.length} Miis and ${document.notes.length} local notes?`,detail:'This replaces this account’s local Miis, private notes and settings. Shared server notes are preserved. Reconnect Windows app shortcuts in Change Apps.'});if(choice.response!==0)return publicState();const next=portable.importDocument(document,doc());await preserveRecovery();store.accounts[key()]=next;store.apps=document.apps.map(a=>({...a,path:a.steamAppID?'steam://rungameid/'+a.steamAppID:'',icon:''}));await save();await publishProfile();broadcast();return publicState();},
-  recoverBackup:async()=>{const value=JSON.parse(await fs.readFile(filename()+'.backup','utf8'));if(!value.accounts?.offline)throw new Error('No readable backup is available.');for(const document of Object.values(value.accounts)){core.validateAvatar(document.avatar);for(const n of document.privateNotes||[])core.validateNote(n);}await preserveRecovery();store=value;store.settings ||= {};store.apps ||= [];doc();await save();broadcast();return publicState();},
+  recoverBackup:async()=>{const value=JSON.parse(await fs.readFile(filename()+'.backup','utf8'));if(!value.accounts?.offline)throw new Error('No readable backup is available.');for(const document of Object.values(value.accounts)){core.validateAvatar(document.avatar);for(const n of document.privateNotes||[])core.validateNote(n);}await preserveRecovery();core.migrateAudiences(value);store=value;store.settings ||= {};store.apps ||= [];doc();await save();broadcast();return publicState();},
   musicPreview:async value=>{window.webContents.send('plaza-music-preview',!!value);return{};},
   musicRole:async kind=>{if(!['plaza','maker','friends','settings','writing','miiverse','uiClick','uiBack'].includes(kind))throw new Error('Unknown music role.');window.webContents.send('plaza-music-role',kind);return{};},
   musicInfo:async()=>Object.fromEntries(Object.entries(musicLibrary()).map(([kind,item])=>[kind,{name:item.name,url:'plaza-media://music/'+kind}])),
@@ -353,7 +347,38 @@ Object.assign(actions,{
   emailDiagnostics:async()=>{if(!lastDiagnostics)throw Error('Export diagnostics first.');const data=await fs.readFile(lastDiagnostics),boundary='Plaza-'+cryptoUUID(),email='To: alexanderhosier@squidproductions.org\r\nSubject: Plaza Windows diagnostics\r\nX-Unsent: 1\r\nMIME-Version: 1.0\r\nContent-Type: multipart/mixed; boundary="'+boundary+'"\r\n\r\n--'+boundary+'\r\nContent-Type: text/plain; charset=utf-8\r\n\r\nPlease review this diagnostic attachment before sending.\r\n--'+boundary+'\r\nContent-Type: application/zip\r\nContent-Disposition: attachment; filename="Plaza-Diagnostics.zip"\r\nContent-Transfer-Encoding: base64\r\n\r\n'+data.toString('base64').match(/.{1,76}/g).join('\r\n')+'\r\n--'+boundary+'--\r\n';const file=path.join(root(),'Diagnostics-Draft.eml');await fs.writeFile(file,email);const error=await shell.openPath(file);if(error){shell.showItemInFolder(file);throw Error('Email draft saved. Open it with your mail app to review and send.');}return{};}
 });
 async function preserveRecovery(){if(recoveryRequired){await fs.copyFile(filename(),filename()+'.unreadable-'+Date.now()).catch(()=>{});recoveryRequired=false;}}
-async function openPanel(value){const kind=typeof value==='string'?value:value?.kind,context=typeof value==='object'?value.context||{}:{};if(JSON.stringify(context).length>2000)throw new Error('Panel request is too large.');panelContexts.set(kind,context);if(!['maker','friends','settings','composer','activity','miiverse','apps'].includes(kind))throw new Error('Unknown panel.');if(panels.has(kind)){panels.get(kind).show();panels.get(kind).focus();panels.get(kind).webContents.send('plaza-panel-context',context);return;}const panel=new BrowserWindow({width:kind==='maker'?1000:850,height:kind==='maker'?840:740,minWidth:700,minHeight:560,title:kind==='maker'?'Mii Maker':'Plaza',backgroundColor:'#f5f7f2',webPreferences:{preload:path.join(__dirname,'preload.cjs'),contextIsolation:true,sandbox:true,nodeIntegration:false,autoplayPolicy:'no-user-gesture-required'}});windows.add(panel);panels.set(kind,panel);secure(panel);broadcast();panel.on('closed',()=>{windows.delete(panel);panels.delete(kind);panelContexts.delete(kind);broadcast();if(!window.isDestroyed()){window.webContents.send('plaza-music-preview',false);window.webContents.send('plaza-music-role','plaza');}});await panel.loadFile(path.join(__dirname,'index.html'),{query:{panel:kind}});}
+let miiverseSaveTimer;
+function rememberMiiverseBounds(){
+  const panel=panels.get('miiverse');
+  if(!panel||panel.isDestroyed()||panel.isMinimized()||panel.isMaximized()||panel.isFullScreen()||recoveryRequired)return;
+  store.miiverseBounds=panel.getBounds();
+}
+function saveMiiverseBounds(){
+  rememberMiiverseBounds();clearTimeout(miiverseSaveTimer);
+  miiverseSaveTimer=setTimeout(()=>{if(!quitting&&!recoveryRequired)operation=operation.then(save).catch(()=>{});},250);
+  miiverseSaveTimer.unref();
+}
+async function openPanel(value){
+  const kind=typeof value==='string'?value:value?.kind,context=typeof value==='object'?value.context||{}:{};
+  if(JSON.stringify(context).length>2000)throw new Error('Panel request is too large.');
+  if(!['maker','friends','settings','composer','activity','miiverse','apps'].includes(kind))throw new Error('Unknown panel.');
+  panelContexts.set(kind,context);
+  if(panels.has(kind)){const panel=panels.get(kind);if(panel.isMinimized())panel.restore();panel.show();panel.focus();panel.webContents.send('plaza-panel-context',context);return;}
+  const miiverse=kind==='miiverse';
+  const area=screen.getDisplayMatching(window.getBounds()).workArea;
+  const bounds=miiverse?miiverseWindow.fitBounds(store.miiverseBounds,area):{width:kind==='maker'?1000:850,height:kind==='maker'?840:740};
+  const panel=new BrowserWindow({...bounds,minWidth:miiverse?Math.min(720,area.width):700,minHeight:miiverse?Math.min(540,area.height):560,
+    title:miiverse?'Miiverse':kind==='maker'?'Mii Maker':'Plaza',backgroundColor:'#f5f7f2',
+    webPreferences:{preload:path.join(__dirname,'preload.cjs'),contextIsolation:true,sandbox:true,nodeIntegration:false,autoplayPolicy:'no-user-gesture-required'}});
+  panel.on('page-title-updated',event=>event.preventDefault());
+  windows.add(panel);panels.set(kind,panel);secure(panel);broadcast();
+  const musicRole=()=>{if(!window.isDestroyed())window.webContents.send('plaza-music-role',panel.isVisible()&&!panel.isMinimized()?(miiverse?'miiverse':kind==='composer'?'writing':['maker','friends','settings'].includes(kind)?kind:'plaza'):'plaza');};
+  for(const event of ['focus','show','hide','minimize','restore'])panel.on(event,musicRole);
+  if(miiverse){for(const event of ['resize','move'])panel.on(event,saveMiiverseBounds);panel.on('close',()=>{rememberMiiverseBounds();clearTimeout(miiverseSaveTimer);if(!recoveryRequired)operation=operation.then(save).catch(()=>{});});}
+  panel.on('closed',()=>{windows.delete(panel);panels.delete(kind);panelContexts.delete(kind);broadcast();if(!window.isDestroyed()){window.webContents.send('plaza-music-preview',false);window.webContents.send('plaza-music-role','plaza');}});
+  await panel.loadFile(path.join(__dirname,'index.html'),{query:{panel:kind}});
+}
+
 function secure(item){item.webContents.setWindowOpenHandler(()=>({action:'deny'}));item.webContents.on('will-navigate',event=>event.preventDefault());item.webContents.session.setPermissionRequestHandler((_contents,_permission,callback)=>callback(false));}
 function validID(id) { if (typeof id !== 'string' || !/^[\da-f]{8}-(?:[\da-f]{4}-){3}[\da-f]{12}$/i.test(id)) throw new Error('Invalid note identity.'); return id; }
 app.whenReady().then(async () => {
@@ -366,12 +391,13 @@ app.whenReady().then(async () => {
     if (error.code !== 'ENOENT') {
       recoveryRequired=true;
     }
-    store = { origin: core.DEFAULT_SERVICE, accounts: { offline: core.document() } };if(!recoveryRequired)await save();
+    store = { audienceVersion: 1, origin: core.DEFAULT_SERVICE, accounts: { offline: core.document() } };if(!recoveryRequired)await save();
   }
   try { session = JSON.parse(safeStorage.decryptString(await fs.readFile(path.join(root(), 'session.bin')))); core.endpoint(session.origin); validID(session.accountID); }
   catch { session = null; }
   try{localDiscord=JSON.parse(safeStorage.decryptString(await fs.readFile(path.join(root(),'discord-local.bin'))));if(localDiscord.localAuthorization!==true||session?.discordSDK?.discordID&&session.discordSDK.discordID!==localDiscord.discordID)localDiscord=null;}catch{localDiscord=null;}
   store.settings ||= {};store.apps ||= [];doc();
+  if (!recoveryRequired && core.migrateAudiences(store)) await save();
   if (!recoveryRequired && core.pruneNotes(store)) await save();
   const updateDirectory=path.join(root(),'Updates'),installedUpdater=process.platform==='win32'&&app.isPackaged&&require('node:fs').existsSync(path.join(process.resourcesPath,'plaza-installed'));
   updater=new(require('./updates.cjs').Updater)({current:app.getVersion(),directory:updateDirectory,installed:installedUpdater,notify:broadcast,startWorker:async relaunch=>{
@@ -421,7 +447,7 @@ app.whenReady().then(async () => {
   if(native)setInterval(()=>{if(!session?.discordSDK&&!localDiscord)return;try{const current=JSON.parse(native.discordSnapshot()).state;if(current!==lastState){lastState=current;if(current==='ready')backgroundRefresh();}}catch{}},1000).unref();
 }).catch(error=>{console.error('Plaza startup failed:',error);dialog.showErrorBox('Plaza could not start',error.message);app.exit(1);});
 app.on('before-quit',event=>{
-  if(quitting)return;event.preventDefault();quitting=true;monitor?.kill();monitor=null;console.info('Plaza shutdown: beginning');
+  if(quitting)return;event.preventDefault();rememberMiiverseBounds();clearTimeout(miiverseSaveTimer);if(store&&!recoveryRequired)operation=operation.then(save).catch(()=>{});quitting=true;monitor?.kill();monitor=null;console.info('Plaza shutdown: beginning');
   // Let pending saves and audio teardown finish before destroying renderers.
   // Deferring quit also lets an inspector-triggered quit return to its caller.
   setImmediate(async()=>{

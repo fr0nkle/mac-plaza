@@ -21,3 +21,10 @@ test('hidden friends lose recipient grants and disappear; stale/offline games ar
   games.games[0].observedAt=now-91;assert.equal(roster.resolve([friend],{friends:[]},{},games)[0].activities,undefined);
 });
 test('public note primary appearance replaces the temporary Discord visitor without losing status',()=>{const roster=new FriendRoster(),record={discordID:'42',displayName:'Discord Friend',presence:'idle'},document={hiddenFriends:[],friendAssignments:{}},shared=core.avatar('Published Mii');const before=roster.resolve([record],{friends:[]},document)[0];const after=roster.resolve([record],{friends:[]},document,{},[{discordID:'42',ownerID:'account-id',displayName:'Discord Friend',author:shared}])[0];assert.equal(after.avatar.id,shared.id);assert.equal(after.presence,'idle');assert.equal(after.temporaryAvatar,undefined);assert.notEqual(after.avatar.id,before.avatar.id);});
+test('published primary appearance updates linked profiles using verified identity, never names or avatar IDs',()=>{
+  const {publicMiis}=require('../src/social.cjs'),old=core.avatar('Old primary'),latest=core.avatar('New primary'),friends=[{id:'ABC',discordID:'42',displayName:'Account',avatar:old,presence:'idle'}];
+  const note={ownerID:'abc',discordID:'42',displayName:'Verified Account',author:latest,created:2};
+  const result=publicMiis(friends,[note,{...note,author:old,created:1}]);assert.equal(result[0].avatar.id,latest.id);assert.equal(result[0].id,'ABC');assert.equal(result[0].presence,'idle');assert.equal(friends[0].avatar.id,old.id);
+  for(const conflict of [{...note,discordID:'99'},{...note,ownerID:'other',discordID:'99',displayName:'Account'}])assert.equal(publicMiis(friends,[conflict])[0].avatar.id,old.id);
+  assert.equal(publicMiis([...friends,{...friends[0],id:'other'}],[note])[0].avatar.id,old.id);
+});

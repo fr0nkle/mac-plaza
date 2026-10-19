@@ -1,51 +1,18 @@
-name: Windows build and cross-platform notes
+name: Windows port contract validation
+# Manual validation only. This port is not connected to release publishing.
 on:
-  push:
-    branches: [main, codex/windows-parity, codex/windows-current-features]
-    paths: ['Windows/**', 'Sources/PlazaCore/**', 'Sources/MacPlaza/Resources/FFL/**', '.github/workflows/windows.yml']
-  pull_request:
-    paths: ['Windows/**', 'Server/**', '.github/workflows/windows.yml']
   workflow_dispatch:
 permissions:
   contents: read
-concurrency:
-  group: windows-${{ github.ref }}
-  cancel-in-progress: false
 jobs:
-  windows:
+  contracts:
     runs-on: windows-latest
-    permissions:
-      contents: write
-      actions: read
-    timeout-minutes: 45
+    timeout-minutes: 30
     defaults:
       run:
         working-directory: Windows
     steps:
       - uses: actions/checkout@v4
-      - name: Find verified build of this commit
-        id: verified
-        uses: actions/github-script@v7
-        with:
-          script: |
-            if (context.ref !== 'refs/heads/main') return;
-            const {data} = await github.rest.actions.listWorkflowRuns({
-              owner: context.repo.owner, repo: context.repo.repo,
-              workflow_id: 'windows.yml', status: 'success', per_page: 30,
-              head_sha: context.sha
-            });
-            const run = data.workflow_runs.find(r => r.head_sha === context.sha &&
-              r.head_branch === 'codex/windows-current-features' && r.event === 'push' &&
-              r.conclusion === 'success');
-            if (run) { core.setOutput('run-id', String(run.id)); core.info(`Reusing verified Windows build ${run.id} for ${context.sha}`); }
-      - name: Restore verified Windows downloads
-        if: steps.verified.outputs.run-id != ''
-        uses: actions/download-artifact@v4
-        with:
-          name: windows-downloads
-          path: Windows/dist
-          run-id: ${{ steps.verified.outputs.run-id }}
-          github-token: ${{ github.token }}
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
@@ -55,153 +22,19 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
-      - run: pnpm install --frozen-lockfile --ignore-scripts --config.block-exotic-subdeps=false
-      - run: node node_modules/electron/install.js
       - uses: compnerd/gha-setup-swift@bbae8ce86bac5a3449f3992b3d88bc4ca25f2057
-        if: steps.verified.outputs.run-id == ''
-        continue-on-error: true
         with:
           swift-version: swift-6.4.1-release
           swift-build: 6.4.1-RELEASE
-      - name: Resolve installed Swift paths
-        if: steps.verified.outputs.run-id == ''
-        shell: pwsh
-        run: |
-          $roots = @("$env:LOCALAPPDATA\Programs\Swift", "C:\Library\Developer", "C:\Program Files\Swift") | Where-Object { Test-Path $_ }
-          $swift = $roots | ForEach-Object { Get-ChildItem $_ -Filter swift.exe -Recurse -ErrorAction SilentlyContinue } | Select-Object -First 1
-          $sdk = $roots | ForEach-Object { Get-ChildItem $_ -Directory -Filter Windows.sdk -Recurse -ErrorAction SilentlyContinue } | Select-Object -First 1
-          if (!$swift -or !$sdk) {
-            $installer = Join-Path $env:TEMP 'installer.exe'
-            if (Test-Path $installer) {
-              $retry = Start-Process $installer -ArgumentList @('/quiet', '/norestart', '/log', "$env:TEMP/swift-retry.log") -Wait -PassThru
-              Write-Host "Swift installer retry exited $($retry.ExitCode)"
-              $roots = @("$env:LOCALAPPDATA\Programs\Swift", "C:\Library\Developer", "C:\Program Files\Swift") | Where-Object { Test-Path $_ }
-              $swift = $roots | ForEach-Object { Get-ChildItem $_ -Filter swift.exe -Recurse -ErrorAction SilentlyContinue } | Select-Object -First 1
-              $sdk = $roots | ForEach-Object { Get-ChildItem $_ -Directory -Filter Windows.sdk -Recurse -ErrorAction SilentlyContinue } | Select-Object -First 1
-            }
-          }
-          if (!$swift -or !$sdk) {
-            Get-ChildItem "$env:TEMP/*install*.log", "$env:TEMP/swift*.log" -ErrorAction SilentlyContinue | ForEach-Object { Get-Content $_.FullName -Tail 80 }
-            throw 'Swift installer did not provide a complete toolchain and Windows SDK.'
-          }
-          $swift.DirectoryName | Out-File $env:GITHUB_PATH -Append -Encoding utf8
-          "SDKROOT=$($sdk.FullName)" | Out-File $env:GITHUB_ENV -Append -Encoding utf8
       - uses: compnerd/gha-setup-vsdevenv@f1ba60d553a3216ce1b89abe0201213536bc7557
-        if: steps.verified.outputs.run-id == ''
-      - run: swift --version
-        if: steps.verified.outputs.run-id == ''
-      - run: ./scripts/prepare-native.ps1
-        if: steps.verified.outputs.run-id == ''
-        env:
-          GH_TOKEN: ${{ github.token }}
-      - run: python scripts/prepare-music.py
-        if: steps.verified.outputs.run-id == ''
-      - run: pnpm run build:engine
-        if: steps.verified.outputs.run-id == ''
-      - run: pnpm test
+      - run: pnpm install --frozen-lockfile --ignore-scripts --config.block-exotic-subdeps=false
       - run: python -m pip install -r ../Server/requirements.txt
+      - run: pnpm build:engine
+      - run: pnpm test
+      - run: pnpm test:shared
+      - run: pnpm test:contracts
+        env:
+          PYTHON: python
       - run: python -B -m unittest discover -s ../Server
-      - run: pnpm test:desktop
-        if: steps.verified.outputs.run-id == ''
-        timeout-minutes: 5
-        env:
-          PYTHON: python
-      - run: pnpm test:parity
-        if: steps.verified.outputs.run-id == ''
-        timeout-minutes: 5
-      - run: pnpm test:features
-        if: steps.verified.outputs.run-id == ''
-        timeout-minutes: 5
-        env:
-          PYTHON: python
-      - run: pnpm dist
-        if: steps.verified.outputs.run-id == ''
-        env:
-          CSC_IDENTITY_AUTO_DISCOVERY: 'false'
-      - name: Install and verify the Windows installer
-        shell: pwsh
-        run: |
-          if (!(Test-Path 'dist/win-unpacked/resources/app.asar')) {
-            $portable = Get-ChildItem dist/*.zip | Select-Object -First 1
-            Expand-Archive -LiteralPath $portable.FullName -DestinationPath 'dist/win-unpacked'
-          }
-          $setup = Get-ChildItem dist/*Setup*.exe | Select-Object -First 1
-          $target = Join-Path $env:RUNNER_TEMP 'PlazaInstalled'
-          $process = Start-Process $setup.FullName -ArgumentList @('/S', "/D=$target") -Wait -PassThru
-          if ($process.ExitCode -ne 0 -or !(Test-Path "$target/Plaza.exe")) { throw 'Windows installer failed.' }
-          if ((Get-FileHash "$target/resources/app.asar").Hash -ne (Get-FileHash 'dist/win-unpacked/resources/app.asar').Hash) { throw 'Installed app differs from the ZIP payload.' }
-          Get-ChildItem dist/win-unpacked/resources/native -File | ForEach-Object {
-            if ((Get-FileHash $_.FullName).Hash -ne (Get-FileHash "$target/resources/native/$($_.Name)").Hash) { throw 'Installed native dependency differs from the ZIP payload.' }
-          }
-          "PLAZA_EXECUTABLE=$target\Plaza.exe" | Out-File $env:GITHUB_ENV -Append -Encoding utf8
-      - name: Test the installed Windows executable
-        timeout-minutes: 5
-        run: pnpm test:desktop
-        env:
-          PYTHON: python
-      - name: Test installed Windows parity
-        timeout-minutes: 5
-        run: pnpm test:parity
-      - name: Test installed feature parity
-        timeout-minutes: 5
-        run: pnpm test:features
-        env:
-          PYTHON: python
-      - name: Build an older updater baseline for a real installation test
-        if: steps.verified.outputs.run-id == ''
-        run: node scripts/build-update-baseline.cjs
-        env:
-          CSC_IDENTITY_AUTO_DISCOVERY: 'false'
-      - name: Install the updater baseline
-        if: steps.verified.outputs.run-id == ''
-        shell: pwsh
-        run: |
-          $target = Join-Path $env:RUNNER_TEMP 'Plaza Update Fixture'
-          $setup = Get-Item 'update-baseline/Plaza-Update-Baseline.exe'
-          $process = Start-Process $setup.FullName -ArgumentList @('/S', "/D=$target") -Wait -PassThru
-          if ($process.ExitCode -ne 0 -or !(Test-Path "$target/Plaza.exe")) { throw 'Updater baseline installation failed.' }
-          "PLAZA_UPDATE_BASELINE=$target\Plaza.exe" | Out-File $env:GITHUB_ENV -Append -Encoding utf8
-          $candidate = Get-ChildItem dist/*Setup*.exe | Select-Object -First 1
-          "PLAZA_UPDATE_INSTALLER=$($candidate.FullName)" | Out-File $env:GITHUB_ENV -Append -Encoding utf8
-      - name: Test a signed Windows update and preserve saved data
-        if: steps.verified.outputs.run-id == ''
-        timeout-minutes: 10
-        run: pnpm test:updates
-      - uses: actions/upload-artifact@v4
-        if: always()
-        with:
-          name: windows-test-evidence
-          path: Windows/test-results
-      - uses: actions/upload-artifact@v4
-        with:
-          name: windows-downloads
-          path: |
-            Windows/dist/*.exe
-            Windows/dist/*.zip
-  release:
-    if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
-    needs: windows
-    runs-on: ubuntu-latest
-    permissions:
-      contents: write
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/download-artifact@v4
-        with:
-          name: windows-downloads
-          path: Windows/dist
-      - name: Publish tested Windows preview
-        shell: bash
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          version=$(node -p "require('./Windows/package.json').version")
-          tag="windows-v$version"
-          git archive --format=zip --prefix="Plaza-Windows-$version-Source/" -o "Windows/dist/Plaza-Windows-$version-Source.zip" HEAD Windows Server Sources/PlazaCore Sources/MacPlaza ThirdParty scripts/build-ffl.sh LICENSE LICENSING.md
-          cd Windows/dist
-          sha256sum *.exe *.zip > SHA256SUMS.txt
-          if gh release view "$tag" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
-            echo 'Release already exists; refusing to replace tested downloads.'
-            exit 1
-          fi
-          gh release create "$tag" --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" --prerelease --title "Plaza for Windows $version — cross-platform preview" --notes-file ../../Windows/RELEASE-NOTES.md *.exe *.zip SHA256SUMS.txt
+# Desktop tests also require the licensed Discord SDK and native bridge.
+# See Windows/BUILDING.md. No SDK, installer, or signing key is uploaded.

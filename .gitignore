@@ -62,3 +62,10 @@ Windows/node_modules
 Windows/update-baseline/
 
 
+
+# Local compiler caches for the isolated port
+.cache/
+
+Windows/Engine/Tests/PlazaCoreTests/
+
+.venv-port/

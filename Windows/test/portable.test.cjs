@@ -1,10 +1,10 @@
 const {test}=require('node:test'),assert=require('node:assert/strict'),{randomUUID}=require('node:crypto');
 const core=require('../src/core.cjs'),portable=require('../src/portable.cjs');
-test('Miiverse draft visibility survives portable export and defaults to public for older drafts',()=>{
+test('Miiverse draft visibility survives portable export and retains the legacy friends-only default',()=>{
   const doc=core.document();doc.avatars=[doc.avatar];doc.draft.visibility='private';doc.draft.text='Keep private';
   const value=portable.exportDocument(doc,[]);assert.equal(value.draft.shared,false);
   assert.equal(portable.importDocument(value,doc).draft.visibility,'private');
-  delete value.draft.shared;assert.equal(portable.importDocument(value,doc).draft.visibility,'public');
+  delete value.draft.shared;delete value.draft.audience;assert.equal(portable.importDocument(value,doc).draft.visibility,'friends');
 });
 test('portable Mac documents omit local app paths and convert Foundation dates in both directions',()=>{
   const doc=core.document();doc.avatars=[doc.avatar];doc.settings={population:160,rotateHome:true};doc.privateNotes=[{id:randomUUID(),author:doc.avatar,text:'Private',drawing:[],drawingDescription:'',created:1700000000}];doc.remoteNotes=[{text:'Remote friend note'}];

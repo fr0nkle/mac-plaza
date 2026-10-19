@@ -16,7 +16,24 @@ function avatar(name = 'You') {
   return { id: randomUUID(), name, skin: 0, hair: 33, hairColor: 1, eyes: 2, brows: 0, nose: 1, mouth: 23,
     face: 0, outfit: 0, glasses: false, beard: false, eyeSpacing: 2 / 12, featureHeight: 0.5, height: 0.5, build: 0.5, features };
 }
-function document() { return { avatar: avatar(), privateNotes: [], pending: {}, draft: { text: '', drawing: [], drawingDescription: '' } }; }
+function document() { return { avatar: avatar(), privateNotes: [], pending: {}, draft: { text: '', drawing: [], drawingDescription: '', visibility: 'public' } }; }
+function visibility(note) { return note.private ? 'private' : note.audience ?? 'friends'; }
+function draftVisibility(draft) {
+  if (draft?.visibility) return draft.visibility;
+  if (draft?.shared === false) return 'private';
+  return draft?.audience ?? 'friends';
+}
+// Windows 0.4 called friends-only posts "public". Never broaden saved content
+// when upgrading to the Mac 0.22+ three-audience protocol.
+function migrateAudiences(store) {
+  if (store.audienceVersion === 1) return false;
+  for (const doc of Object.values(store.accounts || {})) {
+    if (doc.draft?.visibility === 'public') doc.draft.visibility = 'friends';
+    for (const note of Object.values(doc.pending || {})) if (note && note.audience == null) note.audience = 'friends';
+  }
+  store.audienceVersion = 1;
+  return true;
+}
 function validateAvatar(value) {
   if (!value || typeof value.name !== 'string' || !value.name.trim() || [...value.name].length > 24 ||
       !/^[\da-f]{8}-(?:[\da-f]{4}-){3}[\da-f]{12}$/i.test(value.id) || !value.features) throw new Error('Choose a valid character.');
@@ -43,10 +60,12 @@ function validateNote(note) {
 }
 function wireNote(note) {
   validateNote(note);
+  const audience = note.audience ?? 'friends';
+  if (!['public', 'friends'].includes(audience)) throw new Error('Private notes cannot enter a shared feed.');
   const author = structuredClone(note.author);
   author.features.creator = ''; author.features.birthMonth = 0; author.features.birthDay = 0;
   return { id: note.sourceID || note.id, author, text: note.text.trim(), drawing: note.drawing,
-    drawingDescription: note.drawingDescription.trim(), created: note.created, topic: note.topic || null };
+    drawingDescription: note.drawingDescription.trim(), created: note.created, topic: note.topic || null, audience };
 }
 // Read current server state before applying this device's edits. Never replace
 // notes with an empty local cache on first sign-in, or resurrect remote deletions.
@@ -72,4 +91,4 @@ function mergeNotes(remote, ownerID, pending, now = Date.now()/1000) {
   return [...notes.values()];
 }
 function publicAvatar(avatar) { validateAvatar(avatar);const value=structuredClone(avatar);value.features.creator='';value.features.birthMonth=0;value.features.birthDay=0;return value; }
-module.exports = { publicAvatar, DEFAULT_SERVICE, endpoint, avatar, document, validateAvatar, validateNote, wireNote, mergeNotes, NOTE_RETENTION_SECONDS, expired, pruneNotes };
+module.exports = { visibility, draftVisibility, migrateAudiences, publicAvatar, DEFAULT_SERVICE, endpoint, avatar, document, validateAvatar, validateNote, wireNote, mergeNotes, NOTE_RETENTION_SECONDS, expired, pruneNotes };

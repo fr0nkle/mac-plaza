@@ -159,3 +159,10 @@ publishes the Site. No signing key is uploaded to CI. The Windows workflow also
 exercises a disposable installed older baseline with ephemeral test signatures,
 manual and automatic replacement, relaunch and saved data/resource preservation.
 Those fixtures are excluded from public release artifacts.
+
+An explicit retry cache may reuse the immutable Windows runtime from contracts
+run 39195951766 at 75fb24b only while its artifact is available and all Sources,
+Tests, engine, preparation scripts, toolchain and runtime-notice inputs match.
+Changed JavaScript, HTTP/backend contracts and installed upgrade/render checks
+still run. Missing artifacts or changed inputs fall back to full Swift builds.
+The package job always regenerates renderer assets independently of this cache.

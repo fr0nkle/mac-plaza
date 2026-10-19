@@ -11,6 +11,9 @@ concurrency:
   cancel-in-progress: false
 jobs:
   contracts:
+    permissions:
+      contents: read
+      actions: read
     runs-on: windows-latest
     timeout-minutes: 35
     defaults:
@@ -18,6 +21,8 @@ jobs:
         working-directory: Windows
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
@@ -27,17 +32,33 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
+      - id: runtime
+        name: Check immutable validated runtime inputs
+        run: node scripts/reuse-runtime.cjs
+        env:
+          GH_TOKEN: ${{ github.token }}
+      - uses: actions/download-artifact@v4
+        if: steps.runtime.outputs.reuse == 'true'
+        with:
+          name: windows-shared-runtime
+          run-id: 39195951766
+          github-token: ${{ github.token }}
+          path: Windows/native/runtime
       - uses: compnerd/gha-setup-swift@bbae8ce86bac5a3449f3992b3d88bc4ca25f2057
+        if: steps.runtime.outputs.reuse != 'true'
         with:
           swift-version: swift-6.4.1-release
           swift-build: 6.4.1-RELEASE
       - uses: compnerd/gha-setup-vsdevenv@f1ba60d553a3216ce1b89abe0201213536bc7557
       - run: pnpm install --frozen-lockfile --ignore-scripts --config.block-exotic-subdeps=false
       - run: python -m pip install -r ../Server/requirements.txt
+      - run: pnpm prepare:shared
       - run: pnpm build:engine
+        if: steps.runtime.outputs.reuse != 'true'
       - run: pnpm test
       - run: pnpm test:runtime
       - run: pnpm test:shared
+        if: steps.runtime.outputs.reuse != 'true'
       - run: pnpm test:contracts
         env:
           PYTHON: python
@@ -75,6 +96,7 @@ jobs:
           path: Windows/native/runtime
       - uses: compnerd/gha-setup-vsdevenv@f1ba60d553a3216ce1b89abe0201213536bc7557
       - run: pnpm install --frozen-lockfile --ignore-scripts --config.block-exotic-subdeps=false
+      - run: pnpm prepare:shared
       - run: node node_modules/electron/install.js
       - name: Compile Windows bridge with private vendor input
         run: ./scripts/prepare-native.ps1
@@ -117,6 +139,7 @@ jobs:
           path: |
             Windows/test-results/windows-update-install.json
             Windows/test-results/windows-update-ready.png
+            Windows/test-results/windows-preview-plaza.png
       - uses: actions/upload-artifact@v4
         with:
           name: windows-preview

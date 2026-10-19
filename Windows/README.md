@@ -14,7 +14,7 @@ when upgraded. No separate Windows community is introduced.
 The local implementation includes the current four-page Miiverse UI, ranked
 communities, primary birthday controls and annual overlay, alternate theme import,
 independent resizable Miiverse, Mii library/profile flows, portable shared/private
-journals, notification routing, and source-derived crowd/post/game-history logic.
+journals, accessible app/friend/journal list, notification routing, and source-derived crowd/post/game-history logic.
 Compatibility and desktop fixtures run on macOS; Windows native compilation,
 OS integration and authorized real two-device validation remain pending.
 

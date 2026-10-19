@@ -114,6 +114,7 @@ pnpm test:current
 pnpm test:library
 pnpm test:recovery
 pnpm test:notifications
+pnpm test:list
 ```
 
 Windows also exercises native paths where platform guards allow. Optional

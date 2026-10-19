@@ -25,7 +25,8 @@
     "test:runtime": "node test/shared-runtime.cjs",
     "test:pack": "node test/pack-desktop.cjs",
     "test:recovery": "node test/recovery-desktop.cjs",
-    "test:notifications": "node test/notifications-desktop.cjs"
+    "test:notifications": "node test/notifications-desktop.cjs",
+    "test:list": "node test/list-desktop.cjs"
   },
   "devDependencies": {
     "electron": "44.7.0",

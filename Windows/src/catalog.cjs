@@ -11,6 +11,7 @@ function matchActivity(activities,apps,now=Date.now()/1000){
  }return -1;
 }
 
+function friendGames(friends,apps,now=Date.now()/1000){const seen=new Set(),result=[];for(const friend of friends)for(const a of friend.activities||[]){if(a.source!=='discord'||!recent(a,now)||(a.active!==false&&['offline','unknown'].includes(friend.presence)))continue;const i=matchActivity([a],apps,now);if(i>=0){const key=topicID(apps[i]);if(!seen.has(key)){seen.add(key);result.push(apps[i]);}}}return result;}
 function friendFor(note,friends){
   const owners=friends.filter(f=>note.ownerID&&identity(f.id)===identity(note.ownerID)),linked=friends.filter(f=>note.discordID&&f.discordID===note.discordID);
   if(owners.length>1||linked.length>1)return;
@@ -34,10 +35,10 @@ function orderedCommunities(index,{history=[],apps=[],friends=[],alphabetic=fals
   const communities=index.sections.filter(s=>!['all','mine','friends','public'].includes(s.id)),scores=new Map();
   for(const e of index.entries)if(e.section!=='plaza')scores.set(e.section,(scores.get(e.section)||0)+1+Math.max(0,e.note.likeCount||0)+(e.note.replies?.length||0));
   for(const entry of history)if(now-entry.at<90*86400000){const app=apps.find(a=>a.id===entry.id);if(app){const id=topicID(app);scores.set(id,(scores.get(id)||0)+1);}}
-  for(const friend of friends){const seen=new Set();for(const activity of friend.activities||[]){if(activity.source!=='discord'||!recent(activity,now/1000)||(activity.active!==false&&['offline','unknown'].includes(friend.presence)))continue;const i=matchActivity([activity],apps,now/1000);if(i>=0){const id=topicID(apps[i]);if(!seen.has(id)){seen.add(id);scores.set(id,(scores.get(id)||0)+4);}}}}
+  for(const friend of friends)for(const app of friendGames([friend],apps,now/1000)){const id=topicID(app);scores.set(id,(scores.get(id)||0)+4);}
   const rest=communities.filter(s=>s.id!=='plaza');for(let i=rest.length-1;i>0;i--){const j=Math.floor(random()*(i+1));[rest[i],rest[j]]=[rest[j],rest[i]];}
   const ranks=new Map(rest.map((s,i)=>[s.id,i]));rest.sort((a,b)=>alphabetic?a.label.localeCompare(b.label,undefined,{numeric:true,sensitivity:'base'}):(scores.get(b.id)||0)-(scores.get(a.id)||0)||ranks.get(a.id)-ranks.get(b.id));
   return [...communities.filter(s=>s.id==='plaza'),...rest];
 }
-const api={recent,matchActivity,name,topicID,catalog,filtered,activityCursor,orderedCommunities,friendFor,conflictingIdentity};
+const api={friendGames,recent,matchActivity,name,topicID,catalog,filtered,activityCursor,orderedCommunities,friendFor,conflictingIdentity};
 if(typeof module!=='undefined')module.exports=api;else window.PlazaCatalog=api;

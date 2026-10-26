@@ -104,6 +104,8 @@ jobs:
         run: ./scripts/prepare-native.ps1
         env:
           GH_TOKEN: ${{ github.token }}
+      - name: Smoke test music probe in disposable CI
+        run: node test/music-probe-smoke.cjs
       - name: Package unsigned testing installer and portable app
         run: pnpm dist
         env:
@@ -171,7 +173,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         shell: bash
         run: |
-          gh release create "$GITHUB_REF_NAME" windows-preview/* --repo "$GITHUB_REPOSITORY" --verify-tag --prerelease --latest=false --title "Plaza for Windows ${GITHUB_REF_NAME#windows-v} — UNTESTED preview" --notes-file Windows/TESTING.md
+          gh release create "$GITHUB_REF_NAME" windows-preview/* --repo "$GITHUB_REPOSITORY" --verify-tag --prerelease --latest=false --title "Windows Plaza ${GITHUB_REF_NAME#windows-v} — UNTESTED preview" --notes-file Windows/TESTING.md
 
       - name: Explain the required local signed-feed publication
         shell: bash

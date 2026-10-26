@@ -27,7 +27,8 @@
     "test:recovery": "node test/recovery-desktop.cjs",
     "test:notifications": "node test/notifications-desktop.cjs",
     "test:list": "node test/list-desktop.cjs",
-    "verify:package": "node scripts/verify-package.cjs"
+    "verify:package": "node scripts/verify-package.cjs",
+    "build:music-probe": "node scripts/build-music-probe.cjs"
   },
   "devDependencies": {
     "electron": "44.7.0",

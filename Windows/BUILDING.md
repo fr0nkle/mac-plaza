@@ -166,3 +166,14 @@ Tests, engine, preparation scripts, toolchain and runtime-notice inputs match.
 Changed JavaScript, HTTP/backend contracts and installed upgrade/render checks
 still run. Missing artifacts or changed inputs fall back to full Swift builds.
 The package job always regenerates renderer assets independently of this cache.
+
+
+### Music interruption helper
+
+Run `pnpm build:music-probe` in an x64 Visual Studio developer environment with
+Windows SDK C++/WinRT headers before packaging (including when reusing the Swift
+runtime). The build emits `native/runtime/PlazaMusicProbe.exe`; package verification
+requires it. It is a read-only native process, not a PowerShell script. Existing
+application-control policy may prevent unsigned local builds from running. Do not
+relax that policy: detection fails open so Plaza continues music, and runtime
+acceptance must remain pending until an authorized environment can run the helper.

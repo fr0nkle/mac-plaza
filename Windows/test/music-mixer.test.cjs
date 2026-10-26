@@ -29,3 +29,13 @@ test('environment mute and list mode pause plaza without disabling companion mus
 test('companion window delegates role without starting another audio mixer',async()=>{
   const f=fixture('?panel=maker');f.music.role('maker');await f.settle();assert.deepEqual(f.calls,[['musicRole','maker']]);assert.equal(f.audio.length,0);
 });
+
+test('stopping other music preserves the user manual music-off preference',async()=>{
+ const f=fixture(),state={document:{settings:{ambientSound:true}},music:{plaza:{file:'plaza.wav'}}};
+ f.music.update(state);await f.settle();assert.equal(f.audio[0].paused,false);
+ f.audio[0].currentTime=33;f.music.mute(true);await f.settle();
+ state.document.settings.ambientSound=false;f.music.update(state);await f.settle();
+ f.music.mute(false);await f.settle();assert(f.audio.every(a=>a.paused));assert.equal(f.audio[0].currentTime,33);
+ state.document.settings.ambientSound=true;f.music.update(state);await f.settle();assert.equal(f.audio[0].paused,false);assert.equal(f.audio[0].currentTime,33);
+ await f.music.shutdown();
+});

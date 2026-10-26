@@ -1,4 +1,4 @@
-# Windows Plaza 0.4.6 — UNTESTED testing preview
+# Windows Plaza 0.4.7 — UNTESTED testing preview
 
 This is an early Windows x64 preview for friends to test. It has not completed
 hands-on Windows testing or been certified to match Mac Plaza 0.23.0. Expect bugs.
@@ -44,7 +44,7 @@ requires an explicit Windows release tag and local signed-feed publication.
 See RELEASE-PROCESS.md for that final signing and Sites publishing step.
 
 
-Changes in 0.4.6: restores app tiles above Miis, uses resolved executable artwork,
+Changes in 0.4.7: restores app tiles above Miis, uses resolved executable artwork,
 and renames Windows display labels to Windows Plaza while preserving app identity
 and settings. Music no longer pauses because of a microphone, generic sounds or
 window coverage. Automatic yielding requires sustained declared Music/Playing
@@ -56,3 +56,6 @@ launch and persistence. Native music probe compiled, but Windows Application Con
 blocked its local execution. Actual other-player detection and speaker output are
 unverified. This release does not resolve all Windows trust warnings or certify
 Mac parity. DPI/layout and complete native Mac comparison remain pending.
+
+Build note: the unreleased 0.4.6 tag failed the native helper compiler gate.
+0.4.7 uses C++20 coroutine headers required by the current CI compiler.
